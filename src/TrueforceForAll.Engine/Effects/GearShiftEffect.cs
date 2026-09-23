@@ -1,0 +1,170 @@
+// Gear-shift thud: a short low-freq waveform burst with a linear-decay
+// envelope, retriggered each time GameData.Gear changes.
+//
+// The synth is inline (per-sample envelope is simpler hand-rolled than
+// pumping the OscillatorSource) but the waveform shape is selectable so
+// users can pick the feel they prefer.
+
+using System;
+using TrueforceForAll.Core;
+
+namespace TrueforceForAll.Plugin.Effects
+{
+    public sealed class GearShiftEffect : TelemetryEffect
+    {
+        public override string Name => "Gear shift";
+
+        /// <summary>Thud frequency (Hz). 40 Hz = solid mechanical clunk feel.</summary>
+        public float Freq { get; set; } = 40.0f;
+
+        // Phase 6 contract: a momentary alert around its knock frequency.
+        public override EffectClass PriorityClass => EffectClass.Transient;
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Freq * 0.7;
+            hiHz = Freq * 1.6;
+        }
+
+        /// <summary>Envelope length in milliseconds.</summary>
+        public int EnvelopeMs { get; set; } = 80;
+
+        /// <summary>Peak amplitude at the start of the envelope. Sized to the
+        /// model where the FFB pass-through writes AC's torque target into
+        /// ep3 cur, so the audio in the rolling window is purely additive
+        /// (confirmed on RS50 by mescon, 2026-07), no longer constrained to
+        /// small amplitudes for FFB coexistence.</summary>
+        public float PeakAmp { get; set; } = 0.35f;
+
+        public Waveform Waveform { get; set; } = Waveform.Sine;
+
+        /// <summary>Amplitude scale applied when the destination gear is "N"
+        /// (going to neutral). 0.4 default = ~40% of a normal bump, so
+        /// sequential shifts feel like a soft "approach" tap into neutral
+        /// followed by a full bump landing in the destination gear. 0.0
+        /// disables the neutral bump entirely; 1.0 makes it equal weight.</summary>
+        public float NeutralAmp { get; set; } = 0.4f;
+
+        private const double SampleRateHz = 4000.0;
+
+        private string _lastGear;
+        private int    _envelopeRemaining;   // samples
+        private int    _envelopeTotal = 80;
+        private float  _envelopeAmpScale = 1.0f;
+        private double _phase;
+        private readonly Random _rng = new Random();
+
+        public override bool IsActive => IsTesting || (Enabled && _envelopeRemaining > 0);
+
+        public override double ActivityLevel
+        {
+            get
+            {
+                int total = _envelopeTotal;
+                int rem   = _envelopeRemaining;
+                if (total <= 0 || rem <= 0) return 0;
+                return (double)rem / total;
+            }
+        }
+
+        public override void RenderAdd(float[] buffer, int count)
+        {
+            if (!Enabled && !IsTesting) return;
+            int remaining = _envelopeRemaining;
+            if (remaining <= 0) return;
+
+            double phaseStep = Freq / SampleRateHz;
+            // DuckMultiplier is 1.0 unless the airborne ducker pulls it down
+            // (gear shift sits above the sidechain tiers, so nothing else
+            // touches it).
+            float scale = PeakAmp * Gain * _envelopeAmpScale * DuckMultiplier;
+            int total = _envelopeTotal;
+            Waveform w = Waveform;
+
+            for (int i = 0; i < count && remaining > 0; i++)
+            {
+                float env = (float)remaining / total;            // linear 1 → 0
+                float v   = WaveformMath.SampleAt(w, _phase, _rng);
+                buffer[i] += v * env * scale;
+                _phase += phaseStep;
+                if (_phase >= 1.0) _phase -= Math.Floor(_phase);
+                remaining--;
+            }
+            _envelopeRemaining = remaining;
+        }
+
+        /// <summary>Play one envelope at a chosen strength, for something other than a gear change
+        /// that still wants this voice. The menus of an arcade cabinet use it: a full thud when a
+        /// choice is confirmed and a light tick while moving through the options, which is the same
+        /// mechanical knock the effect already makes, just quieter.
+        ///
+        /// Unlike TestPlay this does NOT enter test mode, so live telemetry is never suppressed by
+        /// it and a real shift landing in the same moment still plays.</summary>
+        public void PlayOneShot(float ampScale)
+        {
+            if (ampScale <= 0f) return;
+            _envelopeTotal = Math.Max(1, (int)(EnvelopeMs * SampleRateHz / 1000.0));
+            _envelopeRemaining = _envelopeTotal;
+            _envelopeAmpScale = ampScale > 1f ? 1f : ampScale;
+            _phase = 0;
+        }
+
+        public override int TestPlay()
+        {
+            // Trigger one envelope at full amp, decays naturally over EnvelopeMs.
+            // StartTest() keeps IsTesting=true so IsActive returns true even
+            // when Enabled=false in settings (otherwise the Mixer would skip
+            // RenderAdd and the test would be silent).
+            _envelopeTotal     = Math.Max(1, (int)(EnvelopeMs * SampleRateHz / 1000.0));
+            _envelopeRemaining = _envelopeTotal;
+            _envelopeAmpScale  = 1.0f;
+            _phase             = 0;
+            int duration = EnvelopeMs + 100;
+            StartTest(duration);
+            return duration;
+        }
+
+        public override void OnTelemetry(TelemetryFrame f)
+        {
+            string gear = f.Gear;
+            if (string.IsNullOrEmpty(gear))
+            {
+                _lastGear = gear;
+                return;
+            }
+
+            // Phase 2: consume the deriver's GearChanged edge when the CTM
+            // stage ran on this frame (it owns first-frame seeding and fires
+            // exactly once per change); fall back to the local string diff on
+            // paths that bypass the engine loop, where Caps is None.
+            bool changed = (f.Caps & SignalGroups.DerivedEvents) != 0
+                ? (f.Events & FrameEvents.GearChanged) != 0
+                : _lastGear != null && _lastGear != gear;
+
+            if (changed)
+            {
+                // Sequential gearboxes pass through "N" between every gear, so
+                // every shift triggers two transitions: gear→N then N→gear.
+                // We scale the gear→N bump by NeutralAmp (default 0.4) so the
+                // destination-gear landing feels dominant, and let users tune
+                // the neutral component down to 0 (disabled) or up to 1 (equal).
+                bool goingToNeutral = string.Equals(gear, "N", StringComparison.OrdinalIgnoreCase);
+                float ampScale = goingToNeutral ? NeutralAmp : 1.0f;
+                if (ampScale > 0f)
+                {
+                    _envelopeTotal = Math.Max(1, (int)(EnvelopeMs * SampleRateHz / 1000.0));
+                    _envelopeRemaining = _envelopeTotal;
+                    _envelopeAmpScale = ampScale;
+                    _phase = 0;
+                }
+            }
+            _lastGear = gear;
+        }
+
+        public override void Reset()
+        {
+            _lastGear = null;
+            _envelopeRemaining = 0;
+            _phase = 0;
+        }
+    }
+}

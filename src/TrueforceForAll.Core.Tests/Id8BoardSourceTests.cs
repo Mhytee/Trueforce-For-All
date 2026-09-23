@@ -1,0 +1,448 @@
+// Which pool fills which board, and what happens when both do.
+//
+// The interesting case is Merged: a player who has submitted to tf4all AND to TeknoParrot must
+// appear once, at their better time, or the board shows the same person twice and the ranking
+// below them is wrong by one place.
+
+using System.Collections.Generic;
+using System.Linq;
+using TrueforceForAll.Core;
+using Xunit;
+
+namespace TrueforceForAll.Core.Tests
+{
+    public class Id8BoardSourceTests
+    {
+        private static Id8LeaderboardEntry E(string name, int ms) =>
+            new Id8LeaderboardEntry { Username = name, GoalMs = ms };
+
+        private static readonly List<Id8LeaderboardEntry> Community = new List<Id8LeaderboardEntry>
+        {
+            E("Mhytee", 131000), E("Rival1", 128500),
+        };
+
+        private static readonly List<Id8LeaderboardEntry> Tekno = new List<Id8LeaderboardEntry>
+        {
+            E("Rival2", 121000), E("Mhytee", 135000), E("Rival3", 140000),
+        };
+
+        [Fact]
+        public void CommunityOnlyIgnoresTheOtherPool()
+        {
+            var r = Id8Leaderboard.Combine(Id8BoardSource.Community, Community, Tekno);
+            Assert.Equal(new[] { "Rival1", "Mhytee" }, r.Select(x => x.Username));
+        }
+
+        [Fact]
+        public void TeknoParrotOnlyIgnoresTheOtherPool()
+        {
+            var r = Id8Leaderboard.Combine(Id8BoardSource.TeknoParrot, Community, Tekno);
+            Assert.Equal(new[] { "Rival2", "Mhytee", "Rival3" }, r.Select(x => x.Username));
+            Assert.Equal(135000, r.First(x => x.Username == "Mhytee").GoalMs);
+        }
+
+        /// <summary>The point of the whole feature: both pools ranked together.</summary>
+        [Fact]
+        public void MergedRanksBothPoolsTogether()
+        {
+            var r = Id8Leaderboard.Combine(Id8BoardSource.Merged, Community, Tekno);
+            Assert.Equal(new[] { "Rival2", "Rival1", "Mhytee", "Rival3" }, r.Select(x => x.Username));
+        }
+
+        /// <summary>Mhytee is in both pools, 131000 in the community and 135000 on the site. One
+        /// row, at the faster time, or everyone below is ranked one place too low.</summary>
+        [Fact]
+        public void SomeoneInBothPoolsAppearsOnceAtTheirBest()
+        {
+            var r = Id8Leaderboard.Combine(Id8BoardSource.Merged, Community, Tekno);
+            Assert.Single(r.Where(x => x.Username == "Mhytee"));
+            Assert.Equal(131000, r.First(x => x.Username == "Mhytee").GoalMs);
+        }
+
+        /// <summary>Dedupe is on the name as DISPLAYED. Two entries that sanitize the same would
+        /// render identically on a nine-character board, so they must not both be shown.</summary>
+        [Fact]
+        public void DeduplicationUsesTheDisplayedName()
+        {
+            var a = new List<Id8LeaderboardEntry> { E("drift_king", 130000) };
+            var b = new List<Id8LeaderboardEntry> { E("Drift_King", 125000) };
+            var r = Id8Leaderboard.Combine(Id8BoardSource.Merged, a, b);
+            Assert.Single(r);
+            Assert.Equal(125000, r[0].GoalMs);
+        }
+
+        /// <summary>Local pulls in no external rows: it is expressed entirely by keeping what
+        /// was already on the board.</summary>
+        [Fact]
+        public void LocalContributesNoExternalRows()
+        {
+            Assert.Empty(Id8Leaderboard.Combine(Id8BoardSource.Local, Community, Tekno));
+        }
+
+        [Fact]
+        public void NeverReturnsMoreThanTheBoardHolds()
+        {
+            var many = Enumerable.Range(1, 40).Select(i => E("P" + i, 100000 + i)).ToList();
+            Assert.Equal(Id8Leaderboard.Ranks, Id8Leaderboard.Combine(Id8BoardSource.Merged, many, many).Count);
+        }
+
+        [Fact]
+        public void MissingPoolIsNotAnError()
+        {
+            var r = Id8Leaderboard.Combine(Id8BoardSource.Merged, null, Tekno);
+            Assert.Equal(3, r.Count);
+            Assert.Empty(Id8Leaderboard.Combine(Id8BoardSource.Merged, null, null));
+        }
+
+        /// <summary>A row with no time is not a row. Writing a zero would sort it to the top.</summary>
+        [Fact]
+        public void EntriesWithNoTimeAreDropped()
+        {
+            var junk = new List<Id8LeaderboardEntry> { E("Ghost", 0), E("Real", 130000) };
+            var r = Id8Leaderboard.Combine(Id8BoardSource.Community, junk, null);
+            Assert.Equal(new[] { "Real" }, r.Select(x => x.Username));
+        }
+    
+        // ---- Local, and what each source does with rows already on the board ----
+
+        /// <summary>A record the CABINET wrote, which is what a local record is.
+        ///
+        /// PlayerId matters and used to be omitted here. The game stamps a genuine record with the
+        /// player's card id, while every row we write leaves it zero, and that zero is how the
+        /// merge now recognises its own previous output instead of folding it back in as if the
+        /// player had driven it. A fixture without a player id was modelling a real record while
+        /// leaving out the field that makes it real. The value is the one observed on a live save.</summary>
+        private const uint CabinetCardId = 5553014;
+
+        [Fact]
+        public void ARowKeepsTheCarItWasDrivenIn()
+        {
+            // Bytes 0x14..0x15 are the CarID, not padding. They were read as opaque "reserved"
+            // until a real save showed seventeen records at [0,0] and one at [0,4]: 0 is the AE86
+            // Trueno, 1024 is the GC8 Impreza, and that was the one course the player had driven
+            // in something else. Writing zero made every row we wrote display as a Trueno.
+            const int Gc8 = 1024;
+
+            var rows = Id8Leaderboard.Merge(
+                new List<Id8LeaderboardRecord> { Id8Leaderboard.DefaultRow() },
+                new List<Id8LeaderboardEntry>
+                {
+                    new Id8LeaderboardEntry { Username = "Driver", GoalMs = 150000, CarId = Gc8 },
+                },
+                keepExisting: false);
+
+            Assert.Equal(Gc8, rows[0].CarId);
+            Assert.Equal(new byte[] { 0x00, 0x04, Id8LeaderboardRecord.ConstantAt16 }, rows[0].Reserved);
+        }
+
+        [Fact]
+        public void ACarSurvivesTheTripThroughALocalRecord()
+        {
+            // The merge turns the player's own rows back into entries before ranking them. If the
+            // car is dropped on that hop, their own time comes back displayed as a Trueno.
+            var board = new List<Id8LeaderboardRecord>
+            {
+                new Id8LeaderboardRecord
+                {
+                    RawName = Id8Name.Encode(Id8Name.Sanitize("LocalGuy")),
+                    Reserved = Id8LeaderboardRecord.ReservedFor(769),   // FD3S
+                    Flags = Id8LeaderboardRecord.FlagReal,
+                    PlayerId = CabinetCardId,
+                    GoalMs = 140000,
+                },
+            };
+
+            var rows = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Merged, board, null, null, Id8Leaderboard.LocalRecordsFrom(board));
+
+            Assert.Equal(769, rows[0].CarId);
+        }
+
+
+        private static Id8LeaderboardRecord Real(string name, int ms) => new Id8LeaderboardRecord
+        {
+            RawName = Id8Name.Encode(Id8Name.Sanitize(name)),
+            Reserved = new byte[] { 0, 0, Id8LeaderboardRecord.ConstantAt16 },
+            Flags = Id8LeaderboardRecord.FlagReal,
+            PlayerId = CabinetCardId,
+            GoalMs = ms,
+        };
+
+        /// <summary>A row WE wrote in an earlier session and the game then saved. Indistinguishable
+        /// from a real one except for the missing player id, which is the entire point.</summary>
+        private static Id8LeaderboardRecord OursFromLastTime(string name, int ms) =>
+            new Id8LeaderboardRecord
+            {
+                RawName = Id8Name.Encode(Id8Name.Sanitize(name)),
+                Reserved = new byte[] { 0, 0, Id8LeaderboardRecord.ConstantAt16 },
+                Flags = Id8LeaderboardRecord.FlagReal,
+                PlayerId = 0,
+                GoalMs = ms,
+            };
+
+        [Fact]
+        public void ARowWeWroteIsNotReadBackAsALocalRecord()
+        {
+            // The bug this pins: our writes persist in the save, so without the player id test the
+            // merge reads its own output back as the player's own record and folds it in forever.
+            // A probe row written while working the feature out survived exactly this way.
+            var board = new List<Id8LeaderboardRecord>
+            {
+                Real("LocalGuy", 133000),
+                OursFromLastTime("anyA", 120000),
+                Id8Leaderboard.DefaultRow(),
+            };
+
+            var local = Id8Leaderboard.LocalRecordsFrom(board);
+
+            Assert.Single(local);
+            Assert.Equal("LOCALGUY", Id8Name.Decode(local[0].RawName));
+            Assert.True(Id8Leaderboard.IsOurs(OursFromLastTime("anyA", 120000)));
+            Assert.False(Id8Leaderboard.IsOurs(Real("LocalGuy", 133000)));
+        }
+
+        private static List<Id8LeaderboardRecord> ExistingBoard() => new List<Id8LeaderboardRecord>
+        {
+            Real("LocalGuy", 133000),
+            Id8Leaderboard.DefaultRow(),
+            Id8Leaderboard.DefaultRow(),
+        };
+
+        /// <summary>Every source keeps the player's own records. The source decides who they are
+        /// measured against, never whether they appear on their own leaderboard. Community and
+        /// TeknoParrot used to answer false here, and on the shop board, which IS the save, that
+        /// deleted 17 of the owner's records rather than narrowing a view.</summary>
+        [Theory]
+        [InlineData(Id8BoardSource.Local)]
+        [InlineData(Id8BoardSource.Merged)]
+        [InlineData(Id8BoardSource.Community)]
+        [InlineData(Id8BoardSource.TeknoParrot)]
+        public void EverySourceKeepsThePlayersOwnRecords(Id8BoardSource source)
+        {
+            Assert.True(Id8Leaderboard.KeepsLocalRecords(source));
+        }
+
+        /// <summary>Local writes nothing new. It clears SEGA's filler out from under the times
+        /// somebody actually set, which needs neither an account nor a network.</summary>
+        [Fact]
+        public void LocalKeepsTheExistingRecordAndAddsNothing()
+        {
+            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Local, ExistingBoard(), Community, Tekno);
+            Assert.Equal(Id8Leaderboard.Ranks, rows.Length);
+            Assert.Equal("LOCALGUY", Id8Name.Decode(rows[0].RawName));
+            Assert.Equal(133000, rows[0].GoalMs);
+            Assert.All(rows.Skip(1), r => Assert.True(r.IsFiller));
+        }
+
+
+
+
+        /// <summary>One driver, several cars, and the board is a TIME board so each one earns a
+        /// place. The rig showed this the long way round: the by-car screen had the owner's GT-R
+        /// while the any-car board still showed only their AE86, because a board that keeps local
+        /// records goes through Dedupe, and Dedupe keyed on the name alone.</summary>
+        [Theory]
+        [InlineData(Id8BoardSource.Merged)]
+        [InlineData(Id8BoardSource.Community)]
+        public void OneDriverInSeveralCarsTakesSeveralPlaces(Id8BoardSource source)
+        {
+            var pool = new List<Id8LeaderboardEntry>
+            {
+                new Id8LeaderboardEntry { Username = "Mhytee", CarId = 0,   GoalMs = 142781 },
+                new Id8LeaderboardEntry { Username = "Mhytee", CarId = 263, GoalMs = 151684 },
+            };
+
+            var rows = Id8Leaderboard.BuildBoard(source, ExistingBoard(), pool, null,
+                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()));
+            var mine = rows.Where(r => !r.IsFiller && Id8Name.Decode(r.RawName) == "MHYTEE")
+                           .Select(r => r.GoalMs).ToList();
+            Assert.Equal(new[] { 142781, 151684 }, mine);
+        }
+
+        /// <summary>The same car twice is the same record, not a second place. The table's unique
+        /// key is (game, course, direction, car_id, user_id), so only the faster survives.</summary>
+        [Fact]
+        public void TheSameCarTwiceIsStillOneRecord()
+        {
+            var pool = new List<Id8LeaderboardEntry>
+            {
+                new Id8LeaderboardEntry { Username = "Mhytee", CarId = 263, GoalMs = 151684 },
+                new Id8LeaderboardEntry { Username = "Mhytee", CarId = 263, GoalMs = 158000 },
+            };
+
+            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Merged, ExistingBoard(), pool, null,
+                                                 Id8Leaderboard.LocalRecordsFrom(ExistingBoard()));
+            var mine = rows.Where(r => !r.IsFiller && Id8Name.Decode(r.RawName) == "MHYTEE")
+                           .Select(r => r.GoalMs).ToList();
+            Assert.Equal(new[] { 151684 }, mine);
+        }
+
+        /// <summary>Local on the ONLINE board writes the player's own records onto it.
+        ///
+        /// That board is exe filler on every row, because the game only ever maintains the shop
+        /// tables, so its own existing rows offer nothing. The records come from the shop snapshot
+        /// instead, which is what the fill passes. I claimed in review that this choice did nothing
+        /// on the online board and was wrong, so it is pinned rather than argued about.</summary>
+        [Fact]
+        public void LocalPutsThePlayersRecordsOnABoardTheGameNeverWrites()
+        {
+            var onlineIsAllFiller = new List<Id8LeaderboardRecord>
+            {
+                Id8Leaderboard.DefaultRow(), Id8Leaderboard.DefaultRow(), Id8Leaderboard.DefaultRow(),
+            };
+            // Two CARS, deliberately. The first draft of this test used the same car twice and
+            // failed, which was the dedupe being right: same person same car is one record.
+            var ae86 = Real("Mhytee", 139932);
+            var gtr = Real("Mhytee", 151684);
+            gtr.Reserved = Id8LeaderboardRecord.ReservedFor(263);
+            var mine = Id8Leaderboard.LocalRecordsFrom(new List<Id8LeaderboardRecord> { ae86, gtr });
+
+            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Local, onlineIsAllFiller, null, null, mine);
+            var times = rows.Where(r => !r.IsFiller).Select(r => r.GoalMs).ToList();
+            Assert.Equal(new[] { 139932, 151684 }, times);
+        }
+
+        /// <summary>Merged is everything: both pools and the local record, ranked together.</summary>
+        [Fact]
+        public void MergedIncludesTheLocalRecordAlongsideBothPools()
+        {
+            var rows = Id8Leaderboard.BuildBoard(Id8BoardSource.Merged, ExistingBoard(), Community, Tekno);
+            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
+            Assert.Equal(new[] { "RIVAL2", "RIVAL1", "MHYTEE", "LOCALGUY", "RIVAL3" }, names);
+        }
+
+        /// <summary>A board is always exactly ten rows, topped up with filler, whatever the source.
+        /// Writing fewer would leave whatever was in the tail of the old board showing.</summary>
+        [Theory]
+        [InlineData(Id8BoardSource.Local)]
+        [InlineData(Id8BoardSource.Community)]
+        [InlineData(Id8BoardSource.TeknoParrot)]
+        [InlineData(Id8BoardSource.Merged)]
+        public void EveryBoardIsAlwaysExactlyTenRows(Id8BoardSource source)
+        {
+            Assert.Equal(Id8Leaderboard.Ranks,
+                Id8Leaderboard.BuildBoard(source, ExistingBoard(), Community, Tekno).Length);
+        }
+    
+        // ---- local records fed into the ONLINE board ----
+        //
+        // The online board is SEGA filler on every row, so it has no local records of its own.
+        // Merged there has to be given the player's rows from the SHOP snapshot or it silently
+        // omits them, which is not what "merged" means.
+
+        private static List<Id8LeaderboardRecord> OnlineBoardAsShipped() =>
+            Enumerable.Range(0, 10).Select(_ => Id8Leaderboard.DefaultRow()).ToList();
+
+        [Fact]
+        public void LocalRecordsFromDropsFillerAndKeepsRealRows()
+        {
+            var snap = new List<Id8LeaderboardRecord>
+            {
+                Real("LocalGuy", 133000), Id8Leaderboard.DefaultRow(), Real("Someone", 145000),
+            };
+            var local = Id8Leaderboard.LocalRecordsFrom(snap);
+            Assert.Equal(2, local.Count);
+            Assert.All(local, r => Assert.False(r.IsFiller));
+        }
+
+        [Fact]
+        public void LocalRecordsFromToleratesNothing()
+        {
+            Assert.Empty(Id8Leaderboard.LocalRecordsFrom(null));
+            Assert.Empty(Id8Leaderboard.LocalRecordsFrom(new List<Id8LeaderboardRecord>()));
+        }
+
+        /// <summary>The bug this parameter exists to prevent: without the shop snapshot, Merged on
+        /// the online board leaves the player off their own leaderboard.</summary>
+        [Fact]
+        public void MergedOnTheOnlineBoardIncludesTheShopSnapshotsLocalRecords()
+        {
+            var local = Id8Leaderboard.LocalRecordsFrom(new List<Id8LeaderboardRecord> { Real("LocalGuy", 133000) });
+
+            var without = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Merged, OnlineBoardAsShipped(), Community, Tekno);
+            Assert.DoesNotContain("LOCALGUY",
+                without.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)));
+
+            var with = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Merged, OnlineBoardAsShipped(), Community, Tekno, local);
+            Assert.Equal(new[] { "RIVAL2", "RIVAL1", "MHYTEE", "LOCALGUY", "RIVAL3" },
+                with.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)));
+        }
+
+        /// <summary>A local record must not create a second row for someone already in a pool.</summary>
+        [Fact]
+        public void ALocalRecordForSomeoneAlreadyInAPoolCollapsesToTheirBest()
+        {
+            var local = Id8Leaderboard.LocalRecordsFrom(new List<Id8LeaderboardRecord> { Real("Mhytee", 129000) });
+            var rows = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Merged, OnlineBoardAsShipped(), Community, Tekno, local);
+
+            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
+            Assert.Single(names.Where(n => n == "MHYTEE"));
+            // 129000 local beats the 131000 community row.
+            Assert.Equal(129000, rows.First(r => Id8Name.Decode(r.RawName) == "MHYTEE").GoalMs);
+        }
+
+        /// <summary>Community means the player and tf4all. It ranks their own records in, because
+        /// their times are on every board and do not need announcing, and it still does not reach
+        /// for TeknoParrot: that is the part the source choice actually decides.</summary>
+        [Fact]
+        public void CommunityRanksThePlayerInAndStillLeavesTeknoParrotOut()
+        {
+            var local = Id8Leaderboard.LocalRecordsFrom(new List<Id8LeaderboardRecord> { Real("LocalGuy", 100000) });
+            var rows = Id8Leaderboard.BuildBoard(
+                Id8BoardSource.Community, OnlineBoardAsShipped(), Community, Tekno, local);
+            var names = rows.Where(r => !r.IsFiller).Select(r => Id8Name.Decode(r.RawName)).ToList();
+
+            Assert.Contains("LOCALGUY", names);
+            Assert.DoesNotContain("RIVAL2", names);   // TeknoParrot only
+            Assert.DoesNotContain("RIVAL3", names);
+        }
+    
+        // ---- filler rows carry our name, and are still filler ----
+
+        /// <summary>The whole risk of naming the filler rows: if one stopped counting as filler it
+        /// would be treated as somebody's real record. It would survive as a "local record", it
+        /// would occupy a rank on a merged board, and the per-car guard that refuses to replace a
+        /// real time with a slower one would refuse to overwrite it. A six minute placeholder would
+        /// then sit on the board permanently, above nothing and below everyone.</summary>
+        [Fact]
+        public void ARenamedFillerRowIsStillFiller()
+        {
+            Id8LeaderboardRecord filler = Id8Leaderboard.DefaultRow();
+            Assert.True(filler.IsFiller);
+            Assert.Equal(Id8LeaderboardRecord.FlagDefault, filler.Flags);
+            Assert.Equal(Id8LeaderboardRecord.DefaultGoalMs, filler.GoalMs);
+        }
+
+        [Fact]
+        public void FillerRowsCarryOurName()
+        {
+            Assert.Equal("TF4ALL", Id8Name.Decode(Id8Leaderboard.DefaultRow().RawName));
+            Assert.Equal(Id8Leaderboard.FillerName, Id8Name.Decode(Id8Leaderboard.DefaultRow().RawName));
+        }
+
+        /// <summary>A board we filled and then read back must not treat our own filler as the
+        /// player's records. This is the path a second fill takes.</summary>
+        [Fact]
+        public void OurFillerIsNotMistakenForALocalRecordOnARefill()
+        {
+            var boardWeWrote = new List<Id8LeaderboardRecord> { Real("LocalGuy", 133000) };
+            for (int i = 0; i < 9; i++) boardWeWrote.Add(Id8Leaderboard.DefaultRow());
+
+            var local = Id8Leaderboard.LocalRecordsFrom(boardWeWrote);
+            Assert.Single(local);
+            Assert.Equal("LOCALGUY", Id8Name.Decode(local[0].RawName));
+        }
+
+        /// <summary>The name has to fit the field, or it would be truncated on screen.</summary>
+        [Fact]
+        public void TheFillerNameFitsTheRecord()
+        {
+            byte[] enc = Id8Name.Encode(Id8Leaderboard.FillerName);
+            Assert.NotNull(enc);
+            Assert.True(enc.Length < Id8LeaderboardRecord.NameBytes);
+        }
+    }
+}

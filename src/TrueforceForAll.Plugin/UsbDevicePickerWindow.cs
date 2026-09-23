@@ -1,4 +1,4 @@
-// Modal dialog that lists every USB device the USBPcap descriptor scan can
+﻿// Modal dialog that lists every USB device the USBPcap descriptor scan can
 // see, lets the user pick one as the FFB tap target, and persists the choice.
 //
 // Auto-discovery via WheelUsbDiscovery.Find() filters to Logitech wheels on
@@ -245,6 +245,9 @@ namespace TrueforceForAll.Plugin
             var selTrigger = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
             selTrigger.Setters.Add(new Setter(Control.BackgroundProperty, (Brush)new BrushConverter().ConvertFromString("#FFB300")));
             selTrigger.Setters.Add(new Setter(Control.ForegroundProperty, (Brush)new BrushConverter().ConvertFromString("#1A1A1A")));
+            // Non-color cue too (bold text), so the selected device is
+            // distinguishable without relying on the amber highlight alone.
+            selTrigger.Setters.Add(new Setter(Control.FontWeightProperty, System.Windows.FontWeights.Bold));
             style.Triggers.Add(selTrigger);
 
             return style;
@@ -363,7 +366,8 @@ namespace TrueforceForAll.Plugin
                 {
                     Dispatcher.Invoke(() =>
                     {
-                        _statusText.Text = $"Scan failed: {ex.Message}";
+                        _statusText.Text = "Couldn't scan for devices. If G HUB is open, close it and try again.";
+                        TrueforceDialog.LogError("USB scan", ex);
                         _rescanButton.IsEnabled = true;
                     });
                 }
@@ -400,10 +404,12 @@ namespace TrueforceForAll.Plugin
             // any data and we'd just be wasting a USBPcap process.
             if (row.Candidate.Vid != 0 && row.Candidate.Vid != WheelDiscovery.LogitechVid)
             {
-                var result = MessageBox.Show(
+                var result = TrueforceDialog.Show(
+                    this,
+                    "Trueforce For All",
                     $"This device isn't a Logitech wheel ({row.VidPid}). The FFB tap won't get any data from it. Apply anyway?",
-                    "Trueforce", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-                if (result != MessageBoxResult.OK) return;
+                    DialogKind.Confirm, "Apply anyway", "Cancel");
+                if (result != true) return;
             }
 
             bool ok = _plugin.ApplyManualUsbPcapDevice(row.Interface, row.Address, row.Candidate.Vid, row.Candidate.Pid);

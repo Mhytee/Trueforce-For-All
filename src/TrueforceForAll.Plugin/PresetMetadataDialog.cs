@@ -13,16 +13,24 @@ namespace TrueforceForAll.Plugin
 {
     internal sealed class PresetMetadataDialog : Window
     {
+        public string PackName      { get; private set; }
         public string Author        { get; private set; }
         public string Description   { get; private set; }
         public string AuthorVersion { get; private set; }
+        // True when the user wants other people who import this file to
+        // be able to re-bundle the preset(s) into their OWN community
+        // packs. Same semantics as the upload-modal checkbox; default
+        // off because peer-to-peer should be opt-in to re-bundling.
+        public bool   AllowInPacks  { get; private set; }
 
         public PresetMetadataDialog(string title, string subjectKind,
-            string defaultAuthor, string defaultDescription, string defaultAuthorVersion)
+            string defaultAuthor, string defaultDescription, string defaultAuthorVersion,
+            bool includePackName = false, string defaultPackName = null,
+            bool defaultAllowInPacks = false)
         {
             Title = title;
             Width = 480;
-            Height = 360;
+            Height = includePackName ? 450 : 400;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ShowInTaskbar = false;
             ResizeMode = ResizeMode.NoResize;
@@ -34,11 +42,21 @@ namespace TrueforceForAll.Plugin
             var sp = new StackPanel { Margin = new Thickness(14) };
             sp.Children.Add(new TextBlock
             {
-                Text = $"Optional info for the {subjectKind}. Leave anything blank to omit it.",
+                Text = includePackName
+                    ? $"Info for the {subjectKind}. Pack name is required; the rest is optional."
+                    : $"Optional info for the {subjectKind}. Leave anything blank to omit it.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
                 Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
             });
+
+            TextBox tbPackName = null;
+            if (includePackName)
+            {
+                sp.Children.Add(BuildLabel("Pack name (required)"));
+                tbPackName = BuildInputTextBox(defaultPackName, multiline: false);
+                sp.Children.Add(tbPackName);
+            }
 
             sp.Children.Add(BuildLabel("Author"));
             var tbAuthor = BuildInputTextBox(defaultAuthor, multiline: false);
@@ -52,26 +70,57 @@ namespace TrueforceForAll.Plugin
             var tbDesc = BuildInputTextBox(defaultDescription, multiline: true);
             sp.Children.Add(tbDesc);
 
+            // Permission checkbox: mirrors the upload modal's "ok to
+            // re-bundle" toggle. Stamped onto every exported preset /
+            // override / engine so a recipient honors it the same way
+            // a community downloader would.
+            var cbAllow = new CheckBox
+            {
+                Content = "Let others re-bundle this in their packs",
+                IsChecked = defaultAllowInPacks,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xEA, 0xEA, 0xEA)),
+                Margin = new Thickness(0, 0, 0, 10),
+            };
+            sp.Children.Add(cbAllow);
+
             var btnRow = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
-            var ok = new Button { Content = "Save & export", Width = 130, Height = 28, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true };
-            btnRow.Children.Add(ok);
+            // Cancel left, affirmative (default) right, matching every other dialog.
+            var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+            var ok = new Button { Content = "Save & export", Width = 130, Height = 28, IsDefault = true };
             btnRow.Children.Add(cancel);
+            btnRow.Children.Add(ok);
             sp.Children.Add(btnRow);
 
             ok.Click += (s, e) =>
             {
+                if (includePackName)
+                {
+                    var name = (tbPackName?.Text ?? "").Trim();
+                    if (string.IsNullOrEmpty(name))
+                    {
+                        TrueforceDialog.Show(this, "Trueforce For All",
+                            "Pack name is required when bundling as a pack.", DialogKind.Info);
+                        tbPackName?.Focus();
+                        return;
+                    }
+                    PackName = name;
+                }
                 Author        = tbAuthor.Text;
                 Description   = tbDesc.Text;
                 AuthorVersion = tbVersion.Text;
+                AllowInPacks  = cbAllow.IsChecked == true;
                 DialogResult = true;
             };
 
-            Loaded += (s, e) => { tbAuthor.Focus(); tbAuthor.SelectAll(); };
+            Loaded += (s, e) =>
+            {
+                if (includePackName && tbPackName != null) { tbPackName.Focus(); tbPackName.SelectAll(); }
+                else                                       { tbAuthor.Focus();   tbAuthor.SelectAll();   }
+            };
 
             Content = sp;
         }

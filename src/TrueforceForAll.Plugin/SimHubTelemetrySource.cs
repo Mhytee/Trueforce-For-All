@@ -7,6 +7,7 @@
 // when they can deliver physics-rate data; otherwise this stays active.
 
 using System;
+using System.Diagnostics;
 using GameReaderCommon;
 using TrueforceForAll.Core;
 
@@ -19,6 +20,38 @@ namespace TrueforceForAll.Plugin
         public override bool   IsRunning  => _running;
         private bool _running;
 
+        // Pause handling. A paused game must stop producing frames, the
+        // same way the enhanced sources go quiet on a frozen packetId, so
+        // the plugin's 500 ms stall watchdog settles sustained effects
+        // (they latch amplitude per frame and would hum the pre-pause
+        // engine forever otherwise; RaceRoom pause report, 2026-08-31).
+        // Two detectors, because SimHub's readers split two ways:
+        //   - GamePaused: authoritative where the reader implements
+        //     IsGamePaused() (R3E maps its shared memory's own GamePaused
+        //     field). While it is set, SimHub re-delivers the previous
+        //     snapshot every tick (GameNewData = GameOldData), which is
+        //     exactly the frozen replay we must not dispatch.
+        //   - The frozen-feed detector: readers that stub the flag keep
+        //     building fresh frames from the game's frozen memory, so the
+        //     values themselves are the only tell. See the class comment.
+        private readonly FrozenTelemetryDetector _frozen = new FrozenTelemetryDetector();
+        private bool _withheldLogged;
+
+        private void MarkWithheld(string why)
+        {
+            if (_withheldLogged) return;
+            _withheldLogged = true;
+            SimHub.Logging.Current.Info(
+                "[TF4ALL] SimHub frames withheld (" + why + "); sustained effects settle until live data resumes.");
+        }
+
+        private void MarkEmitting()
+        {
+            if (!_withheldLogged) return;
+            _withheldLogged = false;
+            SimHub.Logging.Current.Info("[TF4ALL] SimHub telemetry is live again; frames resumed.");
+        }
+
         public override void Start() { _running = true; }
         public override void Stop()  { _running = false; }
 
@@ -28,8 +61,40 @@ namespace TrueforceForAll.Plugin
         public void PushFromGameData(GameData data)
         {
             if (!_running) return;
+            // SimHub keeps re-delivering the last GameData for a while after
+            // a game dies; emitting those zombie frames kept MeasuredHz alive
+            // and telemetry freshness stamped through the game-close window,
+            // holding force paths open against frozen data (2026-08-08,
+            // trace-proven). No running game = no frames.
+            // Named, not silent. Both of these stop frames, which decays
+            // MeasuredHz to zero and releases the wheel through the FFB
+            // provider's pause path, and until now they did it with nothing in
+            // the log to say why: a RaceRoom force dropout mid-corner showed a
+            // bare "FFB source: pause-release" and no reason anywhere (rig,
+            // 2026-09-10). The other two withhold paths already announce
+            // themselves; these are the two that could not be told apart.
+            if (data?.GameRunning != true)
+            {
+                MarkWithheld("the reader reports the game is not running");
+                return;
+            }
             var d = data?.NewData;
-            if (d == null) return;
+            if (d == null)
+            {
+                MarkWithheld("the reader delivered no data block");
+                return;
+            }
+
+            // Flagged pause: withhold frames for the whole pause. A one-shot
+            // settle would not work here, because SimHub keeps re-delivering
+            // the frozen snapshot at full tick rate and the very next one
+            // would re-latch the amplitudes; frames stopping is what lets
+            // the existing stall path own the silence and the resume.
+            if (data.GamePaused)
+            {
+                MarkWithheld("the reader reports the game paused");
+                return;
+            }
 
             // Rev-bar fill for the rim LEDs. iRacing's own rev lights use the
             // car's SHIFT-LIGHT band (first-light RPM -> shift RPM), a narrow
@@ -63,6 +128,22 @@ namespace TrueforceForAll.Plugin
             double realRedline = d.CarSettings_RedLineRPM > 0 ? d.CarSettings_RedLineRPM
                                : d.CarSettings_CurrentGearRedLineRPM > 0 ? d.CarSettings_CurrentGearRedLineRPM
                                : 0.0;
+            // RaceRoom's published redline is REAL and is the number to use. It
+            // briefly looked otherwise: it is identical in every gear (7350 on a
+            // car whose MaxRpm is 7500), which reads like a derived value, and a
+            // MaxRpm override was tried on 2026-09-12. It was wrong. 7350 is
+            // where RaceRoom's own rev limiter cuts and where its own LEDs blink
+            // (owner, on the rig), so overriding to MaxRpm put our bar and flash
+            // PAST the limiter. Identical-per-gear means the car has one shift
+            // point, not that the number is invented.
+            //
+            // The flicker that prompted the override was never this: it was a
+            // per-variant redline PIN of 7500 moving the flash while the bar kept
+            // reading telemetry at 7350. Clearing the pin lands both on 7350.
+            // Per-gear redline (no stable car-level value): used for the buzz but
+            // kept OUT of the variant signature, since it changes every shift and
+            // would otherwise spawn a junk variant per gear.
+            bool redlinePerGear = d.CarSettings_RedLineRPM <= 0 && d.CarSettings_CurrentGearRedLineRPM > 0;
             double red = realRedline > 0 ? realRedline : d.MaxRpm;   // LED span top
             double revPct;
             if (red > 0)
@@ -85,6 +166,9 @@ namespace TrueforceForAll.Plugin
                 // some games surface throttle outside 0..100 during clutch
                 // engagement edge cases.
                 Throttle01 = Clamp01(d.Throttle / 100.0),
+                Brake01     = Clamp01(d.Brake / 100.0),
+                Clutch01    = Clamp01(d.Clutch / 100.0),
+                Handbrake01 = Clamp01(d.Handbrake / 100.0),
 
                 SpeedKmh           = d.SpeedKmh,
                 AccelerationHeave  = d.AccelerationHeave,
@@ -102,10 +186,7 @@ namespace TrueforceForAll.Plugin
                 // SimHub plugin doesn't expose it; effects gracefully skip
                 // when they read null. SimHub maps these from per-game
                 // shared memory / UDP in its own readers, so we just pass
-                // through StatusDataBase. KERS / ERS deployment isn't on
-                // the universal API (only ERSStored/Max/Percent storage
-                // state), KersActive stays null until we add a per-game
-                // overlay that derives it from the ERS-percent derivative.
+                // through StatusDataBase.
                 PitLimiterActive = d.PitLimiterOn,
                 DrsActive        = d.DRSEnabled,
 
@@ -117,9 +198,25 @@ namespace TrueforceForAll.Plugin
                 // The car's REAL redline/shift RPM, or 0 when the game exposes
                 // none (NOT faked from MaxRpm). The rev limiter falls back to
                 // MaxRpm*Threshold itself when this is 0; see RevLimiterEffect.
-                RedlineRpm     = realRedline,
+                RedlineRpm        = realRedline,
+                RedlineRpmPerGear = redlinePerGear,
             };
             LastRedlineRpm = realRedline;
+
+            // Flagless pause backstop: a live sim never repeats these floats
+            // exactly; a reader with no pause flag replaying one frozen
+            // snapshot does nothing else. Channels the game never populates
+            // reach the detector as a constant 0 and carry no signal.
+            if (_frozen.Note(frame.Rpms, frame.SpeedKmh,
+                             frame.AccelerationHeave ?? 0, frame.AccelerationSway ?? 0,
+                             frame.AccelerationSurge ?? 0, frame.YawRateDegPerSec ?? 0,
+                             Stopwatch.GetTimestamp(), Stopwatch.Frequency))
+            {
+                MarkWithheld("the data is repeating one frozen snapshot");
+                return;
+            }
+
+            MarkEmitting();
             EmitFrame(frame);
         }
 

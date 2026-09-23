@@ -1,4 +1,4 @@
-// Trueforce session + audio-haptic stream.
+﻿// Trueforce session + audio-haptic stream.
 //
 // Ported from mescon/logitech-rs50-linux-driver:
 //   userspace/libtrueforce/src/session.c   (Open + InitSequence)
@@ -71,10 +71,30 @@ namespace TrueforceForAll.Core
         // only a fault sets this. Cleared by StartStream(). The plugin's
         // recovery watchdog polls StreamFaulted to know a re-attach is due.
         private volatile bool _streamFaulted;
+        // The exception thrown by whatever raised _streamFaulted, kept so the
+        // plugin can say WHY the wheel died instead of only that it did. Both
+        // write-failure catches used to discard it, so a mid-session death
+        // left the log with a bare re-attach line and an unplug, a G HUB HID
+        // grab and a USB stall were indistinguishable afterwards (support
+        // reports, 2026-09-22). Volatile for the same reason _streamFaulted
+        // is: written on the 1 kHz stream thread, read on the plugin's data
+        // thread. Held as the live exception object rather than a rendered
+        // string so the plugin can hand it to SimHub's Error(message,
+        // exception) overload and get the type and stack for free; the device
+        // never formats and never logs. Null when the fault came from
+        // DebugForceStreamFault, which never had a real exception to keep.
+        private volatile Exception _lastStreamFault;
+        // Which path died, in words the plugin's log line can use verbatim.
+        // Separate from _lastStreamFault because the FAULT test hook has a
+        // site but no exception, and because a mode-command write, a sample
+        // write and the pump itself throwing look identical once the
+        // exception is all you have: the operator wants to know which one
+        // stopped.
+        private volatile string _streamFaultSite;
         // Set false by StopAcceptingSamples() to release blocked PushFloats /
         // PushInt16 callers ahead of full shutdown, lets the host drain the
         // producer without also halting the stream thread (which still needs
-        // to push centre-wheel quietness samples to the wheel before Dispose).
+        // to push center-wheel quietness samples to the wheel before Dispose).
         private volatile bool _acceptingSamples = true;
 
         private byte _seq;
@@ -87,6 +107,17 @@ namespace TrueforceForAll.Core
         // 32-bit, so a plain long read/write isn't atomic).
         private long _packetsSent;
         public long PacketsSent => System.Threading.Interlocked.Read(ref _packetsSent);
+
+        // Every packet this object has put on the stream endpoint: the init
+        // sequence, the mode commands, samples, keepalives, the teardown
+        // silence. Counted BEFORE each write, so a capture of the same wire
+        // can never run ahead of it. The plugin subtracts this from what the
+        // FFB tap saw on that endpoint to find packets that are not ours (a
+        // game's native Trueforce streaming beside us; see
+        // TrueforceStreamContentionDetector). PacketsSent stays what it was:
+        // sample packets only, the liveness heartbeat.
+        private long _ep3Writes;
+        public long Ep3Writes => System.Threading.Interlocked.Read(ref _ep3Writes);
 
         // 13-slot rolling window of u16 offset-binary samples (newest at index Window-1).
         private readonly ushort[] _window = new ushort[Window];
@@ -127,21 +158,52 @@ namespace TrueforceForAll.Core
         // Single-threaded use (only StreamTick touches it) so no sync needed.
         private readonly ushort[] _newSamplesScratch = new ushort[NewPerPacket];
 
-        // Optional FFB target source. Returns AC's most-recent FFB target as a
-        // signed int16 if it was captured within FfbTargetMaxAgeMs, or null
-        // otherwise. We use this as cur (bytes 6-9) for active packets so AC's
-        // FFB drives the motor while our audio overlays in the rolling window
-        // (cur = torque target, window = additive overlay: confirmed by
-        // mescon's Linux driver on RS50, 2026-07).
+        // Optional FFB target source. Returns the game's FFB target as a signed
+        // int16, or null when the game is not driving the wheel. We use this as
+        // cur (bytes 6-9) for active packets so the game's FFB drives the motor
+        // while our audio overlays in the rolling window (cur = torque target,
+        // window = additive overlay: confirmed by mescon's Linux driver on RS50,
+        // 2026-07).
         //
-        // Threshold is large (10 seconds) because AC drops its HID++ FFB update
-        // rate dramatically when the FFB target hasn't changed (stationary wheel,
-        // straight road), a tight threshold makes us flap between active and
-        // keepalive on every quiet moment, which drops Trueforce audio. The
-        // wheel firmware itself maintains the last-commanded force indefinitely
-        // when AC stops sending updates, so mirroring that semantic is correct.
+        // The ONLY arbitration this class does is HasValue: a value means the
+        // active shape (cur + audio window), null means keepalive (no audio,
+        // the wheel reverts to its native FFB). Everything about freshness
+        // lives in the provider. The plugin's provider separates two questions:
+        // a value older than 500 ms is never replayed (a held force must not
+        // walk the wheel to lock), but while the game session is live and the
+        // capture healthy the pump still gets an active packet with zero
+        // force, so the effects keep playing through the quiet spells of a
+        // parked or held wheel. The Logitech force path never resends an
+        // unchanged value (owner's captures, 2026-08-28: 0.5 to 7.5 s holes
+        // are routine at a standstill; a tester's RS50 sat 25 s), which is
+        // why no clock window is right for that. The wheel firmware itself
+        // maintains the last-commanded ep0 force indefinitely when the game
+        // stops sending updates.
         public Func<short?> FfbTargetProvider { get; set; }
         public int FfbTargetMaxAgeMs { get; set; } = 10000;
+
+        /// <summary>The FFB target the stream pump most recently pulled from
+        /// <see cref="FfbTargetProvider"/> (signed int16 tap scale), 0 when
+        /// none was fresh. Read-only observability surface for the TF4ALL
+        /// Dash signal scope; written once per packet on the pump thread.</summary>
+        public short LastFfbTarget => _lastFfbTarget;
+        private volatile short _lastFfbTarget;
+
+        /// <summary>The signed FFB actually written into the ep3 cur field
+        /// this packet: smoothing, scale and spike taming applied, clamped to
+        /// the int16 rails; motor sign convention (after FfbInvertSign). 0
+        /// while the stream emits silence. Read-only observability surface
+        /// for the TF4ALL Dash visualizer; written on the pump thread.</summary>
+        public short LastFfbOutput => _lastFfbOutput;
+        private volatile short _lastFfbOutput;
+
+        /// <summary>Count of packets where spike taming actually reduced the
+        /// force (slew clamp engaged or transient attenuation applied), not
+        /// merely had the feature enabled. Monotonic; consumers watch for
+        /// changes rather than sampling a boolean so 1 ms events survive
+        /// display-rate polling. Written on the pump thread only.</summary>
+        public int SpikeTameCount => _spikeTameCount;
+        private volatile int _spikeTameCount;
 
         // FFB pass-through tuning. AC's HID++ feature 0x0e and the wheel's ep3
         // cur field use OPPOSITE sign conventions, empirically: turning right
@@ -153,6 +215,59 @@ namespace TrueforceForAll.Core
         public bool  FfbInvertSign { get; set; } = true;
         public float FfbScale      { get; set; } = 1.0f;
 
+        /// <summary>Skip FfbInvertSign and FfbScale for this packet's target.
+        /// Set while a mode AUTHORS the force outright rather than mirroring the
+        /// game's tapped FFB.
+        ///
+        /// Both of those exist to reconcile a TAPPED value with this endpoint:
+        /// the sign because ep0 HID++ FFB and ep3 cur disagree by convention,
+        /// the scale because the firmware may weight the two differently.
+        /// Neither correction means anything when we produced the number
+        /// ourselves, and applying them anyway leaves a user adjusting a
+        /// tapped-path control to fix a path that has no tap in it.
+        ///
+        /// Deliberately NOT set for Mode B or spring mode. Their output is
+        /// authored to come out right AFTER the inversion, so switching it off
+        /// under them would flip the force direction and have the wheel fight
+        /// the driver, and dropping the scale would jump their strength. Those
+        /// recipes are tuned WITH these applied; only a mode that was authored
+        /// knowing this flag exists may set it.</summary>
+        public volatile bool FfbBypassTapCorrections;
+
+        /// <summary>Skip spike taming for this packet's target. Set while a mode
+        /// AUTHORS a force that is meant to reach full scale and stay there.
+        ///
+        /// Spike taming exists for curb and collision transients: brief, violent,
+        /// and not something the driver asked for. A steering soft lock is the
+        /// exact opposite. It is deliberate, sustained, and the one force that
+        /// should arrive at the ceiling, because its whole job is to stop the
+        /// wheel going further.
+        ///
+        /// Left on, the peak limiter clamped a lock commanding 32767 down to
+        /// about 22943 with the shipped threshold, which is BELOW what the
+        /// stationary spring was already producing at the same angle. No wall
+        /// could be felt however the spring was shaped, because the limiter had
+        /// already decided the ceiling (rig, 2026-09-10).
+        ///
+        /// Set per tick by the force provider and read on the same thread
+        /// immediately after, so it never describes a stale packet.</summary>
+        public volatile bool FfbBypassSpikeTaming;
+
+        /// <summary>Skip the SIGN correction but keep the scale.
+        ///
+        /// FfbInvertSign exists to reconcile a value we read off the wire with
+        /// this endpoint, because ep0 HID++ FFB and ep3 cur disagree by
+        /// convention. An arcade cabinet's force is not read off the wire, it is
+        /// decoded from a command and authored here, so there is no disagreement
+        /// to reconcile and inverting it just turns it around. On the rig that
+        /// showed up as the cabinet's centring spring pushing the wrong way with
+        /// the same Invert setting that is correct in every other game.
+        ///
+        /// The scale is a different thing and stays: it is the strength control,
+        /// and it is as wanted on a cabinet as anywhere else. That is why this is
+        /// separate from FfbBypassTapCorrections, which drops both.</summary>
+        public volatile bool FfbBypassInvert;
+
         // IIR low-pass time constant (ms) applied to the captured FFB target
         // before it goes into ep3 cur. AC's HID++ FFB updates at ~140 Hz (every
         // 7 ms) but our StreamTick runs at 1 kHz, so smoothing > 0 turns the
@@ -163,26 +278,47 @@ namespace TrueforceForAll.Core
         public float FfbSmoothTimeConstantMs { get; set; } = 0.0f;
         private float _smoothedFfb;
 
+        // FFB band-split (Forza road-feel fix). Some games (Forza especially)
+        // bake road/surface texture into the steering force as high-frequency
+        // content. Streamed straight to cur it jerks the wheel (jitter) instead
+        // of being felt as rumble. When enabled, the FFB target is split: a
+        // one-pole low-pass (FfbTextureCutoffMs time constant) keeps the smooth
+        // low-frequency steering weight in cur; the high-frequency remainder is
+        // the road texture, injected into the Trueforce window (the audio-haptic
+        // overlay) scaled by FfbTextureGain, so it's felt as rumble where it
+        // belongs. Off (default) => byte-identical to the pre-split behaviour.
+        public bool  FfbBandSplitEnabled { get; set; } = false;
+        public float FfbTextureGain      { get; set; } = 1.0f;
+        public float FfbTextureCutoffMs  { get; set; } = 12.0f;
+        private float _bandLow;    // LPF stage 1 of the split; stream thread only
+        private float _bandLow2;   // LPF stage 2, cascaded for a steeper (~-12 dB/oct)
+                                   // rolloff so cur keeps only the smooth steering
+                                   // force; one pole left enough high-frequency road
+                                   // texture in cur to still jitter the wheel.
+
         // FFB spike taming: gates both the slew-rate limiter
-        // (FfbSpikeMaxLsbPerMs) and the spike-attenuation cap
-        // (FfbPeakSoftLimitLsb). When the gate is off, both are bypassed
+        // (FfbSpikeMaxLsbPerMs) and the spike attenuator
+        // (FfbSpikeTransientThresholdLsb + FfbPeakSoftLimitLsb). When the gate is off, both are bypassed
         // regardless of their stored values, so users can flip the feature
         // off without losing their tuning. Default off; turned on per-game
         // via the AC built-in preset, or by the user via the UI checkbox.
         public bool FfbSpikeTamingEnabled { get; set; } = false;
 
-        // Algorithm switch (A/B experiment, will likely collapse to a single
-        // path once one wins). True = pure slew-rate limiter (iRacing's
+        // Algorithm switch. True = pure slew-rate limiter (iRacing's
         // approach: cap dV/dt, no amplitude reduction). False = transient
         // detector that compares post-scale |t| against a slow-follower
-        // envelope and soft-caps the excess. FfbSpikeMaxLsbPerMs is read as
-        // an LSB/ms rate in slew mode, or an LSB magnitude threshold in
-        // transient mode. FfbPeakSoftLimitLsb is only used by transient mode.
+        // envelope and soft-caps the excess.
+        //
+        // Each mode reads its own knob: slew mode FfbSpikeMaxLsbPerMs (a
+        // rate, LSB/ms), transient mode FfbSpikeTransientThresholdLsb (a
+        // magnitude, LSB) plus FfbPeakSoftLimitLsb. They shared
+        // FfbSpikeMaxLsbPerMs until 2026-09-05, which made a mode switch
+        // silently reinterpret a value tuned in the other unit.
         public bool FfbSpikeUseSlewLimiter { get; set; } = true;
 
         // Slew-rate limit (LSB per ms) applied to the captured FFB target
         // BEFORE the smoothing IIR. Caps how fast the input can change in
-        // either direction, so a sudden curb hit (which AC sends as a single
+        // either direction, so a sudden kerb hit (which AC sends as a single
         // large step) gets spread over several ms and lands as a firm push
         // instead of a jolt that yanks the wheel out of your hands. Lets
         // users run a higher FFB scale safely (same average force, much
@@ -192,8 +328,24 @@ namespace TrueforceForAll.Core
         public float FfbSpikeMaxLsbPerMs { get; set; } = 2060.923f;
         private float _slewLimitedFfb;
 
+        // Transient mode's FLOOR UNDER THE REFERENCE (LSB). The detector
+        // compares |t| against a 200 ms running average of itself, so what it
+        // really measures is how far the force has jumped, not how big it is:
+        // a corner builds slowly enough that the average keeps up (nothing to
+        // flatten), an impact outruns it (the whole gap reads as a spike).
+        // That scheme breaks down on a calm road, where a near-zero average
+        // makes every ordinary bump look like a jump, so the reference is
+        // max(this, the average). It is not a second threshold that takes over
+        // under load: when the average is higher, this simply never binds.
+        // Active only when FfbSpikeTamingEnabled is true and slew mode is off.
+        // 60% of full scale: above ordinary road load, so the floor actually
+        // floors something. The plugin overwrites this from settings on every
+        // attach; it matches TrueforceSettings.DefaultSpikeTransientThresholdLsb
+        // so a bare device (tests, bench) behaves like a shipped one.
+        public float FfbSpikeTransientThresholdLsb { get; set; } = 19665.9141f;
+
         // Spike-attenuation cap. Detection sidechains off RAW input slew rate
-        // (rate of change in LSB/ms): a curb / wall hit changes FFB at
+        // (rate of change in LSB/ms): a kerb / wall hit changes FFB at
         // 4000-15000+ LSB/ms while normal cornering inputs change at
         // 100-500 LSB/ms. Above SpikeSlewThresholdLsbPerMs we attenuate; at
         // slew = threshold + cap, gain factor = 0.5; as slew grows, factor
@@ -207,10 +359,13 @@ namespace TrueforceForAll.Core
         // ~1.0, alternating-sign rumble drops to ~0.1-0.3. Slew only counts
         // when directionality is high, so the envelope stays low through
         // kerb buzz and pops on real impacts.
-        public float FfbPeakSoftLimitLsb { get; set; } = 1561.78564f;
+        // 10% of full scale, matching TrueforceSettings.DefaultPeakSoftLimitLsb
+        // so a bare device (tests, bench) behaves like a shipped one. The plugin
+        // overwrites this from settings on every attach.
+        public float FfbPeakSoftLimitLsb { get; set; } = 3276.7f;
         // Below this slew rate, no attenuation regardless of cap setting.
         // 1000 LSB/ms is well above the rates produced by even hard cornering
-        // and well below typical curb-hit slew. Hardcoded; could be exposed
+        // and well below typical kerb-hit slew. Hardcoded; could be exposed
         // if a game's cornering forces exceed this baseline.
         private const float SpikeSlewThresholdLsbPerMs = 1000f;
         // Directionality threshold in [0, 1]. Ratio of |sum of recent signed
@@ -226,7 +381,7 @@ namespace TrueforceForAll.Core
         // stays high through the entire envelope-rise.
         private const float DirectionalityDecayPerTick = 0.909f;  // ~ 1 - 1/11 (TC ≈ 10 ms)
         // Half-life of the spike envelope in ms. Sets how long attenuation
-        // persists after the actual slew event. AC sustains a curb-hit's
+        // persists after the actual slew event. AC sustains a kerb-hit's
         // elevated force for ~50-100 ms; this half-life keeps attenuation
         // active through the whole impact rather than just the slew moment.
         private const float SpikeEnvHalfLifeMs = 70f;
@@ -241,6 +396,36 @@ namespace TrueforceForAll.Core
         private float _sumDeltas;
         private float _sumAbsDeltas;
         private float _spikeSlewEnv;
+
+        // Peak-limiter mode only: the rate a hit may move at while it is in
+        // spike territory (above the user's floor and moving faster than
+        // this). The peak limiter is a magnitude clamp with no rate term, so
+        // a wall slide's sign reversals left it as one-tick steps of twice
+        // the ceiling: a 131% swing in 1 ms with the shipped floor and cap,
+        // 200% once the envelope had opened, on every scrape of the wall
+        // (rig, iRacing takeover, 2026-09-13). Content under the floor is
+        // untouched, which is what keeps this from being the rate limiter
+        // under another name: a kerb at 40% passes bit-identical. A kerb
+        // whose peaks cross the floor is slowed on both edges, by the floor's
+        // own definition of a hit; the floor slider is the lever. Fixed
+        // rather than FfbSpikeMaxLsbPerMs, which is tuned per preset for the
+        // other method (the AC preset carries 386, an 85 ms full swing).
+        // 2000 LSB/ms: full scale in 16 ms, a full reversal in 33 ms. Wheel
+        // frame; the code maps it through the scale where one applies.
+        private const float HitSlewLsbPerMs = 2000f;
+        // The edge that counts as evidence of a hit for the envelope freeze
+        // (below): a directional step of a quarter of full scale in one tick,
+        // which surface texture on a 60 Hz feed never produces and every hit
+        // does. The freeze needed its own bar: at the 2000 of the rate limit,
+        // ordinary per-frame texture on a rough 60 Hz corner tripped it, and
+        // the ceiling then never opened for that corner (model, 2026-09-13).
+        private const float HitHoldEdgeLsbPerMs = 8000f;
+        // Latched while a hit is being rate-limited. Released only once the
+        // limited value has caught the raw AND the raw itself is moving
+        // slower than the rate: with "caught up" alone, a reversal passing
+        // through the floor at the instant of catch-up snapped the rest in
+        // one tick (model, 2026-09-13). Reset in ResetFfbFilters.
+        private bool _hitSlewEngaged;
 
         // Slow-follower envelope of |t| (post-scale FFB magnitude). Drives
         // the transient detector for spike attenuation: only the excess of
@@ -302,6 +487,7 @@ namespace TrueforceForAll.Core
                 {
                     Buffer.BlockCopy(InitData.Packets[i], 0, pkt, 0, InitData.PacketLen);
                     pkt[InitData.SeqOffset] = (byte)((i + 1) & 0xFF);
+                    System.Threading.Interlocked.Increment(ref _ep3Writes);
                     _stream.Write(pkt);
                     PrecisionSleepUs(InitInterPacketUs);
                 }
@@ -318,6 +504,36 @@ namespace TrueforceForAll.Core
         /// trigger a transparent re-attach.</summary>
         public bool StreamFaulted => _streamFaulted;
 
+        /// <summary>The exception that killed the stream, or null when the
+        /// fault was raised by DebugForceStreamFault (in which case nothing
+        /// actually failed). Only meaningful while StreamFaulted is true.
+        /// </summary>
+        public Exception LastStreamFault => _lastStreamFault;
+
+        /// <summary>Plain-English name of the path that died, for the
+        /// plugin's log line. The three ways this flag goes up (a mode
+        /// command write, the steady-state sample write, and the pump itself
+        /// throwing) fail for different reasons, and an operator reading
+        /// SimHub.txt wants to know which one stopped. Only meaningful while
+        /// StreamFaulted is true.</summary>
+        public string LastStreamFaultSite => _streamFaultSite;
+
+        // Record why the stream is about to die; the caller raises
+        // _streamFaulted immediately afterwards. The ordering is the point:
+        // all three fields are volatile, and a volatile write cannot be
+        // reordered past a later volatile write, so any thread that observes
+        // StreamFaulted == true is guaranteed to see the reason that belongs
+        // with it rather than a null it would have to guess at. Only ever
+        // called from a path that has already failed, so neither the string
+        // nor the reference costs anything on the 1 kHz success path. No
+        // logging here, by design: the device stays silent and the plugin
+        // decides what to say.
+        private void CaptureStreamFault(string site, Exception ex)
+        {
+            _streamFaultSite = site;
+            _lastStreamFault = ex;
+        }
+
         /// <summary>Test hook (FAULT access code): simulate an involuntary
         /// stream death (unplug / HID grab / USB stall) so the plugin's
         /// recovery watchdog re-attaches, without physically unplugging.
@@ -325,6 +541,12 @@ namespace TrueforceForAll.Core
         /// StreamLoop tears down and StreamFaulted reports true.</summary>
         public void DebugForceStreamFault()
         {
+            // Name the hook and leave the exception null. The plugin keys its
+            // log line off that null: with no exception there was no failure,
+            // so it reports a simulated fault instead of claiming the wheel
+            // stopped accepting packets. A support log must never be able to
+            // show a real-sounding hardware failure that nobody had.
+            CaptureStreamFault("the FAULT test hook", null);
             _streamFaulted = true;
             _shuttingDown  = true;
         }
@@ -337,6 +559,14 @@ namespace TrueforceForAll.Core
                 _streamRunning = true;
                 _shuttingDown = false;
                 _streamFaulted = false;
+                // Drop the previous reason along with the flag it explained,
+                // so a restarted stream can never hand the plugin a stale
+                // cause from an earlier fault on this same instance. Today
+                // the plugin always builds a fresh device rather than
+                // restarting a stopped one, so this is a guard against a
+                // future caller, not a fix for a case we have seen.
+                _lastStreamFault = null;
+                _streamFaultSite = null;
                 _paused = false;
                 _streamThread = new Thread(StreamLoop)
                 {
@@ -411,7 +641,7 @@ namespace TrueforceForAll.Core
         // Stop accepting new samples and wake any producer parked in PushFloats
         // so it can observe the application's shutdown signal. Leaves the
         // internal stream thread running so any samples already queued, plus
-        // the centre-wheel quietness pulse a subsequent ClearStream queues
+        // the center-wheel quietness pulse a subsequent ClearStream queues
         // still drain to the wheel before Dispose tears the HID stream down.
         public void StopAcceptingSamples()
         {
@@ -421,6 +651,26 @@ namespace TrueforceForAll.Core
 
         public void Pause()  => _paused = true;
         public void Resume() => _paused = false;
+
+        // Resume ramp. After the stop-stream pause gate hands the wheel back
+        // to Trueforce mode, the first force target would otherwise arrive as
+        // a step from zero and snap the wheel hard (owner, FH6 pause resume,
+        // 2026-08-15). Armed at the resume; the clock starts at the FIRST
+        // real force target after it (the tap is kept cleared across the
+        // transition, so that target can lag the resume by a few hundred ms
+        // and a resume-stamped clock would eat the ramp).
+        private const int ResumeRampMs = 300;
+        private volatile bool _resumeRampArmed;
+        private long _resumeRampStartTicks;   // stream thread only once armed
+
+        /// <summary>Arm the resume ramp: the next force target fades in over
+        /// ResumeRampMs instead of stepping, so re-entering Trueforce mode
+        /// after a pause does not snap the wheel.</summary>
+        public void BeginResumeRamp()
+        {
+            _resumeRampStartTicks = 0;
+            _resumeRampArmed = true;
+        }
 
         /// <summary>True while sample emission is paused (Pause(), or a
         /// dispatched protocol Stop), or when a Stop is queued but not yet
@@ -445,7 +695,10 @@ namespace TrueforceForAll.Core
             _sumDeltas       = 0f;
             _sumAbsDeltas    = 0f;
             _spikeSlewEnv    = 0f;
+            _hitSlewEngaged  = false;
             _sustainedFfbEnv = 0f;
+            _bandLow         = 0f;
+            _bandLow2        = 0f;
         }
 
         // Protocol-level mode commands. Per mescon's protocol doc:
@@ -521,26 +774,92 @@ namespace TrueforceForAll.Core
         {
             // Bump the system timer to 1 ms granularity for the duration of the loop.
             TimeBeginPeriod(1);
+
+            // How the 1 kHz pump waits for each beat. The choice is load-bearing
+            // for ALL system audio, not just ours:
+            //
+            //   Primary (Win10 1803+): a high-resolution waitable timer. The thread
+            //   SLEEPS to each beat, yielding its core, and we lift it into the
+            //   MMCSS "Pro Audio" band so it still wakes promptly at real-time
+            //   priority under load. This matches the synthesis / capture / stdout
+            //   threads, which already sleep in Pro Audio without trouble.
+            //
+            //   Fallback (older Windows, or if the timer misbehaves): the legacy
+            //   coarse-sleep-then-busy-spin at ThreadPriority.Highest, WITHOUT Pro
+            //   Audio. A thread that busy-spins while in the Pro Audio band pins a
+            //   core at the audio engine's own priority and starves audiodg, which
+            //   stutters every app's audio (e.g. YouTube). So spin and Pro Audio
+            //   must never combine: Pro Audio is only ever entered on the sleeping
+            //   path below.
+            IntPtr timer = CreateWaitableTimerEx(IntPtr.Zero, null,
+                CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+            // Reject a timer that returns instantly (a wrong due-time sign/width
+            // would degenerate the sleep into a hot loop that still pins the core).
+            bool useTimer = timer != IntPtr.Zero && WaitableTimerBlocks(timer);
+
+            IntPtr mmcss = IntPtr.Zero;
+            if (useTimer)
+            {
+                uint mmcssTaskIndex = 0;
+                mmcss = AvSetMmThreadCharacteristics("Pro Audio", ref mmcssTaskIndex);
+                if (mmcss != IntPtr.Zero) AvSetMmThreadPriority(mmcss, AVRT_PRIORITY_HIGH);
+            }
+
             try
             {
                 var sw = Stopwatch.StartNew();
                 long periodTicks = Stopwatch.Frequency / PacketHz; // ticks per packet
+                long oneMsTicks  = Stopwatch.Frequency / 1000;
                 long nextTick = sw.ElapsedTicks + periodTicks;
 
                 while (!_shuttingDown)
                 {
                     StreamTick();
 
-                    long now = sw.ElapsedTicks;
-                    long remaining = nextTick - now;
+                    long remaining = nextTick - sw.ElapsedTicks;
                     if (remaining > 0)
                     {
-                        // Coarse sleep down to ~1 ms remaining, then spin.
-                        long oneMsTicks = Stopwatch.Frequency / 1000;
-                        while (!_shuttingDown && (nextTick - sw.ElapsedTicks) > oneMsTicks)
-                            Thread.Sleep(1);
-                        while (!_shuttingDown && sw.ElapsedTicks < nextTick)
-                            Thread.SpinWait(64);
+                        if (useTimer)
+                        {
+                            // Sleep to the deadline. Due time is in 100 ns units;
+                            // NEGATIVE means a relative delay. Convert the remaining
+                            // Stopwatch ticks to 100 ns units.
+                            long due = -(remaining * 10_000_000L / Stopwatch.Frequency);
+                            if (due == 0)
+                            {
+                                // Sub-100 ns sliver; just spin it out to the deadline.
+                                while (!_shuttingDown && sw.ElapsedTicks < nextTick)
+                                    Thread.SpinWait(64);
+                            }
+                            else if (SetWaitableTimer(timer, ref due, 0, IntPtr.Zero, IntPtr.Zero, false)
+                                     && WaitForSingleObject(timer, 100) != WAIT_FAILED)
+                            {
+                                // Woke at (or, under load, a little after) the beat.
+                            }
+                            else
+                            {
+                                // Real timer failure: latch to the spin path for the
+                                // rest of the loop so we never block on a dead timer,
+                                // and leave Pro Audio so we never spin inside it.
+                                useTimer = false;
+                                if (mmcss != IntPtr.Zero)
+                                {
+                                    AvRevertMmThreadCharacteristics(mmcss);
+                                    mmcss = IntPtr.Zero;
+                                }
+                                while (!_shuttingDown && sw.ElapsedTicks < nextTick)
+                                    Thread.SpinWait(64);
+                            }
+                        }
+                        else
+                        {
+                            // Legacy precise wait at ThreadPriority.Highest (NOT Pro
+                            // Audio): coarse sleep to ~1 ms out, then spin the rest.
+                            while (!_shuttingDown && (nextTick - sw.ElapsedTicks) > oneMsTicks)
+                                Thread.Sleep(1);
+                            while (!_shuttingDown && sw.ElapsedTicks < nextTick)
+                                Thread.SpinWait(64);
+                        }
                     }
                     nextTick += periodTicks;
 
@@ -550,8 +869,45 @@ namespace TrueforceForAll.Core
                         nextTick = sw.ElapsedTicks + periodTicks;
                 }
             }
+            catch (Exception ex)
+            {
+                // The pump itself threw, not a packet write: anything that
+                // escapes StreamTick outside its own two try blocks, or the
+                // timer / sleep path here, lands in this catch. Until this
+                // clause existed (2026-09-22) such an exception simply killed
+                // the stream thread with _streamFaulted false, so the
+                // plugin's watchdog saw no fault to recover from, StreamStatus
+                // kept reporting a healthy stream, and the wheel stayed
+                // silently dead for the rest of the session with nothing in
+                // the log. Route it through the same capture and raise the
+                // same flags the write failures raise, so the watchdog treats
+                // it as a recoverable death and the plugin can name it.
+                CaptureStreamFault("the stream pump itself (not a packet write)", ex);
+                _streamFaulted = true;
+                _shuttingDown = true;
+            }
             finally
             {
+                // The wheel LATCHES the last cur it received when the stream
+                // dies, and every recovery path (deliberate startup re-attach
+                // fault, real fault, teardown) leaves seconds before the init
+                // sequence rewrites 0x8000, so a nonzero latch is a held pull
+                // for that whole window (2026-08-08 review). Best-effort: one
+                // final silent packet so the last thing on the wire is a
+                // released wheel. Harmless when paused (the wheel left
+                // Trueforce mode and ignores ep3) and a dead handle just
+                // throws into the catch.
+                try
+                {
+                    BuildSilentPacket(_packetBuf, _seq++);
+                    System.Threading.Interlocked.Increment(ref _ep3Writes);
+                    _stream?.Write(_packetBuf);
+                    _lastCurrent = 0x8000;
+                    _lastFfbOutput = 0;
+                }
+                catch { }
+                if (mmcss != IntPtr.Zero) AvRevertMmThreadCharacteristics(mmcss);
+                if (timer != IntPtr.Zero) CloseHandle(timer);
                 TimeEndPeriod(1);
             }
         }
@@ -567,8 +923,20 @@ namespace TrueforceForAll.Core
                 int templateIdx = (cmd == 0x04) ? 66 : 67;       // packet #67 / #68 (0-indexed)
                 Buffer.BlockCopy(InitData.Packets[templateIdx], 0, _packetBuf, 0, PacketLen);
                 _packetBuf[InitData.SeqOffset] = _seq++;
+                System.Threading.Interlocked.Increment(ref _ep3Writes);
                 try { _stream.Write(_packetBuf); }
-                catch { _streamFaulted = true; _shuttingDown = true; return; }
+                catch (Exception ex)
+                {
+                    // The pause / resume mode command never reached the wheel.
+                    // Capture why before raising the flag: the plugin disposes
+                    // this device a moment later and the exception goes with
+                    // it, and without the capture an unplug, a G HUB HID grab
+                    // and a USB stall all read the same in the log.
+                    CaptureStreamFault("the pause/resume mode command packet", ex);
+                    _streamFaulted = true;
+                    _shuttingDown = true;
+                    return;
+                }
                 _paused = (cmd == 0x04);
                 return;
             }
@@ -636,9 +1004,11 @@ namespace TrueforceForAll.Core
             // ep3 cur (active mode), and switching between them at audio start/end
             // is felt as "jerky" FFB. Window carries audio if we have any, else
             // silence-center samples (additive zero, wheel feels only cur).
-            // Keepalive only fires when the FFB tap is stale (AC closed / idle
-            // > FfbTargetMaxAgeMs), so any other game's native FFB still works
-            // when our plugin is running but AC isn't.
+            // Keepalive only fires when the provider returns null: no game has
+            // driven the wheel within FfbTargetMaxAgeMs (the provider's own
+            // rule; a quiet spell shorter than that arrives here as an active
+            // zero). So any other game's native FFB still works when our
+            // plugin is running but the tapped game isn't.
             bool hasAudio = (n > 0);
             if (hasAudio)
             {
@@ -652,17 +1022,89 @@ namespace TrueforceForAll.Core
 
             // An explicit test (ForceActiveFor) overrides the pause gate so the
             // Test buttons play even when something has paused the device (e.g.
-            // the issue #13 pause gate left Trueforce mode). A normal pause with
-            // no test still emits nothing.
+            // the StopStreamOnPause gate left Trueforce mode). A normal pause
+            // with no test still emits nothing.
             bool forceActive = Stopwatch.GetTimestamp() < System.Threading.Interlocked.Read(ref _forceActiveUntilTicks);
-            if (_paused && !forceActive) return;
+            if (_paused && !forceActive)
+            {
+                // Nothing goes on the wire while paused, so the wheel is at
+                // zero force by the time we resume. The slew and smoothing
+                // filters restart from there rather than from the last value
+                // before the pause, which used to ride out as a ghost of the
+                // pre-pause force on the first ticks back and cut across the
+                // resume ramp (model, 2026-09-13). Done here, on the stream
+                // thread, so nothing races Pause()/Resume().
+                _slewLimitedFfb = 0f;
+                _prevRawForSlew = 0f;
+                _smoothedFfb = 0f;
+                _hitSlewEngaged = false;
+                return;
+            }
 
             short? ffbTargetMaybe = FfbTargetProvider?.Invoke();
+            // Resume ramp: fade the first post-resume force in instead of
+            // stepping to it (see BeginResumeRamp).
+            if (ffbTargetMaybe.HasValue)
+            {
+                if (_resumeRampArmed)
+                {
+                    _resumeRampArmed = false;
+                    _resumeRampStartTicks = Stopwatch.GetTimestamp();
+                }
+                if (_resumeRampStartTicks != 0)
+                {
+                    double rampMs = (Stopwatch.GetTimestamp() - _resumeRampStartTicks)
+                                    * 1000.0 / Stopwatch.Frequency;
+                    if (rampMs >= ResumeRampMs) _resumeRampStartTicks = 0;
+                    else ffbTargetMaybe = (short)(ffbTargetMaybe.Value * (rampMs / ResumeRampMs));
+                }
+            }
+            _lastFfbTarget = ffbTargetMaybe ?? (short)0;
             bool sendActive = ffbTargetMaybe.HasValue || forceActive;
 
             if (sendActive)
             {
-                if (hasAudio)
+                // FFB band-split. When enabled, pull the high-frequency road
+                // texture out of the FFB target: _bandLow (one-pole LPF) is the
+                // smooth low-frequency steering weight that drives cur; the
+                // remainder is the texture, injected into the window below as
+                // rumble. OFF => bandTexture stays 0, the original window branches
+                // run, and cur uses the raw target (byte-identical to before).
+                int bandTexture = 0;
+                bool splitActive = FfbBandSplitEnabled && ffbTargetMaybe.HasValue;
+                if (splitActive)
+                {
+                    float r = ffbTargetMaybe.Value;
+                    float a = 1f / (FfbTextureCutoffMs + 1f);
+                    // Two cascaded one-pole low-passes (~-12 dB/oct) so cur keeps
+                    // only the smooth steering force; a single pole left enough
+                    // high-frequency road texture in cur to jitter the wheel.
+                    _bandLow  += (r - _bandLow) * a;
+                    _bandLow2 += (_bandLow - _bandLow2) * a;
+                    int tex = (int)((r - _bandLow2) * FfbTextureGain);
+                    if (tex > 32767) tex = 32767; else if (tex < -32768) tex = -32768;
+                    bandTexture = tex;
+                }
+
+                if (splitActive)
+                {
+                    // Shift the window and append new samples = audio (if any) plus
+                    // the road texture, summed in signed space and re-centered at
+                    // 0x8000. With no audio this carries the texture alone.
+                    const int shift = NewPerPacket;
+                    Array.Copy(_window, shift, _window, 0, Window - shift);
+                    ushort last = _window[Window - shift - 1];
+                    for (int i = 0; i < shift; i++)
+                    {
+                        int audioSigned = hasAudio ? ((i < n ? newSamples[i] : last) - 0x8000) : 0;
+                        int mixed = audioSigned + bandTexture;
+                        if (mixed > 32767) mixed = 32767; else if (mixed < -32768) mixed = -32768;
+                        ushort v = (ushort)(mixed + 0x8000);
+                        _window[Window - shift + i] = v;
+                        last = v;
+                    }
+                }
+                else if (hasAudio)
                 {
                     // Shift the window left by NewPerPacket and append new audio samples.
                     const int shift = NewPerPacket;
@@ -693,7 +1135,10 @@ namespace TrueforceForAll.Core
                 ushort ffbCur = (ushort)0x8000;
                 if (ffbTargetMaybe.HasValue)
                 {
-                    float raw = ffbTargetMaybe.Value;
+                    // When band-splitting, cur is driven by the smooth low-
+                    // frequency part only (the texture went to the window above);
+                    // otherwise by the raw target, exactly as before.
+                    float raw = splitActive ? _bandLow2 : (float)ffbTargetMaybe.Value;
 
                     // Update slew-rate sidechain. Peak-follow on rise (instant
                     // latch) + slow exponential decay (70 ms half-life) on
@@ -708,7 +1153,8 @@ namespace TrueforceForAll.Core
                     // (otherwise huge) raw slew. A real wall hit is
                     // unidirectional, directionality stays high (~0.7-1.0),
                     // and the slew event registers in full.
-                    float deltaRaw = raw - _prevRawForSlew;
+                    float prevRaw = _prevRawForSlew;
+                    float deltaRaw = raw - prevRaw;
                     _prevRawForSlew = raw;
                     float slewInst = Math.Abs(deltaRaw);
                     _sumDeltas    = _sumDeltas    * DirectionalityDecayPerTick + deltaRaw;
@@ -734,13 +1180,52 @@ namespace TrueforceForAll.Core
                     // input can change per tick; preserves peak amplitude
                     // because the wheel still reaches the target value,
                     // just over a few extra ms. Only active in slew mode.
-                    bool useSlew = FfbSpikeTamingEnabled && FfbSpikeUseSlewLimiter;
+                    bool tamed = false;
+                    // One gate for both modes: an authored wall opts out of
+                    // taming entirely rather than of whichever mode is active.
+                    bool tamingOn = FfbSpikeTamingEnabled && !FfbBypassSpikeTaming;
+                    bool useSlew = tamingOn && FfbSpikeUseSlewLimiter;
+                    bool useTransient = tamingOn && !FfbSpikeUseSlewLimiter;
+                    float spikeCap = useTransient ? FfbPeakSoftLimitLsb : 0f;
+                    float magThreshold = useTransient ? FfbSpikeTransientThresholdLsb : 0f;
                     float maxDelta = useSlew ? FfbSpikeMaxLsbPerMs : 0f;
+
+                    // The wheel's frame: raw is pre-scale on the tap route, the
+                    // floor and the hit rate are what the wheel feels. k maps
+                    // between them (1 where the scale is bypassed or off).
+                    float k = (!FfbBypassTapCorrections && FfbScale != 1.0f && FfbScale != 0f)
+                        ? Math.Abs(FfbScale) : 1f;
+
+                    // Peak-limiter mode: rate-limit a hit while it is in spike
+                    // territory, and nothing else. Either end of a step counts:
+                    // the exit of a hit, a dropout and a reversal that lands
+                    // under the floor are slams too (model, 2026-09-13). The
+                    // floor is compared in the wheel's frame, so the gate and
+                    // the ceiling below agree on what a hit is.
+                    if (spikeCap > 0f && magThreshold > 0f)
+                    {
+                        float hitRate = HitSlewLsbPerMs / k;   // the wheel-frame rate, in raw units
+                        bool fast = slewInst > hitRate;
+                        if (!_hitSlewEngaged)
+                        {
+                            if (fast && (Math.Abs(raw) * k > magThreshold || Math.Abs(prevRaw) * k > magThreshold))
+                                _hitSlewEngaged = true;
+                        }
+                        else if (!fast && Math.Abs(raw - _slewLimitedFfb) <= hitRate)
+                        {
+                            _hitSlewEngaged = false;
+                        }
+                        if (_hitSlewEngaged) maxDelta = hitRate;
+                    }
+                    else
+                    {
+                        _hitSlewEngaged = false;
+                    }
                     if (maxDelta > 0f)
                     {
                         float delta = raw - _slewLimitedFfb;
-                        if (delta >  maxDelta) delta =  maxDelta;
-                        else if (delta < -maxDelta) delta = -maxDelta;
+                        if (delta >  maxDelta) { delta =  maxDelta; tamed = true; }
+                        else if (delta < -maxDelta) { delta = -maxDelta; tamed = true; }
                         _slewLimitedFfb += delta;
                     }
                     else
@@ -760,8 +1245,11 @@ namespace TrueforceForAll.Core
                     }
 
                     int t = (int)Math.Round(_smoothedFfb);
-                    if (FfbInvertSign) t = -t;
-                    if (FfbScale != 1.0f) t = (int)(t * FfbScale);
+                    if (!FfbBypassTapCorrections)
+                    {
+                        if (FfbInvertSign && !FfbBypassInvert) t = -t;
+                        if (FfbScale != 1.0f) t = (int)(t * FfbScale);
+                    }
 
                     // Transient-detector soft ceiling. Tracks a slow-follower
                     // envelope of |t| (200ms TC) and treats only the excess
@@ -781,11 +1269,33 @@ namespace TrueforceForAll.Core
                     // cap/2; asymptotes to cap as the spike grows. Output
                     // ceiling = baseline + softExcess, so peak FFB during a
                     // big crash asymptotes toward baseline + cap.
-                    bool useTransient = FfbSpikeTamingEnabled && !FfbSpikeUseSlewLimiter;
-                    float spikeCap = useTransient ? FfbPeakSoftLimitLsb : 0f;
-                    float magThreshold = useTransient ? FfbSpikeMaxLsbPerMs : 0f;
                     int absT = t < 0 ? -t : t;
-                    _sustainedFfbEnv += (absT - _sustainedFfbEnv) * SustainedFfbAlpha;
+                    // The envelope must not learn from the hit it is measuring
+                    // against. Trained on |t| through a wall slide, it treated
+                    // the slide as a corner and opened the ceiling from 66%
+                    // to full scale in about half a second, so the longer the
+                    // scrape the harder each reversal landed (rig, iRacing
+                    // takeover, 2026-09-13). While a hit is in progress the
+                    // envelope is frozen: the hit rate limit is engaged, or the
+                    // directional slew sidechain has seen a hit-rate edge while
+                    // the load (now, or the recent average) is in spike
+                    // territory. Both halves of that second test matter. A
+                    // 60 Hz feed steps every frame, and a step alone must not
+                    // read as a hit, or an ordinary corner entry would hold its
+                    // own ceiling down; the recent average is in the test so a
+                    // kerb ridden mid-corner, whose low half-cycles dip under
+                    // the floor, holds the corner's envelope instead of
+                    // training it down (model, 2026-09-13: six variants, this
+                    // one alone clean on the slide, 60 Hz corners, bumpy
+                    // plateaus and the mid-corner kerb). Frozen rather than
+                    // fall-only for the same kerb. A corner builds too slowly
+                    // to trip either test and opens exactly as before.
+                    bool hitInProgress = useTransient
+                        && (_hitSlewEngaged
+                            || (_spikeSlewEnv * k > HitHoldEdgeLsbPerMs
+                                && Math.Max(absT, _sustainedFfbEnv) > magThreshold));
+                    if (!hitInProgress)
+                        _sustainedFfbEnv += (absT - _sustainedFfbEnv) * SustainedFfbAlpha;
                     if (spikeCap > 0f && magThreshold > 0f)
                     {
                         float baseline = magThreshold > _sustainedFfbEnv ? magThreshold : _sustainedFfbEnv;
@@ -795,14 +1305,17 @@ namespace TrueforceForAll.Core
                             float softExcess = spikeCap * magExcess / (spikeCap + magExcess);
                             float factor = (baseline + softExcess) / absT;
                             t = (int)(t * factor);
+                            tamed = true;
                         }
                     }
 
                     if (t >  32767) t =  32767;
                     if (t < -32768) t = -32768;
                     ffbCur = (ushort)(t + 0x8000);
+                    if (tamed) _spikeTameCount++;
                 }
                 _lastCurrent = ffbCur;
+                _lastFfbOutput = (short)(ffbCur - 0x8000);
                 BuildPacket(_packetBuf, _seq++, ffbCur, _window);
             }
             else
@@ -811,20 +1324,35 @@ namespace TrueforceForAll.Core
                 // any native FFB through.
                 for (int i = 0; i < Window; i++) _window[i] = 0x8000;
                 _lastCurrent = 0x8000;
+                _lastFfbOutput = 0;
+                // The wire carries silence, so the filters restart from zero
+                // (see the paused branch above for why).
                 _smoothedFfb = 0f;
+                _slewLimitedFfb = 0f;
+                _prevRawForSlew = 0f;
+                _hitSlewEngaged = false;
                 BuildSilentPacket(_packetBuf, _seq++);
             }
 
             try
             {
+                System.Threading.Interlocked.Increment(ref _ep3Writes);
                 _stream.Write(_packetBuf);
                 System.Threading.Interlocked.Increment(ref _packetsSent);
             }
-            catch
+            catch (Exception ex)
             {
                 // On a write failure (device unplugged etc.) tear down the
                 // loop and flag it as a fault so the plugin's watchdog can
                 // tell this apart from a clean StopStream() and re-attach.
+                // Capture the exception first: this is the last moment it
+                // exists, it is the only evidence of what killed a wheel
+                // mid-session, and this is where a real death almost always
+                // lands (the steady-state write runs 1000 times a second,
+                // the mode command only on a pause or resume). Still no
+                // logging on this thread; the plugin reports the reason once
+                // when it tears the device down.
+                CaptureStreamFault("the steady-state audio-haptic sample packet", ex);
                 _streamFaulted = true;
                 _shuttingDown = true;
             }
@@ -902,5 +1430,67 @@ namespace TrueforceForAll.Core
 
         [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
         private static extern uint TimeEndPeriod(uint uPeriod);
+
+        // MMCSS (avrt.dll): raise the pump thread into the multimedia real-time
+        // scheduling band for the life of the stream loop. AVRT_PRIORITY_HIGH = 1.
+        private const int AVRT_PRIORITY_HIGH = 1;
+
+        [DllImport("avrt.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr AvSetMmThreadCharacteristics(string taskName, ref uint taskIndex);
+
+        [DllImport("avrt.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AvSetMmThreadPriority(IntPtr avrtHandle, int priority);
+
+        [DllImport("avrt.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AvRevertMmThreadCharacteristics(IntPtr avrtHandle);
+
+        // High-resolution waitable timer (kernel32). The HIGH_RESOLUTION flag needs
+        // Windows 10 1803+; on older systems CreateWaitableTimerEx returns null and
+        // the pump falls back to the busy-spin wait. Letting the 1 kHz pump sleep to
+        // each beat instead of spinning a core is what keeps the Pro Audio thread
+        // from starving the Windows audio mixer.
+        private const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x00000002;
+        private const uint TIMER_ALL_ACCESS = 0x1F0003;
+        private const uint WAIT_FAILED = 0xFFFFFFFF;
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr CreateWaitableTimerEx(IntPtr lpTimerAttributes, string lpTimerName, uint dwFlags, uint dwDesiredAccess);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetWaitableTimer(IntPtr hTimer, ref long pDueTime, int lPeriod, IntPtr pfnCompletionRoutine, IntPtr lpArgToCompletionRoutine, [MarshalAs(UnmanagedType.Bool)] bool fResume);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        // One-time sanity check that a high-resolution waitable timer actually
+        // sleeps rather than returning instantly. A wrong due-time sign/width would
+        // make SetWaitableTimer fire immediately, degenerating the intended sleep
+        // into a busy loop that still pins the core (the very thing we are removing).
+        // Arm it for ~1 ms once and confirm the wait really blocked before trusting
+        // it for the stream loop.
+        private static bool WaitableTimerBlocks(IntPtr timer)
+        {
+            try
+            {
+                long due = -10_000L; // 1 ms in 100 ns units (negative = relative)
+                if (!SetWaitableTimer(timer, ref due, 0, IntPtr.Zero, IntPtr.Zero, false))
+                    return false;
+                var sw = Stopwatch.StartNew();
+                if (WaitForSingleObject(timer, 100) == WAIT_FAILED)
+                    return false;
+                return sw.Elapsed.TotalMilliseconds >= 0.3;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

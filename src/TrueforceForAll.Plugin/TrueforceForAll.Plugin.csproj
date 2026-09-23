@@ -7,9 +7,10 @@
     <!-- "User." is the SimHub convention for community plugins. -->
     <AssemblyName>User.TrueforceForAll</AssemblyName>
     <!-- Plugin version is read at runtime by UpdateChecker to compare against
-         the latest GitHub release tag. CI can override via -p:Version=X.Y.Z;
-         local builds default to the value below. Bump this on every release. -->
-    <Version Condition="'$(Version)' == ''">0.1.28</Version>
+         the latest GitHub release tag. The version is defined once in
+         ..\Directory.Build.props (shared by Core, Engine, and Plugin so a
+         stale DLL is detectable at load). CI can override via -p:Version=X.Y.Z.
+         Bump the release version there, not here. -->
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <!-- AnyCPU: SimHub runs as 32-bit (it's installed under Program Files
@@ -19,7 +20,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <UseWPF>true</UseWPF>
     <!-- WinForms is opted into ONLY for the FolderBrowserDialog used by the
-         Manage Presets dialog's bulk export action. WPF doesn't ship a
+         preset manager's bulk export action. WPF doesn't ship a
          native folder picker; FolderBrowserDialog (System.Windows.Forms)
          is the standard net48 stand-in. No actual WinForms controls in
          the plugin's UI tree. -->
@@ -39,6 +40,76 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TrueforceForAll.Core\TrueforceForAll.Core.csproj" />
+    <ProjectReference Include="..\TrueforceForAll.Engine\TrueforceForAll.Engine.csproj" />
+  </ItemGroup>
+
+  <!-- The Farming Simulator game mods travel embedded in the plugin DLL so a
+       plain DLL deploy carries them; the plugin writes the right one into the
+       game's mods folder on user consent (MaybeOfferFsModInstall / the
+       Telemetry FFB tab banner). One zip per game generation (descVersion
+       differs; the Lua is shared). Rebuild with
+       gamemods\FarmingSimulator\build-mod.py after editing the mod. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\gamemods\FarmingSimulator\TF4ALLTelemetry_FS22.zip">
+      <Link>TF4ALLTelemetry_FS22.zip</Link>
+      <LogicalName>TrueforceForAll.Plugin.TF4ALLTelemetry_FS22.zip</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\gamemods\FarmingSimulator\TF4ALLTelemetry_FS25.zip">
+      <Link>TF4ALLTelemetry_FS25.zip</Link>
+      <LogicalName>TrueforceForAll.Plugin.TF4ALLTelemetry_FS25.zip</LogicalName>
+    </EmbeddedResource>
+    <!-- iRacing firing patterns. Static reference data, so it is embedded
+         rather than written to PluginsData: no installer step and no folder
+         that can go stale or half-written. See IRacingEngineSeed. -->
+    <EmbeddedResource Include="..\..\builtins\iracing-engine-layouts.json">
+      <Link>iracing-engine-layouts.json</Link>
+      <LogicalName>TrueforceForAll.Plugin.iracing-engine-layouts.json</LogicalName>
+    </EmbeddedResource>
+    <!-- RaceRoom firing patterns AND cylinder counts. RaceRoom publishes
+         neither, so this file is the whole answer for its roster. -->
+    <EmbeddedResource Include="..\..\builtins\raceroom-engine-layouts.json">
+      <Link>raceroom-engine-layouts.json</Link>
+      <LogicalName>TrueforceForAll.Plugin.raceroom-engine-layouts.json</LogicalName>
+    </EmbeddedResource>
+    <!-- Guide text for the header's "?" list, authored as Markdown and rendered
+         by MarkdownView. Embedded so a plain DLL deploy carries them and there
+         is no folder to go stale. Wildcarded on purpose: adding a guide is
+         adding a .md file and one menu line, never a csproj edit. The logical
+         name is what GuideText.Load builds from the file name. -->
+    <!-- The Assetto Corsa CSP bridge script, embedded so a three-DLL deploy
+         carries it and InstallAcCspBridge can write it into AC's ffb-postprocess
+         folder. Same reasoning as the FS telemetry mod zip. -->
+    <!-- The arcade publishing plugin: our build of FFBArcadePlugin's dinput8
+         wrapper, which decodes an arcade cabinet's force feedback and publishes
+         it to us instead of driving the wheel itself. One per bitness, chosen
+         from the TeknoParrot profile's Is64Bit.
+
+         SEPARATE PROGRAM, NOT PART OF THIS ONE. It is GPL-3.0 where this project
+         is GPL-2.0-only, so the two may be shipped together but never combined:
+         it runs inside the game's process and reaches us only through a shared
+         memory block. See gamemods/FfbArcadePlugin/README.md for the source it
+         is built from, which we are obliged to point at.
+
+         Conditioned on the file existing so a checkout without the built
+         payloads still compiles; the installer then reports the plugin as
+         missing from this build rather than failing to start. -->
+    <EmbeddedResource Include="..\..\gamemods\FfbArcadePlugin\dinput8_x86.dll"
+                      Condition="Exists('..\..\gamemods\FfbArcadePlugin\dinput8_x86.dll')">
+      <LogicalName>TrueforceForAll.Plugin.FfbArcade.dinput8_x86.dll</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\gamemods\FfbArcadePlugin\dinput8_x64.dll"
+                      Condition="Exists('..\..\gamemods\FfbArcadePlugin\dinput8_x64.dll')">
+      <LogicalName>TrueforceForAll.Plugin.FfbArcade.dinput8_x64.dll</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\gamemods\AssettoCorsaCsp\tf4all\ffb.lua">
+      <LogicalName>TrueforceForAll.Plugin.AcCspBridge.ffb.lua</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\gamemods\AssettoCorsaCsp\tf4all\manifest.ini">
+      <LogicalName>TrueforceForAll.Plugin.AcCspBridge.manifest.ini</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Guides\*.md">
+      <LogicalName>TrueforceForAll.Plugin.Guides.%(Filename).md</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!-- SimHub provides these at runtime; don't copy them to the output dir. -->
@@ -55,6 +126,16 @@
       <HintPath>$(SimHubPath)\SimHub.Logging.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <!-- DirectInput, for the DAMPCAL spike (driving the wheel's native damper
+         ourselves). SimHub ships SharpDX for its own controller support. -->
+    <Reference Include="SharpDX">
+      <HintPath>$(SimHubPath)\SharpDX.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="SharpDX.DirectInput">
+      <HintPath>$(SimHubPath)\SharpDX.DirectInput.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <!-- SimHub.Logging.Current returns an ILog from log4net. -->
     <Reference Include="log4net">
       <HintPath>$(SimHubPath)\log4net.dll</HintPath>
@@ -64,6 +145,24 @@
       <HintPath>$(SimHubPath)\Newtonsoft.Json.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <!-- MahApps icon packs: SimHub bundles these and its home tiles use
+         PackIconMaterial, so the home Feedback tile can match the built-in
+         Motors/Wind look with the same control. Compile-only. -->
+    <Reference Include="MahApps.Metro.IconPacks.Core">
+      <HintPath>$(SimHubPath)\MahApps.Metro.IconPacks.Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="MahApps.Metro.IconPacks.Material">
+      <HintPath>$(SimHubPath)\MahApps.Metro.IconPacks.Material.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- QRCoder ships inside SimHub (its own mobile access assistant uses
+         it); the TF4ALL Dash phone dialog binds to that copy at runtime.
+         Compile-only, never ship our own (same rule as HidSharp/NAudio). -->
+    <Reference Include="QRCoder">
+      <HintPath>$(SimHubPath)\QRCoder.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <!-- System.Net.Http ships in net48's BCL but isn't auto-referenced by
          SDK-style projects targeting net48. UpdateChecker uses HttpClient. -->
     <Reference Include="System.Net.Http" />
@@ -71,6 +170,9 @@
          export/import flow (.tfpack zip files). -->
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
+    <!-- ProtectedData (DPAPI) for B5/F03 AuthSession token encryption
+         at rest. Lives in System.Security.dll on net48, not auto-referenced. -->
+    <Reference Include="System.Security" />
   </ItemGroup>
   <ItemGroup>
     <!-- Compile-time only. SimHub bundles the full NAudio 2.2.1 set in its

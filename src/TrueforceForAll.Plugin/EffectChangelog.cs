@@ -1,4 +1,4 @@
-// Catalog of effects + per-version changelog entries that drive the
+﻿// Catalog of effects + per-version changelog entries that drive the
 // "what's new" banner and the per-effect NEW badges.
 //
 // Two ideas live here:
@@ -55,7 +55,8 @@ namespace TrueforceForAll.Plugin
         {
             "Audio", "Engine", "Bumps", "Traction", "Shift",
             "Abs", "PitLimiter", "Drs", "Collision", "RevLimiter",
-            "Airborne",
+            "Airborne", "AxleSlip", "KerbThump", "LockupJudder",
+            "ImplementThud",
         };
 
         // Ordered oldest -> newest. Append-only.
@@ -69,6 +70,125 @@ namespace TrueforceForAll.Plugin
                     new ChangelogEntry {
                         Headline = "Effects added after you upgrade will be flagged with a NEW badge",
                         Description = "The badge stays on each effect's section header until you expand it or change a value, so you'll always know which voices are new without having to read release notes.",
+                    },
+                },
+            },
+            new ChangelogVersion {
+                Version = new Version(0, 1, 24),
+                Title = "UI overhaul and community sharing",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Community sharing for presets, car tunings, and packs",
+                        Description = "Upload your game and car presets so other drivers can find them. Browse, vote, and download what the community has shared. Sign in with a one-time code sent to your email; no password to manage. Your username is not shown on submitted data.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Car facts: shared truth about each car",
+                        Description = "When you correct a redline, name a car, or pick its engine layout, those facts are auto-submitted so other drivers loading the same car get them too. Community consensus rises with votes; a single bad submission cannot overwrite the rest. All sharing requires the Community toggle on AND being signed in.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Variant detection happens silently",
+                        Description = "On Forza in-game engine swaps and on any car whose engine differs from what was previously seen, the plugin now recognises the new engine from telemetry and applies the matching tuning without a prompt. Rename or remove auto-created variants in the Manage variants window.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Rev-limiter shows when it is guessing",
+                        Description = "On games or cars where no redline is known, the rev-limiter falls back to 85% of max RPM and the Engine pulse panel now shows a gold badge saying so, with one-click affordances to set a value or share what your wheel is feeling so the next driver does not have to guess.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Preset Manager rework",
+                        Description = "The Presets tab now has a proper sortable, searchable, filterable view of every game preset, car preset, custom engine, and installed pack. Multi-select to share a pack, set defaults in bulk, or delete in batch. Game chips filter the car list. A refresh-library button pulls the latest community updates on demand.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Rev-limiter unified on absolute redline RPM",
+                        Description = "The Threshold percentage slider is gone in favour of a direct redline RPM slider. Existing presets that used a custom threshold are migrated to the equivalent absolute value on first use, on a per-car basis, so a 92% threshold on Car A no longer leaks into Car B.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Native Trueforce games auto-disable cleanly",
+                        Description = "When you launch a title with built-in Logitech Trueforce support (the new Codemasters F1 titles, etc.), the plugin steps aside so the game's native effects are not doubled up. A per-game override is available if you want to layer anyway.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Master gain bindings now actually fire",
+                        Description = "The Master gain up / down actions in SimHub's Controls and events list could be bound to a button but the press never reached the plugin, because of a name-prefix mismatch between registration and the binding widget. Fixed. You will need to re-bind once after upgrading; the old binding string no longer matches.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Forza Horizon 6 wheel lock on data-out port mismatch",
+                        Description = "If Forza was sending UDP telemetry to a port the plugin was not listening on (issue #21), the plugin would take over the wheel anyway with no input, locking the wheel and suppressing native FFB. Now it falls back to SimHub telemetry when no Forza packets arrive, so the wheel stays responsive while you fix the port.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Forza engine swaps were silently absorbed",
+                        Description = "Swapping engines mid-session on Forza (AE86 stock to 4AGE, etc.) used to leave the stock car's tuning applied to the new engine. Each engine is now detected from telemetry within a frame and the matching tuning applies on its own.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Thanks",
+                        Headline = "Thank you",
+                        Description = "This release would not exist without the people who reported issues, shared captures, and pushed back on bad ideas. The community half of the plugin is for you specifically. I read every report and every message. Thank you for being part of this.",
+                    },
+                },
+            },
+            new ChangelogVersion {
+                Version = new Version(0, 1, 20),
+                Title = "Redesigned interface, control bindings, and a home-screen gain tile",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Bind master gain to any control",
+                        Description = "A new Controls tab lets you map any button or input to raise or lower master gain on the fly without opening the panel, with an adjustable step per press. These bindings also show up in SimHub's own Controls and events list.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "Home-screen gain tile",
+                        Description = "A master and audio gain box right in SimHub's home Feedback section, next to Motors and Wind, for quick adjustments without opening the plugin. Can be turned off in Settings.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Redesigned interface",
+                        Description = "The panel is now organized into tabs (Effects, Presets, Controls, Settings) instead of one long scroll, matching the look of other SimHub plugins. Force-feedback options are grouped under a single collapsible 'FFB tweaks' section, and the old 'Advanced settings' pop-up is gone.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Type exact slider values",
+                        Description = "Every slider's value can be clicked and typed for precise tuning, not just dragged.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Presets get their own tab",
+                        Description = "The full preset library (game presets, car presets, custom engines) now lives on a dedicated Presets tab instead of a separate pop-up window, so it's always a click away while you tune.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Improved UDP telemetry setup (Forza / F1)",
+                        Description = "A single 'UDP telemetry' section with a game selector that follows whatever's running, always available so you can set ports up any time. If a UDP game is running but no telemetry is arriving, a banner now points you straight to the setup.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "A selected game profile was mistaken for a running game",
+                        Description = "Having a SimHub game profile selected with the game closed no longer makes the plugin think the game is running. The 'no telemetry' notice (any game) and the Forza/F1 'set up UDP' prompt now appear only when the game is actually running.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "F1 telemetry needed a manual toggle",
+                        Description = "F1 telemetry no longer requires a separate 'enable' switch. It turns on automatically when an F1 title is running, the same as Forza.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Preset columns could be dragged shut",
+                        Description = "On the Presets tab, a column divider could be dragged far enough to cover the column beside it and hide its header. Columns now stop at a minimum width that keeps every header readable.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Thanks",
+                        Headline = "Thank you",
+                        Description = "Thank you to everyone who has donated, shared the project, and reported issues. I read every report, and your feedback genuinely helps decide what comes next. This project is shaped by the people who use it and I am committed to keeping it growing for a long time to come. I am grateful to have you all along for the ride!",
                     },
                 },
             },
@@ -92,7 +212,7 @@ namespace TrueforceForAll.Plugin
                     new ChangelogEntry {
                         Group = "New features",
                         Headline = "Stationary spring (parked-car centering)",
-                        Description = "A gentle centering force so a stopped or crawling car has weight instead of going limp, fading out with speed and never fighting the game's own force feedback. On by default and works in any game (it reads the game's steering where available and the wheel's own position otherwise); ignored for iRacing, where MAIRA already weights the wheel.",
+                        Description = "A gentle centering force so a stopped or crawling car has weight instead of going limp, fading out with speed and never fighting the game's own force feedback. On by default and works in any game (it reads the game's steering where available and the wheel's own position otherwise); ignored for iRacing, where the sim already weights the wheel.",
                     },
                     new ChangelogEntry {
                         Group = "New features",
@@ -158,7 +278,7 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "G923 (PlayStation and Xbox) fully supported",
-                        Description = "Both G923 variants are now confirmed working by owners: Trueforce effects and in-game force feedback together. The Xbox/PC G923's force-feedback fix from 0.1.17 (it delivers FFB as the same Logitech HID++ message the G PRO uses, but over a different USB transport and feature index) is now verified on Xbox G923 hardware. If the G923 feels light, raise master or Trueforce gain: it is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it. Other wheels are unaffected.",
+                        Description = "Both G923 variants are now confirmed working by owners: the plugin's effects and in-game force feedback together. The Xbox/PC G923's force-feedback fix from 0.1.17 (it delivers FFB as the same Logitech HID++ message the G PRO uses, but over a different USB transport and feature index) is now verified on Xbox G923 hardware. If the G923 feels light, raise master or audio gain: it is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it. Other wheels are unaffected.",
                     },
                 },
             },
@@ -169,11 +289,11 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "G923 (PS/PC) confirmed working by an owner",
-                        Description = "A PlayStation/PC G923 owner has confirmed the wheel working end to end: Trueforce effects and in-game force feedback together. If it feels light, raise master or Trueforce gain. The G923 is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it.",
+                        Description = "A PlayStation/PC G923 owner has confirmed the wheel working end to end: the plugin's effects and in-game force feedback together. If it feels light, raise master or audio gain. The G923 is a quieter gear-driven wheel than the G PRO and RS50, so the conservative shipped defaults can read weak on it.",
                     },
                     new ChangelogEntry {
                         Headline = "Xbox G923: force-feedback fix included, not yet confirmed",
-                        Description = "The Xbox/PC G923 delivers its force feedback as the same Logitech HID++ message the G PRO uses, but over a different USB transport and at a different feature index, so the plugin's tap missed it entirely and the Trueforce stream silenced the wheel's own force feedback instead of carrying it. The plugin now also reads that interrupt-endpoint HID++ path and auto-resolves its feature index the same way it does for the RS50. This was decoded from a community-submitted USB capture and is not yet confirmed on Xbox G923 hardware. Xbox G923 owners: please report whether in-game force feedback now works alongside the Trueforce effects. Other wheels are unaffected; the new path only fires on traffic shaped this way.",
+                        Description = "The Xbox/PC G923 delivers its force feedback as the same Logitech HID++ message the G PRO uses, but over a different USB transport and at a different feature index, so the plugin's tap missed it entirely and the Trueforce stream silenced the wheel's own force feedback instead of carrying it. The plugin now also reads that interrupt-endpoint HID++ path and auto-resolves its feature index the same way it does for the RS50. This was decoded from a community-submitted USB capture and is not yet confirmed on Xbox G923 hardware. Xbox G923 owners: please report whether in-game force feedback now works alongside the plugin's effects. Other wheels are unaffected; the new path only fires on traffic shaped this way.",
                     },
                 },
             },
@@ -184,7 +304,7 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "G923 wheels recognized, ready for testing",
-                        Description = "The Logitech G923 is now detected. Its protocol was decoded from USB captures: the G923's Trueforce motor uses the same protocol as the G PRO, and the plugin now taps the force-feedback path the G923 uses in non-Trueforce games so in-game FFB and Trueforce effects can coexist. This is built from confirmed captures but has not been tested on a physical G923 yet. G923 (PS/PC): please try it and report how it feels (effects playing, in-game FFB still present, direction and strength sensible). G923 (Xbox/PC): experimental, supported by inference only. If Trueforce effects work but your game's force feedback is silent, report it via Feedback then Report an issue with Export logs attached.",
+                        Description = "The Logitech G923 is now detected. Its protocol was decoded from USB captures: the G923's Trueforce motor uses the same protocol as the G PRO, and the plugin now taps the force-feedback path the G923 uses in non-Trueforce games so in-game FFB and the plugin's effects can coexist. This is built from confirmed captures but has not been tested on a physical G923 yet. G923 (PS/PC): please try it and report how it feels (effects playing, in-game FFB still present, direction and strength sensible). G923 (Xbox/PC): experimental, supported by inference only. If the plugin's effects work but your game's force feedback is silent, report it via Feedback then Report an issue with Export logs attached.",
                     },
                 },
             },
@@ -217,7 +337,7 @@ namespace TrueforceForAll.Plugin
                 {
                     new ChangelogEntry {
                         Headline = "Logitech RS50: game force feedback alongside Trueforce",
-                        Description = "The FFB tap now resolves the HID++ force-feedback feature index per wheel instead of assuming the G PRO's. On the RS50 the game's native constant force is mirrored into the Trueforce stream, so you feel the game's normal force feedback and Trueforce haptics at the same time. G PRO is unchanged.",
+                        Description = "The FFB tap now resolves the HID++ force-feedback feature index per wheel instead of assuming the G PRO's. On the RS50 the game's native constant force is mirrored into the Trueforce stream, so you feel the game's normal force feedback and the plugin's haptics at the same time. G PRO is unchanged.",
                     },
                     new ChangelogEntry {
                         Headline = "Engine pulse auto-detects your car's engine in Forza Horizon 5",
@@ -251,7 +371,7 @@ namespace TrueforceForAll.Plugin
                     },
                     new ChangelogEntry {
                         Headline = "Export logs button next to Report Issue",
-                        Description = "Zips your SimHub logs and Trueforce settings to your Desktop and opens Explorer to the zip. Attach the zip to bug reports so I can debug what's actually happening on your machine. Report Issue also asks first whether you want to bundle logs.",
+                        Description = "Zips your SimHub logs and TF4ALL settings to your Desktop and opens Explorer to the zip. Attach the zip to bug reports so I can debug what's actually happening on your machine. Report Issue also asks first whether you want to bundle logs.",
                     },
                     new ChangelogEntry {
                         Headline = "Periodic FFB-tap rediscovery",
@@ -282,7 +402,7 @@ namespace TrueforceForAll.Plugin
                     },
                     new ChangelogEntry {
                         Headline = "Forza Horizon: ABS section flagged as not exposed",
-                        Description = "Forza's Data Out telemetry doesn't include ABS pump activity (the brake pedal is there, but no anti-lock intervention flag), so the ABS effect can't fire in FH4/FH5/FH6 regardless of how you tune it. A grey 'not exposed by Forza UDP' badge now sits in the ABS header when an FH title is active, with a tooltip explaining why. The section stays interactive so the values still save for other games.",
+                        Description = "Forza's Data Out telemetry doesn't include ABS pump activity (the brake pedal is there, but no anti-lock intervention flag), so the ABS effect can't fire in FH4/FH5/FH6 regardless of how you tune it. A gray 'not exposed by Forza UDP' badge now sits in the ABS header when an FH title is active, with a tooltip explaining why. The section stays interactive so the values still save for other games.",
                     },
                     new ChangelogEntry {
                         Headline = "Forza Horizon: built-in preset road bumps + traction loss tuned down",
@@ -455,6 +575,81 @@ namespace TrueforceForAll.Plugin
                     new ChangelogEntry {
                         Headline = "Installer 'Launch SimHub now' surfaces the window",
                         Description = "The post-install checkbox launches SimHub through the same path as a desktop double-click, so the window comes to the foreground instead of being stranded behind a taskbar button.",
+                    },
+                },
+            },
+            new ChangelogVersion {
+                Version = new Version(0, 2, 0),
+                Title = "New grip and curb effects + smarter ducking",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        EffectId = "AxleSlip",
+                        Group = "New effects",
+                        Headline = "Axle slip: feel which axle is letting go",
+                        Description = "A high scrub texture as the front washes wide, a deep pulse as the rear steps out. The louder axle is the one losing grip. Off by default. Needs per-tire telemetry (Forza games today).",
+                    },
+                    new ChangelogEntry {
+                        EffectId = "KerbThump",
+                        Group = "New effects",
+                        Headline = "Curb thump: a firm whack the instant a wheel finds a curb",
+                        Description = "A single firm hit when a wheel first touches a curb, distinct from the rumble that follows. Scales with speed. Off by default. Needs curb telemetry (Forza games today).",
+                    },
+                    new ChangelogEntry {
+                        EffectId = "LockupJudder",
+                        Group = "New effects",
+                        Headline = "Lockup judder: a flat-spot pulse under locked brakes",
+                        Description = "A flat-spot pulse while a braking tire is locked, slowing with the car the way a real flat spot would. Off by default. Needs per-tire telemetry (Forza games today).",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Frequency-aware ducking option",
+                        Description = "A new checkbox in the Sidechain ducking section only ducks effects that overlap in frequency. Grip textures always win their band, so a slide stays crisp through the engine pulse instead of blending into it. Off by default.",
+                    },
+                },
+            },
+            new ChangelogVersion {
+                Version = new Version(0, 2, 1),
+                Title = "Axle slip tuning + on-by-default effects",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Axle slip is now fully tunable",
+                        Description = "Six new sliders: front and rear strength, front and rear pitch, understeer judder depth, and how close to the limit the voices start speaking.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Axle slip, Curb thump and Lockup judder are now on by default",
+                        Description = "With strengths and pitches tuned on a G PRO as the new baseline. They only speak where the game's telemetry supports them, and choices you have already made are kept.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Join Discord buttons run the real link flow",
+                        Description = "Community messages pointing at the Discord verify your account, join the server, and unlock your roles instead of opening a bare invite.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Doubled haptics in native Trueforce games while the plugin was disabled",
+                        Description = "On a cold start with the plugin toggled off, the plugin kept streaming to the wheel and collided with the game's own Trueforce. The wheel is now fully released whenever the plugin is disabled.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "Axle slip caused violent oscillations under braking",
+                        Description = "A locked tire read as wheelspin and slammed the slip voices on at full strength. Locked tires are now recognized and stay quiet, so braking feel has one owner: the Lockup judder.",
+                    },
+                },
+            },
+            new ChangelogVersion {
+                Version = new Version(0, 2, 6),
+                Title = "Farming Simulator feel",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Group = "New features",
+                        EffectId = "ImplementThud",
+                        Headline = "Implement thud",
+                        Description = "A mechanical clunk in the wheel when your equipment drops into work or lifts back out, the linkage landing and releasing. Farming Simulator with the TF4ALL Enhanced Telemetry mod; on by default.",
                     },
                 },
             },

@@ -40,8 +40,15 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush BorderFg   = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
         private static readonly Brush GroupHeaderFg = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0));
 
+        public enum ExportOutputMode { Pack, FolderOfFiles }
+
         public List<string> SelectedPresetNames { get; private set; } = new List<string>();
         public List<CarPresetEntry> SelectedCarPresets { get; private set; } = new List<CarPresetEntry>();
+        // Set on OK click in export mode. Pack name is captured only when
+        // OutputMode == Pack (validated non-empty before DialogResult=true).
+        // In import mode both fields stay at their defaults.
+        public ExportOutputMode SelectedOutputMode { get; private set; } = ExportOutputMode.Pack;
+        public string PackName { get; private set; }
 
         private readonly List<CheckBox> _presetChecks = new List<CheckBox>();
         private readonly List<(CheckBox Cb, CarPresetEntry Entry)> _carChecks = new List<(CheckBox, CarPresetEntry)>();
@@ -86,13 +93,13 @@ namespace TrueforceForAll.Plugin
             Foreground = TextFg;
 
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                            // header text
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });       // picker
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                            // button row
 
             var header = new TextBlock
             {
-                Text = "Pick the presets to bundle into the pack. Recipients can import the whole pack at once.",
+                Text = "Pick what to export. One item saves as a single file; pick two or more to bundle them into a pack that imports at once.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10),
                 Foreground = TextFg,
@@ -110,6 +117,10 @@ namespace TrueforceForAll.Plugin
             var carPanel = BuildCarPanel(cars, preferCarId);
             Grid.SetColumn(carPanel, 1);
             twoCol.Children.Add(carPanel);
+
+            // Output type is decided by the count of picked items: 1 item
+            // exports as a single loose .tfpreset.json / .tfcar.json, 2+
+            // items export as a .tfpack. No toggle here.
 
             // OK / Cancel row.
             var btnRow = new StackPanel
@@ -137,10 +148,13 @@ namespace TrueforceForAll.Plugin
 
                 if (SelectedPresetNames.Count == 0 && SelectedCarPresets.Count == 0)
                 {
-                    MessageBox.Show(this, "Pick at least one preset or car preset to include.",
-                                    "Trueforce For All", MessageBoxButton.OK, MessageBoxImage.Information);
+                    TrueforceDialog.Show(this, "Trueforce For All",
+                                    "Pick at least one preset or car preset to include.", DialogKind.Info);
                     return;
                 }
+
+                // Output type (single file vs pack) is decided by
+                // RunExportFlow based on item count, not by the picker.
                 DialogResult = true;
             };
 

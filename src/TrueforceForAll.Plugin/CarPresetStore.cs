@@ -1,30 +1,19 @@
-// Per-car preset file storage, multi-preset model.
+// User car preset file store.
 //
-// Each car can have multiple named presets stored as separate files at
-// <SimHub>/PluginsData/Common/TrueforceCars/<carId>~<presetName>.tfcar.json.
-// Files contain a CarPresetFile (CarId, PresetName, IsBuiltin, GameName,
-// Override). The on-disk schema is the same one used for shareable
-// exports, so a file in this folder is directly importable / exportable
-// without translation.
+// Layout, mirroring the built-in car folder (BuiltinPresets cars/ subfolder):
+//   <user library root>/cars/<GameName>/<carId>/<PresetName>.json
+// (e.g. PluginsData/Common/TrueforceForAll-Library/cars/AssettoCorsa/ks_audi_r8/Stock setup.json)
 //
-// Two preset kinds:
-//   - Built-in: shipped with the plugin via BuiltinCarPresets and written
-//     by InstallOrUpdateBuiltinCarPresets on every Init. Idempotent if the
-//     content matches; updates the file when the bundled JSON differs from
-//     what's on disk. The runtime refuses to delete or overwrite-in-place
-//     these (the Save flow forks to a new user preset instead).
-//   - User: created when the user explicitly saves a tuning. Free to
-//     edit, rename, delete.
+// Each file holds a CarPresetFile (CarId, PresetName, IsBuiltin=false,
+// GameName, Override). Identical on-disk shape to the built-in car files so
+// import/export round-trips work without translation.
 //
-// Active-preset selection lives in TrueforceSettings.CarDefaults
-// (carId -> presetName), mirroring GameDefaults. This class only handles
-// storage; the plugin layer owns activation logic.
+// Built-in car presets live in the built-in folder, not here, and are loaded
+// from BuiltinPresets.CarPresetJsons at runtime. This store is the USER side
+// only; the runtime merges both sources into the in-memory map.
 //
-// File-naming uses '~' as the carId/presetName separator because '~' is
-// always valid in NTFS filenames and avoids the '__' collision risk if
-// either carId or presetName contains underscores. Sanitization replaces
-// any actual '~' in carId or presetName with '-' to keep the separator
-// unambiguous.
+// Filename charset is sanitised (Windows-invalid chars are replaced with '_'),
+// so a carId or preset name with a colon or slash still produces a valid path.
 
 using System;
 using System.Collections.Generic;
@@ -43,281 +32,309 @@ namespace TrueforceForAll.Plugin
         public string PresetName  { get; set; }
         public string GameName    { get; set; }
         public bool   IsBuiltin   { get; set; }
+        // Optional pack/sharing metadata, carried from the on-disk
+        // CarPresetFile when present (set on imported pack files). Left null
+        // for built-ins and locally-saved presets. Used by the Preset
+        // Manager's Source column to attribute a car preset to its pack
+        // and by the export flow to preserve per-row credit when assembling
+        // a curator's pack (Description + AuthorVersion round-trip too).
+        public string PackName      { get; set; }
+        public string Author        { get; set; }
+        public string Description   { get; set; }
+        public string AuthorVersion { get; set; }
         public CarOverride Override { get; set; }
     }
 
     internal sealed class CarPresetStore
     {
-        private const string FolderName   = "TrueforceCars";
-        private const string FileExtension = ".tfcar.json";
-        private const char   Separator    = '~';
+        public const string CarsSubfolderName = "cars";
+        public const string FileExtension     = ".json";
 
-        private readonly string _folderPath;
+        // Lazy: the user library folder path can be set/changed after the
+        // store is constructed, so look it up on each access via the provider.
+        private readonly Func<string> _rootFolderProvider;
         private readonly Action<string> _log;
 
-        public CarPresetStore(Action<string> log = null)
+        public CarPresetStore(Func<string> rootFolderProvider, Action<string> log = null)
         {
-            // SimHub's plugin host sets BaseDirectory to its install dir; the
-            // common-settings folder is the convention for plugin data.
-            var baseDir = AppDomain.CurrentDomain.BaseDirectory ?? "";
-            _folderPath = Path.Combine(baseDir, "PluginsData", "Common", FolderName);
+            _rootFolderProvider = rootFolderProvider
+                ?? throw new ArgumentNullException(nameof(rootFolderProvider));
             _log = log;
         }
 
-        public string FolderPath => _folderPath;
+        /// <summary>Where car files live: <user library root>/cars.</summary>
+        public string FolderPath => Path.Combine(_rootFolderProvider() ?? "", CarsSubfolderName);
 
-        /// <summary>Walks the folder and returns every car preset file
-        /// indexed by carId then presetName. Skips malformed files with a
-        /// log line. Legacy single-preset-per-car files (no '~' in the name,
-        /// or no PresetName field) are surfaced as preset entries with
-        /// PresetName == CarId so the migration step can rewrite them.</summary>
+        // Strip Windows-invalid chars but keep readability (spaces, parens stay).
+        // A dot-only result ("." / "..") is a traversal token, not a name (a
+        // hostile carId/presetName from a downloaded pack could otherwise walk
+        // out of the library root), so map it back to the safe placeholder.
+        private static string SafeFile(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "unknown";
+            foreach (var c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
+            s = s.Trim();
+            return SafePath.IsTraversalSegment(s) ? "unknown" : s;
+        }
+
+        private static string NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+        private string PathFor(string gameName, string carId, string presetName)
+        {
+            string game = SafeFile(string.IsNullOrEmpty(gameName) ? "Unknown" : gameName);
+            return Path.Combine(FolderPath, game, SafeFile(carId), SafeFile(presetName) + FileExtension);
+        }
+
+        /// <summary>Resolve the on-disk path for (carId, presetName), walking
+        /// the cars/ tree when the game folder isn't known. Returns null if no
+        /// matching file exists. Public so the Pack Manager can hash + delete
+        /// car entries whose owning game wasn't captured in the pack record.</summary>
+        public string FindCarFile(string carId, string presetName)
+        {
+            string root = FolderPath;
+            if (!Directory.Exists(root)) return null;
+            string carDir = SafeFile(carId);
+            string fileName = SafeFile(presetName) + FileExtension;
+            foreach (var gameDir in Directory.GetDirectories(root))
+            {
+                string candidate = Path.Combine(gameDir, carDir, fileName);
+                if (File.Exists(candidate)) return candidate;
+            }
+            return null;
+        }
+
+        /// <summary>Walks the folder tree and returns every user car preset
+        /// indexed by carId then presetName. Skips malformed files with a log
+        /// line. Built-in cars live in the built-in folder, not here; callers
+        /// merge them in from BuiltinPresets.CarPresetJsons.</summary>
         public Dictionary<string, Dictionary<string, CarPresetEntry>> LoadAll()
         {
-            var result = new Dictionary<string, Dictionary<string, CarPresetEntry>>();
+            // OrdinalIgnoreCase on carId AND preset name: the bake/resolver
+            // paths compare carIds case-insensitively, and AC mod car ids come
+            // from folder names whose case varies between packagings; Ordinal
+            // used to split the same physical car into two rows and miss saved
+            // defaults. Case-variant duplicates merge last-wins (population
+            // uses TryGetValue + indexer, so no duplicate-key throw).
+            var result = new Dictionary<string, Dictionary<string, CarPresetEntry>>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                if (!Directory.Exists(_folderPath)) return result;
-                foreach (var path in Directory.GetFiles(_folderPath, "*" + FileExtension))
+                string root = FolderPath;
+                if (!Directory.Exists(root)) return result;
+                foreach (var path in Directory.GetFiles(root, "*" + FileExtension, SearchOption.AllDirectories))
                 {
                     try
                     {
-                        var json = File.ReadAllText(path);
-                        var f = JsonConvert.DeserializeObject<CarPresetFile>(json);
+                        var f = JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(path), SafeJson.Settings);
                         if (f == null || string.IsNullOrEmpty(f.CarId) || f.Override == null) continue;
 
-                        // Legacy files (v1, written before the multi-preset
-                        // schema) lack PresetName. Surface them with
-                        // PresetName=CarId so migration in TrueforcePlugin
-                        // can rewrite under the new naming convention.
                         string presetName = string.IsNullOrEmpty(f.PresetName) ? f.CarId : f.PresetName;
                         var entry = new CarPresetEntry
                         {
-                            CarId      = f.CarId,
-                            PresetName = presetName,
-                            GameName   = f.GameName ?? "",
-                            IsBuiltin  = f.IsBuiltin,
-                            Override   = f.Override,
+                            CarId         = f.CarId,
+                            PresetName    = presetName,
+                            GameName      = f.GameName ?? "",
+                            IsBuiltin     = false, // user-library files are user; built-ins come from the built-in folder
+                            PackName      = f.PackName,
+                            Author        = f.Author,
+                            Description   = f.Description,
+                            AuthorVersion = f.AuthorVersion,
+                            Override      = f.Override,
                         };
                         if (!result.TryGetValue(f.CarId, out var perCar))
                         {
-                            perCar = new Dictionary<string, CarPresetEntry>(StringComparer.Ordinal);
+                            perCar = new Dictionary<string, CarPresetEntry>(StringComparer.OrdinalIgnoreCase);
                             result[f.CarId] = perCar;
                         }
                         perCar[presetName] = entry;
                     }
                     catch (Exception ex)
                     {
-                        _log?.Invoke($"[Trueforce] Skipping malformed car preset '{Path.GetFileName(path)}': {ex.Message}");
+                        _log?.Invoke($"[TF4ALL] Skipping malformed car preset '{Path.GetFileName(path)}': {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] LoadAll car presets failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] LoadAll car presets failed: {ex.Message}");
             }
             return result;
         }
 
         /// <summary>Writes a car preset file for (carId, presetName). Empty
         /// overrides are deleted instead of written. Throws nothing; logs on
-        /// I/O failure.</summary>
-        public void Save(string carId, string presetName, string gameName, CarOverride ovr, bool isBuiltin = false)
+        /// I/O failure. <paramref name="isBuiltin"/> is accepted for API
+        /// compat but ignored: user-library writes are always non-builtin.
+        /// The optional pack/sharing metadata (packName, author, description,
+        /// authorVersion) is persisted when provided; non-import callers leave
+        /// it null and the fields stay blank (no behavior change for them).
+        ///
+        /// <paramref name="defaultAuthor"/> is the persistent author the
+        /// caller would like stamped on a new save when no per-call author
+        /// was supplied. The preserve-rule: per-field, an explicit non-null
+        /// argument wins; otherwise the existing on-disk file's value is
+        /// preserved; otherwise the defaultAuthor seeds Author only. This
+        /// makes a user re-saving a pack-imported preset keep the pack
+        /// attribution AND a user saving fresh stamp their own author, with
+        /// no per-call-site lookup churn.</summary>
+        /// <returns>true when the intended on-disk state was achieved (the
+        /// file was written, or intentionally deleted for an empty override);
+        /// false on a real I/O failure. Callers that then bind to or mark
+        /// this preset saved MUST check the result: a swallowed failure used
+        /// to report success, clear the dirty baseline, and leave a binding
+        /// to a file that was never written (the "reported success but
+        /// nothing on disk" class from the 2026-07 audit).</returns>
+        public bool Save(string carId, string presetName, string gameName, CarOverride ovr, bool isBuiltin = false,
+            string packName = null, string author = null, string description = null, string authorVersion = null,
+            string defaultAuthor = null)
         {
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
-            if (ovr == null || ovr.IsEmpty)
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
+            // Delete only when there is genuinely nothing to persist. An override
+            // with no effect sections but live community lineage (HasCommunityTracking)
+            // is kept so the Share gate doesn't lose download/upload tracking.
+            if (ovr == null || (ovr.IsEmpty && !ovr.HasCommunityTracking))
             {
-                Delete(carId, presetName);
-                return;
+                return Delete(carId, presetName);
             }
             try
             {
-                Directory.CreateDirectory(_folderPath);
-                var path = PathFor(carId, presetName);
+                var path = PathFor(gameName, carId, presetName);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+
+                // Preserve existing-on-disk attribution when the caller
+                // didn't pass a value for that specific field. Read the
+                // current file once if it exists; if it doesn't (fresh
+                // save), the defaultAuthor seeds Author.
+                string existingPackName = null, existingAuthor = null, existingDesc = null, existingVer = null;
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        var prev = JsonConvert.DeserializeObject<CarPresetFile>(File.ReadAllText(path), SafeJson.Settings);
+                        if (prev != null)
+                        {
+                            existingPackName = NullIfBlank(prev.PackName);
+                            existingAuthor   = NullIfBlank(prev.Author);
+                            existingDesc     = NullIfBlank(prev.Description);
+                            existingVer      = NullIfBlank(prev.AuthorVersion);
+                        }
+                    }
+                    catch { /* malformed prior file; treat as no prior attribution */ }
+                }
+
+                string finalAuthor =
+                    author != null   ? author
+                    : existingAuthor != null ? existingAuthor
+                    : NullIfBlank(defaultAuthor);
+
                 var f = new CarPresetFile
                 {
-                    GameName   = gameName ?? "",
-                    CarId      = carId,
-                    PresetName = presetName,
-                    IsBuiltin  = isBuiltin,
-                    Override   = ovr,
+                    GameName      = gameName ?? "",
+                    CarId         = carId,
+                    PresetName    = presetName,
+                    IsBuiltin     = false,
+                    PackName      = packName      ?? existingPackName,
+                    Author        = finalAuthor,
+                    Description   = description   ?? existingDesc,
+                    AuthorVersion = authorVersion ?? existingVer,
+                    Override      = ovr,
                 };
                 AtomicWriteAllText(path, JsonConvert.SerializeObject(f, Formatting.Indented));
+                return true;
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Save car preset '{carId}/{presetName}' failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Save car preset '{carId}/{presetName}' failed: {ex.Message}");
+                return false;
             }
         }
 
-        /// <summary>Deletes a car preset file. No-op if it doesn't exist.</summary>
-        public void Delete(string carId, string presetName)
+        /// <summary>Deletes a car preset file. Walks the tree to find the
+        /// file when game isn't passed.</summary>
+        /// <returns>true when the file is gone (deleted now or already
+        /// absent - the intended state); false only on a real I/O failure
+        /// deleting an existing file.</returns>
+        public bool Delete(string carId, string presetName)
         {
-            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
             try
             {
-                var path = PathFor(carId, presetName);
-                if (File.Exists(path)) File.Delete(path);
+                string path = FindCarFile(carId, presetName);
+                if (path != null && File.Exists(path))
+                {
+                    File.Delete(path);
+                    // Best-effort prune of the now-empty car dir.
+                    var carDir = Path.GetDirectoryName(path);
+                    try
+                    {
+                        if (Directory.Exists(carDir)
+                            && Directory.GetFileSystemEntries(carDir).Length == 0)
+                            Directory.Delete(carDir);
+                    }
+                    catch { /* leave the dir if it won't delete */ }
+                }
+                return true;   // deleted, or nothing to delete
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Trueforce] Delete car preset '{carId}/{presetName}' failed: {ex.Message}");
+                _log?.Invoke($"[TF4ALL] Delete car preset '{carId}/{presetName}' failed: {ex.Message}");
+                return false;
             }
         }
 
-        /// <summary>True iff a file already exists for (carId, presetName).</summary>
+        /// <summary>True iff a file already exists for (carId, presetName) in
+        /// some game subfolder.</summary>
         public bool Exists(string carId, string presetName)
-            => !string.IsNullOrEmpty(carId)
-            && !string.IsNullOrEmpty(presetName)
-            && File.Exists(PathFor(carId, presetName));
-
-        /// <summary>Writes (or overwrites) every built-in car preset.
-        /// Always called on Init. User-saved files (different filenames) are
-        /// untouched. If a built-in preset with the same name already exists
-        /// on disk, the file content is rewritten from the bundled JSON, so
-        /// shipping an updated default in a new plugin release just works.
-        ///
-        /// Each value in <paramref name="presetJsons"/> is the full
-        /// CarPresetFile JSON (carId, presetName, isBuiltin=true, override).
-        /// The carId and presetName are read out of the JSON to derive the
-        /// filename; the key in the dictionary is informational.</summary>
-        public int InstallOrUpdateBuiltinCarPresets(IReadOnlyDictionary<string, string> presetJsons)
         {
-            if (presetJsons == null) return 0;
-            int written = 0;
-            try
-            {
-                Directory.CreateDirectory(_folderPath);
-                foreach (var kv in presetJsons)
-                {
-                    try
-                    {
-                        var f = JsonConvert.DeserializeObject<CarPresetFile>(kv.Value);
-                        if (f == null || string.IsNullOrEmpty(f.CarId) || string.IsNullOrEmpty(f.PresetName)
-                            || f.Override == null)
-                        {
-                            _log?.Invoke($"[Trueforce] Skipping malformed builtin car preset '{kv.Key}'.");
-                            continue;
-                        }
-                        // Force IsBuiltin=true on disk regardless of what
-                        // the bundled JSON says, so a future bundled JSON
-                        // missing the flag still lands as a built-in.
-                        f.IsBuiltin = true;
-                        var path = PathFor(f.CarId, f.PresetName);
-                        var json = JsonConvert.SerializeObject(f, Formatting.Indented);
-
-                        // Skip rewrite when on-disk content already matches:
-                        // saves disk churn on every Init when nothing changed.
-                        if (File.Exists(path))
-                        {
-                            try
-                            {
-                                if (File.ReadAllText(path) == json) continue;
-                            }
-                            catch { /* fall through to write */ }
-                        }
-
-                        AtomicWriteAllText(path, json);
-                        written++;
-                    }
-                    catch (Exception ex)
-                    {
-                        _log?.Invoke($"[Trueforce] Builtin car preset '{kv.Key}' write failed: {ex.Message}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _log?.Invoke($"[Trueforce] InstallOrUpdateBuiltinCarPresets failed: {ex.Message}");
-            }
-            return written;
+            if (string.IsNullOrEmpty(carId) || string.IsNullOrEmpty(presetName)) return false;
+            return FindCarFile(carId, presetName) != null;
         }
 
-        /// <summary>Walks the folder for legacy v1 files (no '~' in the
-        /// filename) and rewrites each as a v2 file under the new
-        /// <c>&lt;carId&gt;~&lt;carId&gt;.tfcar.json</c> name with
-        /// PresetName=CarId and IsBuiltin=false. Returns the list of carIds
-        /// that were migrated so the plugin can set CarDefaults entries for
-        /// them (mapping the active per-car override to the migrated user
-        /// preset).</summary>
-        public List<string> MigrateLegacyFiles()
-        {
-            var migrated = new List<string>();
-            try
-            {
-                if (!Directory.Exists(_folderPath)) return migrated;
-                foreach (var path in Directory.GetFiles(_folderPath, "*" + FileExtension))
-                {
-                    string fileName = Path.GetFileNameWithoutExtension(path);
-                    // GetFileNameWithoutExtension strips only the last extension,
-                    // so for "x.tfcar.json" it returns "x.tfcar". Strip ".tfcar".
-                    if (fileName.EndsWith(".tfcar", StringComparison.Ordinal))
-                        fileName = fileName.Substring(0, fileName.Length - ".tfcar".Length);
-                    if (fileName.IndexOf(Separator) >= 0) continue; // already v2
-                    try
-                    {
-                        var json = File.ReadAllText(path);
-                        var f = JsonConvert.DeserializeObject<CarPresetFile>(json);
-                        if (f == null || string.IsNullOrEmpty(f.CarId) || f.Override == null) continue;
-                        // Old files always get treated as user presets named
-                        // after the carId. The user can rename via UI later.
-                        f.PresetName = string.IsNullOrEmpty(f.PresetName) ? f.CarId : f.PresetName;
-                        f.IsBuiltin  = false;
-                        f.Version    = 2;
-
-                        var newPath = PathFor(f.CarId, f.PresetName);
-                        var newJson = JsonConvert.SerializeObject(f, Formatting.Indented);
-                        AtomicWriteAllText(newPath, newJson);
-                        if (!string.Equals(path, newPath, StringComparison.OrdinalIgnoreCase))
-                            File.Delete(path);
-                        migrated.Add(f.CarId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _log?.Invoke($"[Trueforce] Skipping legacy car preset '{Path.GetFileName(path)}': {ex.Message}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _log?.Invoke($"[Trueforce] MigrateLegacyFiles failed: {ex.Message}");
-            }
-            return migrated;
-        }
-
-        // Sanitize for filesystem: replace invalid filename chars with '_',
-        // and replace any '~' with '-' so it doesn't collide with the
-        // carId/presetName separator. Preset names with backslashes, slashes,
-        // colons (etc.) are safe to use in JSON; they just can't appear in
-        // the filename.
-        private static string Sanitize(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "_";
-            var arr = s.ToCharArray();
-            var invalid = Path.GetInvalidFileNameChars();
-            for (int i = 0; i < arr.Length; i++)
-            {
-                if (arr[i] == Separator) arr[i] = '-';
-                else if (Array.IndexOf(invalid, arr[i]) >= 0) arr[i] = '_';
-            }
-            return new string(arr);
-        }
-
-        private string PathFor(string carId, string presetName)
-            => Path.Combine(_folderPath,
-                Sanitize(carId) + Separator + Sanitize(presetName) + FileExtension);
-
-        // Atomic write: stage to <path>.tmp then swap into place. A crash
-        // mid-write leaves either the old file (if the swap hadn't started)
-        // or a stray .tmp (cleaned up on next save), never a truncated
-        // .tfcar.json that the loader would then have to skip.
+        // Write through a temp file + rename so a crash mid-write doesn't
+        // leave a corrupt file. Same pattern as the rest of the persistence layer.
         private static void AtomicWriteAllText(string path, string content)
         {
-            string tmp = path + ".tmp";
-            File.WriteAllText(tmp, content);
-            if (File.Exists(path))
-                File.Replace(tmp, path, destinationBackupFileName: null, ignoreMetadataErrors: true);
-            else
-                File.Move(tmp, path);
+            // Unique temp per write: with a fixed ".tmp" name, two concurrent
+            // saves of the same file interleave into one temp and the corrupt
+            // result can get promoted over the real file.
+            string tmp = path + "." + Path.GetRandomFileName() + ".tmp";
+            try
+            {
+                File.WriteAllText(tmp, content);
+                if (File.Exists(path)) File.Replace(tmp, path, destinationBackupFileName: null);
+                else File.Move(tmp, path);
+            }
+            finally
+            {
+                // A failed write must not leave its temp behind.
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            }
+            SweepStaleTemps(path);
+        }
+
+        // Delete crash orphans: temps for this file older than an hour (the age
+        // gate keeps a concurrent writer's live temp safe), plus the legacy
+        // fixed-name temp older builds used.
+        private static void SweepStaleTemps(string path)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+                var cutoff = DateTime.UtcNow.AddHours(-1);
+                foreach (var stale in Directory.GetFiles(dir, Path.GetFileName(path) + ".*.tmp"))
+                {
+                    if (File.GetLastWriteTimeUtc(stale) < cutoff)
+                    {
+                        try { File.Delete(stale); } catch { }
+                    }
+                }
+                string legacy = path + ".tmp";
+                if (File.Exists(legacy) && File.GetLastWriteTimeUtc(legacy) < cutoff)
+                {
+                    try { File.Delete(legacy); } catch { }
+                }
+            }
+            catch { }
         }
     }
 }

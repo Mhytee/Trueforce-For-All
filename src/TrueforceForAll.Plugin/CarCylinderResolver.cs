@@ -170,8 +170,62 @@ namespace TrueforceForAll.Plugin
             return resolved != null;
         }
 
+        /// <summary>SimHub's two names for RaceRoom. Mirrored here rather than
+        /// reached for on the plugin so the resolver stays free of it.</summary>
+        private static bool IsR3EGameName(string gameName)
+        {
+            return string.Equals(gameName, "RRRE", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(gameName, "RaceRoomRacingExperience", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static Result ResolveInternal(string gameName, string carId)
         {
+            // iRacing: shipped firing-pattern seed, keyed by the sim's own
+            // CarPath. Checked first because BuiltinCarCylinders is built from
+            // chassis heuristics over other games' id formats and has nothing
+            // to say about iRacing keys, so there is no conflict to arbitrate.
+            //
+            // This is still only the FLOOR. The caller consults CarFacts first,
+            // so a user pin or a community consensus already outranks whatever
+            // lands here; nothing about that precedence lives in this method.
+            //
+            // Cylinders here are the seed's own. When the sim publishes
+            // DriverCarEngCylinderCount it flows in through the telemetry frame
+            // and is authoritative; this value only has to be right enough to
+            // pick the same layout back out of LayoutFromLegacy.
+            if (string.Equals(gameName, "IRacing", StringComparison.Ordinal)
+                && IRacingEngineSeed.TryGet(carId, out var seed))
+            {
+                return new Result
+                {
+                    Cylinders          = seed.Cylinders,
+                    IsElectric         = seed.IsElectric,
+                    Source             = "baked",
+                    EngineConfig       = seed.Config,
+                    EngineConfigSource = "baked",
+                    DisplayName        = seed.DisplayName,
+                };
+            }
+
+            // RaceRoom: shipped seed keyed by the sim's own ModelId, which
+            // SimHub hands us as the "<modelId>,<name>" carId. Same shape as
+            // the iRacing seed above, with one difference that matters: the
+            // sim publishes no cylinder count either, so this table is the
+            // whole answer rather than just the crank. The roster is closed
+            // and every car in it is covered, so a miss here means new DLC.
+            if (IsR3EGameName(gameName) && R3EEngineSeed.TryGet(carId, out var r3eSeed))
+            {
+                return new Result
+                {
+                    Cylinders          = r3eSeed.Cylinders,
+                    IsElectric         = r3eSeed.IsElectric,
+                    Source             = "baked",
+                    EngineConfig       = r3eSeed.Config,
+                    EngineConfigSource = "baked",
+                    DisplayName        = r3eSeed.DisplayName,
+                };
+            }
+
             if (BuiltinCarCylinders.TryGet(gameName, carId, out var spec))
             {
                 bool hasBakedConfig = spec.EngineConfig != EngineConfig.Auto;
@@ -288,6 +342,9 @@ namespace TrueforceForAll.Plugin
         {
             string root = GetAcInstallRoot();
             if (string.IsNullOrEmpty(root)) return null;
+            // carId comes from telemetry; keep it a single folder segment so a
+            // crafted id ("..\..\...") can't read files outside the cars folder.
+            if (!SafePath.IsSafeSegment(carId)) return null;
 
             string uiPath = Path.Combine(root, "content", "cars", carId, "ui", "ui_car.json");
             if (!File.Exists(uiPath)) return null;
@@ -558,6 +615,7 @@ namespace TrueforceForAll.Plugin
             tags = null;
             string root = GetAcInstallRoot();
             if (string.IsNullOrEmpty(root)) return false;
+            if (!SafePath.IsSafeSegment(carId)) return false;
             string uiPath = Path.Combine(root, "content", "cars", carId, "ui", "ui_car.json");
             if (!File.Exists(uiPath)) return false;
             string raw;
@@ -574,6 +632,108 @@ namespace TrueforceForAll.Plugin
                               + " " + (desc ?? "") + " " + carId;
             haystack = Regex.Replace(haystack, "&[a-zA-Z]+;", " ");
             return true;
+        }
+
+        // ----- AC local display name (ui_car.json) -----
+
+        // The name AC's own car picker shows lives in ui_car.json, right next
+        // to the fields the cylinder heuristic already reads. Kunos folder ids
+        // read as semi-descriptive ("ks_toyota_ae86"); mod ids don't read as
+        // anything at all ("bdc_streetspec_ae86_v4"), so the car-name cascade
+        // has nothing to show for either and the Car facts name box comes up
+        // blank on every AC car.
+        //
+        // DISPLAY ONLY: this never writes a CarFacts fact and never feeds a
+        // community submit. The field is mod-author-authored text ("- BDC -
+        // Street v4 - AE86"), so treating it as an assertion about the car
+        // would seed the shared consensus with pack prefixes and version
+        // strings. Typing a name into the box is still the only thing that
+        // makes a name yours and shareable.
+        //
+        // Cached per carId, misses included: the car-name cascade runs on
+        // every Car facts refresh, and a car with no ui_car.json shouldn't
+        // re-stat the disk each time. Locked because refreshes come off the
+        // UI thread while car loads come off the telemetry thread.
+        private static readonly object _acNameLock = new object();
+        private static readonly Dictionary<string, string> _acNameCache =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        public static bool TryGetAcLocalDisplayName(string carId, out string displayName)
+        {
+            displayName = null;
+            if (string.IsNullOrEmpty(carId)) return false;
+            lock (_acNameLock)
+            {
+                if (_acNameCache.TryGetValue(carId, out var cached))
+                {
+                    displayName = cached;
+                    return cached != null;
+                }
+            }
+            string resolved = ReadAcLocalDisplayName(carId);
+            lock (_acNameLock) { _acNameCache[carId] = resolved; }
+            displayName = resolved;
+            return resolved != null;
+        }
+
+        private static string ReadAcLocalDisplayName(string carId)
+        {
+            string root = GetAcInstallRoot();
+            if (string.IsNullOrEmpty(root)) return null;
+            // carId comes from telemetry; keep it a single folder segment so a
+            // crafted id ("..\..\...") can't read files outside the cars folder.
+            if (!SafePath.IsSafeSegment(carId)) return null;
+            string uiPath = Path.Combine(root, "content", "cars", carId, "ui", "ui_car.json");
+            if (!File.Exists(uiPath)) return null;
+            string raw;
+            try
+            {
+                raw = File.ReadAllText(uiPath);
+                if (raw.Length > 0 && raw[0] == '﻿') raw = raw.Substring(1);
+            }
+            catch { return null; }
+
+            string name = UnescapeJsonString(ExtractStringField(raw, "name"));
+            if (string.IsNullOrWhiteSpace(name)) return null;
+            // Mod files put line breaks and runs of spaces in this field;
+            // flatten so a one-line name box stays one line.
+            name = Regex.Replace(name, @"\s+", " ").Trim();
+            // A "name" that just restates the folder id is no better than the
+            // carId fallback the cascade already has.
+            if (string.Equals(name, carId, StringComparison.OrdinalIgnoreCase)) return null;
+            // Same ceiling the share window enforces, so a prefilled name is
+            // always something the user could have typed themselves.
+            if (name.Length > 96) name = name.Substring(0, 96).Trim();
+            return name.Length >= 2 ? name : null;
+        }
+
+        // ExtractStringField hands back the raw JSON body with escapes intact.
+        // That's fine for the keyword haystack (the detectors only look for
+        // words) but not for a string we show to the user.
+        private static string UnescapeJsonString(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.IndexOf('\\') < 0) return s;
+            return Regex.Replace(s, @"\\(u[0-9a-fA-F]{4}|.)", m =>
+            {
+                string tok = m.Groups[1].Value;
+                if (tok.Length == 5 && (tok[0] == 'u' || tok[0] == 'U'))
+                {
+                    return int.TryParse(tok.Substring(1),
+                            System.Globalization.NumberStyles.HexNumber,
+                            System.Globalization.CultureInfo.InvariantCulture, out int cp)
+                        ? ((char)cp).ToString()
+                        : m.Value;
+                }
+                switch (tok[0])
+                {
+                    case 'n': return " ";
+                    case 'r': return " ";
+                    case 't': return " ";
+                    case 'b': return "";
+                    case 'f': return "";
+                    default:  return tok;    // \" \\ \/ and anything unrecognized
+                }
+            });
         }
 
         // Detect an engine-swap override for a bake hit. Requires an explicit

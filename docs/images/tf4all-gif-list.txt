@@ -1,0 +1,13 @@
+file 'C:/Users/mhyte/Downloads/drive-download-20260810T085934Z-1-001/IMG_1.PNG'
+duration 2.0
+file 'C:/Users/mhyte/Downloads/drive-download-20260810T085934Z-1-001/IMG_2.PNG'
+duration 2.0
+file 'C:/Users/mhyte/Downloads/drive-download-20260810T085934Z-1-001/IMG_3.PNG'
+duration 2.0
+file 'C:/Users/mhyte/Downloads/drive-download-20260810T085934Z-1-001/IMG_4.PNG'
+duration 2.0
+file 'C:/Users/mhyte/Downloads/drive-download-20260810T085934Z-1-001/IMG_5.PNG'
+duration 2.0
+file 'C:/Users/mhyte/Downloads/drive-download-20260810T085934Z-1-001/IMG_6.PNG'
+duration 2.0
+file 'C:/Users/mhyte/Downloads/drive-download-20260810T085934Z-1-001/IMG_6.PNG'

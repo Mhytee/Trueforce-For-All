@@ -1,0 +1,991 @@
+{
+ "_comment": "iRacing engine firing patterns, keyed by iRacing CarPath exactly as the sim publishes it (lowercase; car families nest two levels joined by a single space, e.g. \"mx5 mx52016\"). Cylinder COUNT is not here on purpose: iRacing publishes DriverCarEngCylinderCount in its session info, so the sim is authoritative for that. Only the firing PATTERN needs a table, because the sim never says whether a V8 is cross-plane or flat-plane. This is a SEED: community CarFacts overrides any entry.",
+ "_generated": "2026-08-10",
+ "_layoutEnum": "TrueforceForAll.Plugin.Effects.EngineLayout",
+ "cars": {
+  "acuraarx06gtp": {
+   "layout": "V6_60Even",
+   "name": "Acura ARX-06 GTP",
+   "engine": "2.4L twin-turbo 90 degree V6 (Acura AR24e, HPD/HRC US)",
+   "confidence": "medium"
+  },
+  "acuransxevo22gt3": {
+   "layout": "V6_60Even",
+   "name": "Acura NSX GT3 Evo22",
+   "engine": "3.5L twin-turbo 75 degree V6 (Honda JNC1)",
+   "confidence": "medium"
+  },
+  "amvantageevogt3": {
+   "layout": "V8CrossPlane",
+   "name": "Aston Martin Vantage GT3 Evo",
+   "engine": "4.0L twin-turbo 90 degree V8, cross-plane crank (Mercedes-AMG M177 derived)"
+  },
+  "amvantagegt4": {
+   "layout": "V8CrossPlane",
+   "name": "Aston Martin Vantage GT4",
+   "engine": "4.0L twin-turbo 90 degree V8, cross-plane crank (Mercedes-AMG M177)"
+  },
+  "astonmartin dbr9": {
+   "layout": "V12_60",
+   "name": "Aston Martin DBR9 GT1",
+   "engine": "6.0L NA 60 degree DOHC 48v V12 (Aston Martin AM04, race-prepared)"
+  },
+  "audi90gto": {
+   "layout": "Inline5",
+   "name": "Audi 90 quattro GTO (1989 IMSA GTO)",
+   "engine": "2.2L turbocharged inline-5, ~720 hp"
+  },
+  "audir18": {
+   "layout": "V6_60Even",
+   "name": "Audi R18 (LMP1 TDI)",
+   "engine": "4.0L (earlier 3.7L) single-turbo 120 degree V6 TDI diesel"
+  },
+  "audir8gt3": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3",
+   "engine": "5.2L FSI V10, 90-degree bank with 18-degree split crankpins"
+  },
+  "audir8lmsevo2gt3": {
+   "layout": "V10_72",
+   "name": "Audi R8 LMS GT3 EVO II",
+   "engine": "5.2L NA 90 degree V10 with 18 degree split crankpins (even 72 degree firing)"
+  },
+  "audirs3lms": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS TCR",
+   "engine": "2.0L TFSI turbo inline-4 (EA888 based)"
+  },
+  "audirs3lmsgen2": {
+   "layout": "Inline4",
+   "name": "Audi RS 3 LMS TCR (Gen 2)",
+   "engine": "2.0L TFSI turbo inline-4 (EA888 based)"
+  },
+  "bmwlmdh": {
+   "layout": "V8FlatPlane",
+   "name": "BMW M Hybrid V8 (LMDh)",
+   "engine": "4.0L twin-turbo 90 degree V8, P66/3, flat-plane crank"
+  },
+  "bmwm2csr": {
+   "layout": "Inline6",
+   "name": "BMW M2 CS Racing",
+   "engine": "3.0L turbocharged inline-6 (N55 family)"
+  },
+  "bmwm2g87": {
+   "layout": "Inline6",
+   "name": "BMW M2 (G87)",
+   "engine": "3.0L twin-turbo inline-6 (S58)"
+  },
+  "bmwm4evogt4": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT4 EVO",
+   "engine": "3.0L twin-turbo inline-6 (S58)"
+  },
+  "bmwm4gt3": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT3",
+   "engine": "3.0L twin-turbo inline-6 (P58, S58 derived)"
+  },
+  "bmwm4gt4": {
+   "layout": "Inline6",
+   "name": "BMW M4 GT4 (F82)",
+   "engine": "3.0L twin-turbo inline-6 (S55)"
+  },
+  "bmwm8gte": {
+   "layout": "V8FlatPlane",
+   "name": "BMW M8 GTE",
+   "engine": "4.0L twin-turbo 90 degree V8, P63/1, flat-plane crank"
+  },
+  "bmwz4gt3": {
+   "layout": "V8CrossPlane",
+   "name": "BMW Z4 GT3",
+   "engine": "4.4L P65B44 naturally aspirated 90-degree V8 (S65-derived)"
+  },
+  "c6r": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Corvette C6.R GT1",
+   "engine": "7.0L LS7.R naturally aspirated pushrod V8 (GM small-block)"
+  },
+  "c7vettedp": {
+   "layout": "V8CrossPlane",
+   "name": "Chevrolet Corvette C7 Daytona Prototype",
+   "engine": "5.5L naturally aspirated ECR-built LS9-based GM small-block pushrod V8"
+  },
+  "c8rvettegte": {
+   "layout": "V8FlatPlane",
+   "name": "Chevrolet Corvette C8.R (GTE)",
+   "engine": "5.5L LT6.R DOHC flat-plane V8"
+  },
+  "cadillacctsvr": {
+   "layout": "V8CrossPlane",
+   "name": "Cadillac CTS-V Racing (CTS-V.R)",
+   "engine": "6.2L supercharged 90 degree OHV V8 (GM LSA/LS-family)"
+  },
+  "cadillacvseriesgtp": {
+   "layout": "V8CrossPlane",
+   "name": "Cadillac V-Series.R GTP (duplicate key spelling)",
+   "engine": "5.5L NA 90 degree DOHC V8 (LMC55R), cross-plane crank"
+  },
+  "cadillacvseriesrgtp": {
+   "layout": "V8CrossPlane",
+   "name": "Cadillac V-Series.R GTP (LMDh)",
+   "engine": "5.5L NA 90 degree DOHC V8 (LMC55R), cross-plane crank"
+  },
+  "chevyvettez06rgt3": {
+   "layout": "V8FlatPlane",
+   "name": "Chevrolet Corvette Z06 GT3.R",
+   "engine": "5.5L LT6.R DOHC flat-plane V8"
+  },
+  "crosscartn11": {
+   "layout": "Inline3",
+   "name": "FIA Cross Car (LifeLive XC TN11)",
+   "engine": "847cc Yamaha MT-09 inline-3 (CP3 triple), ~120 hp"
+  },
+  "dallara": {
+   "layout": "V8FlatPlane",
+   "name": "Dallara IR-05 IndyCar",
+   "engine": "3.5L Honda Indy V8, naturally aspirated 90-degree V8, 180-degree flat crank"
+  },
+  "dallaradw12": {
+   "layout": "V6_60Even",
+   "name": "Dallara DW12 IndyCar",
+   "engine": "2.2L twin-turbo 90-degree V6 (Chevrolet Indy V6 / Honda Indy V6)",
+   "confidence": "medium"
+  },
+  "dallaraf3": {
+   "layout": "Inline4",
+   "name": "Dallara F312 Formula 3",
+   "engine": "2.0L naturally aspirated inline-4 (F3 spec, ~220 hp in iRacing trim)",
+   "confidence": "medium"
+  },
+  "dallarail15": {
+   "layout": "Inline4",
+   "name": "Dallara IL-15 (Indy Lights)",
+   "engine": "2.0L AER P63 turbocharged inline-4"
+  },
+  "dallarair01": {
+   "layout": "V10_72",
+   "name": "Dallara iR-01",
+   "engine": "3.0L naturally aspirated V10, 900+ hp (fictional 1990s-F1-flavour car)",
+   "confidence": "medium"
+  },
+  "dallarair18": {
+   "layout": "V6_60Even",
+   "name": "Dallara IR-18 (NTT IndyCar)",
+   "engine": "2.2L twin-turbo V6 (Chevrolet/Ilmor or Honda HPD spec engine)",
+   "confidence": "medium"
+  },
+  "dallarap217": {
+   "layout": "V8FlatPlane",
+   "name": "Dallara P217 LMP2",
+   "engine": "4.2L Gibson GK428 naturally aspirated 90-degree V8, 600-603 hp",
+   "confidence": "medium"
+  },
+  "dirtlatemodel 350": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt Pro Late Model (350 crate)",
+   "engine": "~350 cu in GM circle-track crate small-block pushrod V8"
+  },
+  "dirtlatemodel 358": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt Limited Late Model (358)",
+   "engine": "358 cu in American small-block pushrod V8, ~666 hp"
+  },
+  "dirtlatemodel 438": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt Super Late Model (438)",
+   "engine": "438 cu in open aluminium SBC-derived pushrod V8, methanol, ~856 hp"
+  },
+  "dirtmicrosprint nonwinged": {
+   "layout": "Inline4",
+   "name": "Dirt Micro Sprint - Non-Winged",
+   "engine": "600cc four-stroke sportbike inline-4, 180 degree crank",
+   "confidence": "medium"
+  },
+  "dirtmicrosprint nonwinged outlaw": {
+   "layout": "Inline4",
+   "name": "Dirt Outlaw Micro Sprint - Non-Winged",
+   "engine": "600cc four-stroke sportbike inline-4, 180 degree crank",
+   "confidence": "medium"
+  },
+  "dirtmicrosprint winged": {
+   "layout": "Inline4",
+   "name": "Dirt Micro Sprint - Winged",
+   "engine": "600cc four-stroke sportbike inline-4 (GSX-R600 / CBR600 / R6 / ZX-6R class), 180 degree crank",
+   "confidence": "medium"
+  },
+  "dirtmicrosprint winged outlaw": {
+   "layout": "Inline4",
+   "name": "Dirt Outlaw Micro Sprint - Winged",
+   "engine": "600cc four-stroke sportbike inline-4, ~167 hp, 180 degree crank",
+   "confidence": "medium"
+  },
+  "dirtmidget": {
+   "layout": "Inline4",
+   "name": "Dirt Midget",
+   "engine": "~2.4L purpose-built midget pushrod inline-4 (Esslinger/Stanton class), ~400 hp, methanol"
+  },
+  "dirtministock": {
+   "layout": "Inline4",
+   "name": "Dirt Mini Stock",
+   "engine": "2.3L 2-valve OHC inline-4 (Ford Pinto/Lima family)"
+  },
+  "dirtmodified 358": {
+   "layout": "V8CrossPlane",
+   "name": "DIRTcar 358 Modified",
+   "engine": "358 cu in production-based American small-block pushrod V8, methanol, 4-barrel"
+  },
+  "dirtmodified bigblock": {
+   "layout": "V8CrossPlane",
+   "name": "Super DIRTcar Big Block Modified",
+   "engine": "467 cu in American big-block pushrod V8, methanol, ~650-800 hp"
+  },
+  "dirtsprint nonwinged 360": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt Sprint Car - Non-Winged 360",
+   "engine": "360 cu in sprint car pushrod 90 degree V8, methanol"
+  },
+  "dirtsprint nonwinged 410": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt Sprint Car - Non-Winged 410",
+   "engine": "410 cu in sprint car pushrod 90 degree V8, methanol"
+  },
+  "dirtsprint winged 305": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt Sprint Car - Winged 305",
+   "engine": "305 cu in stock-block pushrod 90 degree V8 (SBC architecture), methanol, ~458 hp"
+  },
+  "dirtsprint winged 360": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt Sprint Car - Winged 360",
+   "engine": "360 cu in sprint car pushrod 90 degree V8 (SBC architecture), methanol, ~720 hp"
+  },
+  "dirtsprint winged 410": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt Sprint Car - Winged 410",
+   "engine": "410 cu in sprint car pushrod 90 degree V8, methanol, ~892 hp"
+  },
+  "dirtstreetstock": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt Street Stock",
+   "engine": "350 cu in Chevrolet small-block pushrod 90 degree V8, ~425 hp"
+  },
+  "dirtumpmod": {
+   "layout": "V8CrossPlane",
+   "name": "Dirt UMP Modified",
+   "engine": "410 cu in (6.7L) pushrod V8, ~750 hp"
+  },
+  "euronascar": {
+   "layout": "V8CrossPlane",
+   "name": "EuroNASCAR V8GP (NASCAR Whelen Euro Series)",
+   "engine": "5.7L naturally aspirated pushrod V8, Team FJ supplied, Chevrolet small-block lineage, ~450 hp",
+   "confidence": "medium"
+  },
+  "ferrari296challenge": {
+   "layout": "V6_60Even",
+   "name": "Ferrari 296 Challenge",
+   "engine": "3.0L F163 twin-turbo 120 degree V6"
+  },
+  "ferrari296gt3": {
+   "layout": "V6_60Even",
+   "name": "Ferrari 296 GT3",
+   "engine": "3.0L F163 twin-turbo 120 degree V6"
+  },
+  "ferrari488gt3": {
+   "layout": "V8FlatPlane",
+   "name": "Ferrari 488 GT3",
+   "engine": "3.9L F154 twin-turbo V8, flat-plane crank"
+  },
+  "ferrari488gte": {
+   "layout": "V8FlatPlane",
+   "name": "Ferrari 488 GTE",
+   "engine": "3.9L F154 twin-turbo V8, flat-plane crank"
+  },
+  "ferrari499p": {
+   "layout": "V6_60Even",
+   "name": "Ferrari 499P (Le Mans Hypercar)",
+   "engine": "3.0L twin-turbo 120 degree V6 (F163-derived) plus front hybrid"
+  },
+  "ferrarievogt3": {
+   "layout": "V8FlatPlane",
+   "name": "Ferrari 488 GT3 Evo",
+   "engine": "3.9L F154 twin-turbo V8, flat-plane crank"
+  },
+  "fordfiestarswrc": {
+   "layout": "Inline4",
+   "name": "Ford Fiesta RS WRC",
+   "engine": "1.6L EcoBoost turbocharged inline-4"
+  },
+  "fordgt": {
+   "layout": "V8CrossPlane",
+   "name": "Ford GT GT2",
+   "engine": "5.0L naturally aspirated Ford modular 'cammer' DOHC 32-valve V8 (Roush-Yates/Elan), ~505 crank hp",
+   "confidence": "medium"
+  },
+  "fordgt gt3": {
+   "layout": "V8CrossPlane",
+   "name": "Ford GT GT3",
+   "engine": "5.0L Ford DOHC 32-valve modular-derived V8, ~550 hp",
+   "confidence": "medium"
+  },
+  "fordgt2017": {
+   "layout": "V6_60Even",
+   "name": "Ford GT (2017, GTE)",
+   "engine": "3.5L EcoBoost twin-turbo 60 degree V6"
+  },
+  "fordmustanggt3": {
+   "layout": "V8CrossPlane",
+   "name": "Ford Mustang GT3",
+   "engine": "5.4L naturally aspirated Coyote-derived V8, ~550 hp"
+  },
+  "fordmustanggt4": {
+   "layout": "V8CrossPlane",
+   "name": "Ford Mustang GT4",
+   "engine": "5.0L Coyote V8"
+  },
+  "fordv8sc": {
+   "layout": "V8CrossPlane",
+   "name": "Ford Falcon V8 Supercar",
+   "engine": "5.0L Ford race V8 (Windsor- or Boss/modular-derived, depending on era)",
+   "confidence": "medium"
+  },
+  "formulair04": {
+   "layout": "Inline4",
+   "name": "iRacing Formula iR-04 (Tatuus FIA F4)",
+   "engine": "2.0L naturally aspirated inline-4, ~160 hp"
+  },
+  "formulamazda": {
+   "layout": "Rotary2",
+   "name": "Formula Mazda / Star Mazda",
+   "engine": "1.3L Mazda 13B two-rotor Wankel"
+  },
+  "formularenault20": {
+   "layout": "Inline4",
+   "name": "Formula Renault 2.0",
+   "engine": "2.0L Renault F4R inline-4, 210 bhp"
+  },
+  "formularenault35": {
+   "layout": "V8FlatPlane",
+   "name": "Formula Renault 3.5 (Dallara T12)",
+   "engine": "3.4L Zytek ZRS03 90-degree NA V8, 530 hp @ 8500-9250 rpm, 9500 rpm limit",
+   "confidence": "low"
+  },
+  "formulavee": {
+   "layout": "Boxer4",
+   "name": "Formula Vee (Classic)",
+   "engine": "1.6L VW Type 1 air-cooled flat-four"
+  },
+  "formulavee formulavee2": {
+   "layout": "Boxer4",
+   "name": "Formula Vee (paid variant 2)",
+   "engine": "1.6L VW Type 1 air-cooled flat-four"
+  },
+  "formulavee formulavee3": {
+   "layout": "Boxer4",
+   "name": "Formula Vee (paid variant 3)",
+   "engine": "1.6L VW Type 1 air-cooled flat-four"
+  },
+  "fr500s": {
+   "layout": "V8CrossPlane",
+   "name": "Ford Mustang FR500S",
+   "engine": "4.6L 3-valve Ford Modular V8 (M-6007-MC crate), 325 bhp"
+  },
+  "hondacivictyper": {
+   "layout": "Inline4",
+   "name": "Honda Civic Type R TCR (FK8)",
+   "engine": "2.0L K20C1 turbo inline-4"
+  },
+  "hpdarx01c": {
+   "layout": "V8FlatPlane",
+   "name": "HPD ARX-01c",
+   "engine": "3.4L Acura/HPD LM-V8, 90-degree NA V8, ~480 hp, 10000 rpm",
+   "confidence": "low"
+  },
+  "hyundaielantracn7": {
+   "layout": "Inline4",
+   "name": "Hyundai Elantra N TCR (CN7)",
+   "engine": "2.0L Theta II turbo inline-4"
+  },
+  "hyundaivelostern": {
+   "layout": "Inline4",
+   "name": "Hyundai Veloster N TCR",
+   "engine": "2.0L Theta II turbo inline-4"
+  },
+  "indypropm18": {
+   "layout": "Inline4",
+   "name": "Indy Pro 2000 / USF Pro 2000 (Tatuus PM-18)",
+   "engine": "2.0L Mazda MZR-PM18A inline-4, 275 hp, built by Elite Engines",
+   "confidence": "medium"
+  },
+  "jettatdi": {
+   "layout": "Inline4",
+   "name": "VW Jetta TDI Cup",
+   "engine": "2.0L TDI turbodiesel inline-4"
+  },
+  "kiaoptima": {
+   "layout": "Inline4",
+   "name": "Kia Optima (Pirelli World Challenge)",
+   "engine": "2.0L Theta II turbo inline-4, ~375 bhp"
+  },
+  "lamborghinievogt3": {
+   "layout": "V10_72",
+   "name": "Lamborghini Huracan GT3 EVO",
+   "engine": "5.2L 90-degree V10 (split-pin crank, even 72-degree firing)"
+  },
+  "latemodel2023": {
+   "layout": "V8CrossPlane",
+   "name": "Late Model Stock (2023)",
+   "engine": "GM 604 crate, 350 cu in (5.7L) naturally aspirated steel-block pushrod V8, 500 bhp, 7200 rpm"
+  },
+  "legends dirtford34c": {
+   "layout": "Inline4",
+   "name": "Dirt Legends Ford '34 Coupe",
+   "engine": "1250cc air-cooled Yamaha inline-4 motorcycle engine (XJ1250/FJ1200 family), 180 degree crank, ~122 hp",
+   "confidence": "medium"
+  },
+  "legends ford34c": {
+   "layout": "Inline4",
+   "name": "Legends Ford '34 Coupe",
+   "engine": "Yamaha XJ1250 / FJ1200-derived 1250cc air-cooled inline-4"
+  },
+  "legends ford34c rookie": {
+   "layout": "Inline4",
+   "name": "Legends Ford '34 Coupe Rookie",
+   "engine": "Yamaha XJ1250 / FJ1200-derived 1250cc air-cooled inline-4"
+  },
+  "ligierjsp320": {
+   "layout": "V8CrossPlane",
+   "name": "Ligier JS P320 LMP3",
+   "engine": "5.6L Nissan VK56 V8, 455 hp"
+  },
+  "lotus49": {
+   "layout": "V8FlatPlane",
+   "name": "Lotus 49",
+   "engine": "3.0L Ford Cosworth DFV 90-degree V8"
+  },
+  "lotus79": {
+   "layout": "V8FlatPlane",
+   "name": "Lotus 79",
+   "engine": "3.0L Ford Cosworth DFV 90-degree V8"
+  },
+  "mclaren570sgt4": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 570S GT4",
+   "engine": "3.8L twin-turbo M838TE V8"
+  },
+  "mclaren720sgt3": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren 720S GT3",
+   "engine": "4.0L twin-turbo M840T V8"
+  },
+  "mclarenmp4": {
+   "layout": "V8FlatPlane",
+   "name": "McLaren MP4-12C GT3",
+   "engine": "3.8L twin-turbo M838T V8 (restricted to ~500 bhp)"
+  },
+  "mclarenmp430": {
+   "layout": "V6_60Even",
+   "name": "McLaren MP4-30",
+   "engine": "1.6L Honda RA615H turbo-hybrid V6 (90-degree V-angle, even-fire)",
+   "confidence": "medium"
+  },
+  "mercedesamgevogt3": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3 Evo",
+   "engine": "6.2L (6,208 cc) M159 naturally aspirated 90-degree V8"
+  },
+  "mercedesamggt3": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT3",
+   "engine": "6.2/6.3L M159 naturally aspirated 90-degree V8 (M156-derived)"
+  },
+  "mercedesamggt4": {
+   "layout": "V8CrossPlane",
+   "name": "Mercedes-AMG GT4",
+   "engine": "4.0L M178 twin-turbo hot-V V8, up to 510 hp"
+  },
+  "mercedesw12": {
+   "layout": "V6_60Even",
+   "name": "Mercedes-AMG F1 W12 E Performance",
+   "engine": "1.6L Mercedes-AMG M12 E Performance turbo-hybrid V6 (90-degree, even-fire)",
+   "confidence": "medium"
+  },
+  "mercedesw13": {
+   "layout": "V6_60Even",
+   "name": "Mercedes-AMG F1 W13 E Performance",
+   "engine": "1.6L Mercedes-AMG M13 E Performance turbo-hybrid V6 (90-degree, even-fire)",
+   "confidence": "medium"
+  },
+  "ministock": {
+   "layout": "Inline4",
+   "name": "Mini Stock",
+   "engine": "2.3L OHC inline-4 (Ford Lima style, 2 valve)"
+  },
+  "mx5 cup": {
+   "layout": "Inline4",
+   "name": "Mazda MX-5 Cup",
+   "engine": "2.0L inline-4"
+  },
+  "mx5 mx52016": {
+   "layout": "Inline4",
+   "name": "Mazda MX-5 Cup (2016, ND)",
+   "engine": "2.0L Skyactiv-G inline-4"
+  },
+  "mx5 roadster": {
+   "layout": "Inline4",
+   "name": "Mazda MX-5 Roadster",
+   "engine": "2.0L inline-4"
+  },
+  "nissangtpzxt": {
+   "layout": "V6_60Even",
+   "name": "Nissan GTP ZX-Turbo",
+   "engine": "3.0L Electramotive-developed VG30ET turbo V6, ~750 hp"
+  },
+  "porsche718gt4": {
+   "layout": "Boxer6",
+   "name": "Porsche 718 Cayman GT4 Clubsport MR",
+   "engine": "3.8L naturally aspirated flat-six (MA1-family, 911-derived), ~425 hp"
+  },
+  "porsche911cup": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup (991)",
+   "engine": "4.0L naturally aspirated flat-6"
+  },
+  "porsche911rgt3": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R",
+   "engine": "4.0L (later 4.2L) naturally aspirated flat-6"
+  },
+  "porsche919": {
+   "layout": "V4",
+   "name": "Porsche 919 Hybrid",
+   "engine": "2.0L (1,994 cc) 90-degree single-turbo V4 plus hybrid, ~500 hp ICE"
+  },
+  "porsche963gtp": {
+   "layout": "V8FlatPlane",
+   "name": "Porsche 963 GTP",
+   "engine": "4.6L twin-turbo V8 (918 Spyder / RS Spyder lineage), ~640-680 hp"
+  },
+  "porsche991rsr": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 RSR (991)",
+   "engine": "4.0L / 4.2L naturally aspirated flat-six (mid-mounted in the 991.2 RSR)"
+  },
+  "porsche9922cup": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup (992)",
+   "engine": "4.0L naturally aspirated flat-six, ~510 hp"
+  },
+  "porsche992cup": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 Cup (992)",
+   "engine": "4.0L naturally aspirated flat-6"
+  },
+  "porsche992rgt3": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 GT3 R (992)",
+   "engine": "4.2L naturally aspirated flat-six, ~565 hp"
+  },
+  "porschemissionr": {
+   "layout": "Electric",
+   "name": "Porsche Mission R",
+   "engine": "Dual permanent-magnet electric motors (front ~429 hp, rear ~644 hp), 80 kWh 900 V battery"
+  },
+  "protrucks pro2lite": {
+   "layout": "V8CrossPlane",
+   "name": "Lucas Oil Off-Road PRO 2 Lite",
+   "engine": "410 cubic inch American pushrod V8, ~400 hp",
+   "confidence": "medium"
+  },
+  "protrucks pro2truck": {
+   "layout": "V8CrossPlane",
+   "name": "Lucas Oil Off-Road PRO 2 Truck",
+   "engine": "410 cubic inch spec pushrod V8 (Midwest-spec, mandatory from 2021; previously 440 ci unlimited, ~900 hp)",
+   "confidence": "medium"
+  },
+  "protrucks pro4truck": {
+   "layout": "V8CrossPlane",
+   "name": "Lucas Oil Off Road Pro 4 Truck",
+   "engine": "410 cu in (6.7L) naturally aspirated 90-degree pushrod V8, 700-900 hp",
+   "confidence": "medium"
+  },
+  "radical radicalsr10": {
+   "layout": "Inline4",
+   "name": "Radical SR10",
+   "engine": "2.3L turbocharged Ford EcoBoost inline-4"
+  },
+  "radical sr8": {
+   "layout": "V8FlatPlane",
+   "name": "Radical SR8",
+   "engine": "RPE-V8 (Powertec) 2.6-3.0L, Hayabusa-head-based, 10,500 rpm"
+  },
+  "radicalsr10": {
+   "layout": "Inline4",
+   "name": "Radical SR10",
+   "engine": "2.3L Ford EcoBoost turbocharged inline-4 with bespoke Garrett G-series turbo, 425 hp / 380 lb-ft"
+  },
+  "raygr22": {
+   "layout": "Inline4",
+   "name": "Ray GR22 (Formula Ford 1600)",
+   "engine": "1.6L Ford Kent pushrod inline-4"
+  },
+  "renaultcliocup": {
+   "layout": "Inline4",
+   "name": "Renault Clio R.S. V Cup",
+   "engine": "1.3L turbocharged Renault HR13 inline-4"
+  },
+  "rileydp": {
+   "layout": "V8CrossPlane",
+   "name": "Riley Mk XX Daytona Prototype",
+   "engine": "~5.0L Pontiac-branded GM small-block-derived pushrod 90-degree V8, ~500 hp",
+   "confidence": "medium"
+  },
+  "rt2000": {
+   "layout": "Inline4",
+   "name": "Skip Barber Formula 2000 (Van Diemen RT2000)",
+   "engine": "2.0L SOHC Dodge inline-4, 150hp"
+  },
+  "rufrt12r awd": {
+   "layout": "Boxer6",
+   "name": "RUF RT12R (AWD)",
+   "engine": "3.8L twin-turbocharged flat-6 (Porsche 997 based)"
+  },
+  "rufrt12r rwd": {
+   "layout": "Boxer6",
+   "name": "RUF RT12R (RWD)",
+   "engine": "3.8L twin-turbocharged flat-6 (Porsche 997 based)"
+  },
+  "rufrt12r track": {
+   "layout": "Boxer6",
+   "name": "RUF RT12R Track",
+   "engine": "3.8L twin-turbocharged flat-6 (Porsche 997 based)"
+  },
+  "rufrt12r track cspec": {
+   "layout": "Boxer6",
+   "name": "RUF RT12R Track C-Spec",
+   "engine": "3.8L twin-turbocharged flat-6 (Porsche 997 based)"
+  },
+  "safety pcporsche911cup": {
+   "layout": "Boxer6",
+   "name": "Porsche 911 Cup pace car (safety car)",
+   "engine": "4.0L naturally aspirated flat-6"
+  },
+  "silvercrown": {
+   "layout": "V8CrossPlane",
+   "name": "USAC Silver Crown (C&R Racing)",
+   "engine": "355 cu in production-based American V8, methanol, ~819 hp in iRacing",
+   "confidence": "medium"
+  },
+  "skmodified": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR SK Modified",
+   "engine": "358 cu in low-compression small-block pushrod V8, 2-barrel Holley, ~385 hp"
+  },
+  "skmodified tour": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Whelen Tour Modified",
+   "engine": "358 cu in small-block pushrod V8, 4-barrel Holley, 600+ hp"
+  },
+  "solstice": {
+   "layout": "Inline4",
+   "name": "Pontiac Solstice",
+   "engine": "GM Ecotec inline-4 (2.4L LE5 NA in the base car; the GXP uses the 2.0L LNF turbo)",
+   "confidence": "medium"
+  },
+  "solstice rookie": {
+   "layout": "Inline4",
+   "name": "Pontiac Solstice (Rookie)",
+   "engine": "GM Ecotec inline-4, 177 hp",
+   "confidence": "medium"
+  },
+  "specracer": {
+   "layout": "Inline4",
+   "name": "SCCA Spec Racer Ford (Gen3)",
+   "engine": "1.6L Ford inline-4 (DOHC, 135hp)"
+  },
+  "sprint": {
+   "layout": "V8CrossPlane",
+   "name": "USAC 410 Sprint Car",
+   "engine": "410 cu in (6.7L) all-aluminum GM small-block-based pushrod V8, methanol, ~880-900 hp"
+  },
+  "srx": {
+   "layout": "V8CrossPlane",
+   "name": "Fury Race Cars SRX",
+   "engine": "Ilmor 396 LS-based pushrod V8, 700 hp / 530 lb-ft"
+  },
+  "stockcarbrasil corolla": {
+   "layout": "V8CrossPlane",
+   "name": "Stock Car Brasil Toyota Corolla",
+   "engine": "Spec naturally aspirated pushrod V8 (same JL Chevrolet-derived unit as the Cruze), ~550hp",
+   "confidence": "medium"
+  },
+  "stockcarbrasil cruze": {
+   "layout": "V8CrossPlane",
+   "name": "Stock Car Brasil Chevrolet Cruze",
+   "engine": "~5.7L to 6.8L naturally aspirated pushrod V8 (JL-supplied, Chevrolet small-block/LS derived), ~550hp",
+   "confidence": "medium"
+  },
+  "stockcars buicklesabre87": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup 1987 Buick LeSabre",
+   "engine": "358 cu in pushrod V8 (Chevrolet small-block based)"
+  },
+  "stockcars camarozl12018": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup 2018 Chevrolet Camaro ZL1",
+   "engine": "358 cu in (5.9L) pushrod V8, Chevrolet R07"
+  },
+  "stockcars chevycamarozl12022": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup Next Gen Chevrolet Camaro ZL1",
+   "engine": "358 cu in (5.9L) pushrod V8, Chevrolet R07"
+  },
+  "stockcars chevymontecarlo03": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup 2003 Chevrolet Monte Carlo",
+   "engine": "358 cu in (5.9L) pushrod V8, Chevrolet SB2"
+  },
+  "stockcars chevymontecarlo87": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup 1987 Chevrolet Monte Carlo",
+   "engine": "358 cu in small-block Chevrolet pushrod V8"
+  },
+  "stockcars chevyss": {
+   "layout": "V8CrossPlane",
+   "name": "[Legacy] NASCAR Cup Chevrolet SS - 2013",
+   "engine": "5.86L (358 cu in) Chevrolet R07 pushrod 90-degree V8, ~850 hp"
+  },
+  "stockcars fordfusion": {
+   "layout": "V8CrossPlane",
+   "name": "[Legacy] NASCAR Cup Ford Fusion - 2016",
+   "engine": "5.86L (358 cu in) Ford FR9 pushrod 90-degree V8, ~850 hp"
+  },
+  "stockcars fordmustang2019": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup 2019 Ford Mustang",
+   "engine": "358 cu in (5.9L) pushrod V8, Ford FR9"
+  },
+  "stockcars fordmustang2022": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup Next Gen Ford Mustang",
+   "engine": "358 cu in (5.9L) pushrod V8, Ford FR9"
+  },
+  "stockcars fordtaurus03": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup 2003 Ford Taurus",
+   "engine": "358 cu in (5.9L) pushrod V8, Ford Yates (Windsor-derived)"
+  },
+  "stockcars fordthunderbird87": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup 1987 Ford Thunderbird",
+   "engine": "358 cu in Ford Windsor-based pushrod V8"
+  },
+  "stockcars impala": {
+   "layout": "V8CrossPlane",
+   "name": "[Legacy] NASCAR Cup Chevrolet Impala COT - 2009",
+   "engine": "5.86L (358 cu in) Chevrolet R07 pushrod 90-degree V8"
+  },
+  "stockcars pontiacgrandprix87": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup 1987 Pontiac Grand Prix",
+   "engine": "358 cu in pushrod V8 (Chevrolet small-block based)"
+  },
+  "stockcars toyotacamry": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup Toyota Camry",
+   "engine": "358 cu in (5.9L) pushrod V8, Toyota/TRD"
+  },
+  "stockcars toyotacamry2022": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Cup Next Gen Toyota Camry TRD",
+   "engine": "358 cu in (5.9L) pushrod V8, Toyota/TRD"
+  },
+  "stockcars2 arcachevy25": {
+   "layout": "V8CrossPlane",
+   "name": "ARCA Menards Series Chevrolet SS (2025)",
+   "engine": "Ilmor 396 spec V8 (6.5L, Chevrolet Performance LSX block, pushrod, 90 degree)"
+  },
+  "stockcars2 arcaford25": {
+   "layout": "V8CrossPlane",
+   "name": "ARCA Menards Series Ford Mustang (2025)",
+   "engine": "Ilmor 396 spec V8 (6.5L, Chevrolet Performance LSX block, pushrod, 90 degree)"
+  },
+  "stockcars2 arcatoyota25": {
+   "layout": "V8CrossPlane",
+   "name": "ARCA Menards Series Toyota Camry (2025)",
+   "engine": "Ilmor 396 spec V8 (6.5L, Chevrolet Performance LSX block, pushrod, 90 degree)"
+  },
+  "stockcars2 camaro2019": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Xfinity Chevrolet Camaro",
+   "engine": "358 cu in (5.9L) pushrod V8"
+  },
+  "stockcars2 camry2015": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Xfinity Toyota Camry (2015)",
+   "engine": "5.86L (358 cu in) NA pushrod 90 degree V8, cross-plane crank (TRD NASCAR V8)"
+  },
+  "stockcars2 chevy": {
+   "layout": "V8CrossPlane",
+   "name": "[Legacy] NASCAR Nationwide Chevrolet",
+   "engine": "5.86L (358 cu in) small-block Chevrolet pushrod 90-degree V8"
+  },
+  "stockcars2 chevy cot": {
+   "layout": "V8CrossPlane",
+   "name": "[Legacy] NASCAR Nationwide Chevrolet Impala - 2012",
+   "engine": "5.86L (358 cu in) small-block Chevrolet (SB2/R07) pushrod V8"
+  },
+  "stockcars2 chevy gen4cup": {
+   "layout": "V8CrossPlane",
+   "name": "[Legacy] Gen 4 Cup (Chevrolet)",
+   "engine": "5.86L (358 cu in) SB2 small-block Chevrolet pushrod V8, ~800 hp"
+  },
+  "stockcars2 mustang2019": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Xfinity Ford Mustang",
+   "engine": "358 cu in (5.9L) pushrod V8"
+  },
+  "stockcars2 nwcamaro2014": {
+   "layout": "V8CrossPlane",
+   "name": "[Legacy] NASCAR Xfinity Chevrolet Camaro - 2014",
+   "engine": "5.86L (358 cu in) small-block Chevrolet pushrod 90-degree V8"
+  },
+  "stockcars2 nwford2013": {
+   "layout": "V8CrossPlane",
+   "name": "[Legacy] NASCAR Xfinity Ford Mustang - 2016",
+   "engine": "5.86L (358 cu in) Ford NASCAR pushrod 90-degree V8 (FR9-derived)"
+  },
+  "stockcars2 supra2019": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Xfinity Toyota Supra",
+   "engine": "5.86L (358 cu in) TRD pushrod 90-degree V8"
+  },
+  "streetstock": {
+   "layout": "V8CrossPlane",
+   "name": "Street Stock (Panther C1)",
+   "engine": "5.8L / 358 cu in American production-based V8, 375 hp, 360 lb-ft",
+   "confidence": "medium"
+  },
+  "streetstock streetstock2": {
+   "layout": "V8CrossPlane",
+   "name": "Street Stock - Casino M2",
+   "engine": "5.8L / 358 cu in American production-based V8, 375 hp",
+   "confidence": "medium"
+  },
+  "streetstock streetstock3": {
+   "layout": "V8CrossPlane",
+   "name": "Street Stock - Eagle T3",
+   "engine": "5.8L / 358 cu in American production-based V8, 375 hp",
+   "confidence": "medium"
+  },
+  "subaruwrxsti": {
+   "layout": "Boxer4",
+   "name": "Subaru WRX STI Rallycross Supercar",
+   "engine": "2.0L turbocharged flat-4 boxer (Vermont SportsCar VT1x/VT17x build), 585hp"
+  },
+  "supercars chevycamarogen3": {
+   "layout": "V8CrossPlane",
+   "name": "Supercars Gen3 Chevrolet Camaro",
+   "engine": "5.7L naturally aspirated LTR pushrod V8 (KRE-built, GM LS/LT small-block architecture), ~600hp"
+  },
+  "supercars fordmustanggen3": {
+   "layout": "V8CrossPlane",
+   "name": "Supercars Gen3 Ford Mustang",
+   "engine": "5.4L naturally aspirated Coyote-derived quad-cam 32-valve V8, aluminium block, ~600hp",
+   "confidence": "medium"
+  },
+  "superformulalights324": {
+   "layout": "Inline3",
+   "name": "Super Formula Lights (Dallara 324)",
+   "engine": "1.6L turbocharged Toyota TGE33 inline-3 by TOM'S (GR Yaris G16E-GTS derived)"
+  },
+  "superformulasf23 honda": {
+   "layout": "Inline4",
+   "name": "Super Formula SF23 (Honda)",
+   "engine": "2.0L turbocharged Honda HR-417E inline-4"
+  },
+  "superformulasf23 toyota": {
+   "layout": "Inline4",
+   "name": "Super Formula SF23 (Toyota)",
+   "engine": "2.0L turbocharged Toyota TRD RI4A inline-4"
+  },
+  "superlatemodel": {
+   "layout": "V8CrossPlane",
+   "name": "Super Late Model",
+   "engine": "~400 cu in small-block-derived crate/spec V8",
+   "confidence": "medium"
+  },
+  "toyotagr86": {
+   "layout": "Boxer4",
+   "name": "Toyota GR86",
+   "engine": "2.4L naturally aspirated Subaru FA24 flat-4"
+  },
+  "trucks fordf150": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Truck Ford F150",
+   "engine": "Ford NASCAR pushrod 90-degree V8 (FR9-era 358 cu in) or Ilmor NT1 spec V8"
+  },
+  "trucks ram2026": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Truck Ram 1500",
+   "engine": "Ilmor-built NASCAR spec pushrod 90-degree V8"
+  },
+  "trucks silverado": {
+   "layout": "V8CrossPlane",
+   "name": "[Legacy] NASCAR Truck Chevrolet Silverado - 2008",
+   "engine": "5.86L (358 cu in) small-block-derived NASCAR truck pushrod V8"
+  },
+  "trucks silverado2019": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Truck Chevrolet Silverado",
+   "engine": "Ilmor NT1 spec pushrod V8 (LS-architecture, ~396 cu in) or OEM 358 cu in pushrod V8"
+  },
+  "trucks toyotatundra2022": {
+   "layout": "V8CrossPlane",
+   "name": "NASCAR Truck Toyota Tundra TRD Pro",
+   "engine": "Ilmor NT1 spec pushrod V8 / TRD 358 cu in pushrod 90-degree V8"
+  },
+  "usf2000usf17": {
+   "layout": "Inline4",
+   "name": "Tatuus USF-17 (USF2000)",
+   "engine": "2.0L naturally aspirated Mazda MZR inline-4, 175hp (Elite Engines)"
+  },
+  "v8supercars ford2014": {
+   "layout": "V8CrossPlane",
+   "name": "Ford Falcon FG Supercar (2014)",
+   "engine": "5.0L Ford quad-cam (Coyote/Boss-derived) race V8",
+   "confidence": "medium"
+  },
+  "v8supercars fordmustanggt": {
+   "layout": "V8CrossPlane",
+   "name": "Ford Mustang Supercar (Gen2)",
+   "engine": "5.0L quad-cam Coyote-derived race V8",
+   "confidence": "medium"
+  },
+  "v8supercars holden2014": {
+   "layout": "V8CrossPlane",
+   "name": "Holden Commodore VF Supercar (2014)",
+   "engine": "5.0L GM small-block (LS-derived) pushrod 90-degree V8"
+  },
+  "v8supercars holden2019": {
+   "layout": "V8CrossPlane",
+   "name": "Holden Commodore ZB Supercar (2019)",
+   "engine": "5.0L GM small-block (LS-derived) pushrod 90-degree V8"
+  },
+  "vwbeetlegrc": {
+   "layout": "Inline4",
+   "name": "Volkswagen Beetle GRC",
+   "engine": "1.6L turbocharged TSI inline-4, 544hp"
+  },
+  "vwbeetlegrc lite": {
+   "layout": "Inline4",
+   "name": "VW Beetle GRC Lite",
+   "engine": "~2.0L turbocharged inline-4, 300hp (GRC/RX Lites spec, Olsbergs MSE chassis)",
+   "confidence": "medium"
+  },
+  "williamsfw31": {
+   "layout": "V8FlatPlane",
+   "name": "Williams FW31",
+   "engine": "2.4L Toyota RVX-09 90-degree V8"
+  }
+ }
+}

@@ -73,8 +73,8 @@ namespace TrueforceForAll.Plugin
         /// "latest" upgrade target; when false (Stable, the default) they're
         /// skipped. Assigning re-runs the latest selection over the already
         /// fetched <see cref="AllReleases"/>, so a channel switch at runtime
-        /// refreshes the update button with no network round-trip. The
-        /// plugin sets this from Settings.BetaUpdatesEnabled.</summary>
+        /// refreshes the banner/modal with no network round-trip. The plugin
+        /// sets this from Settings.BetaUpdatesEnabled.</summary>
         public bool IncludePrereleases
         {
             get => _includePrereleases;
@@ -86,12 +86,6 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>True when the release currently offered as "latest" is a
-        /// GitHub prerelease, i.e. accepting the update moves this install
-        /// onto the beta branch. Drives the pre-beta backup in the update
-        /// modal (a stable-to-beta crossing snapshots user data first).</summary>
-        public bool LatestIsPrerelease { get; private set; }
-
         public Action<string> Logger { get; set; }
 
         public UpdateChecker()
@@ -100,15 +94,50 @@ namespace TrueforceForAll.Plugin
                              ?? new Version(0, 0, 0, 0);
         }
 
-        /// <summary>True iff the latest release tag parses to a higher version
-        /// than the running plugin's assembly version. Returns false on any
-        /// parse failure or when no check has succeeded yet.</summary>
+        /// <summary>True iff the latest eligible release is a higher version than
+        /// the running plugin's assembly version, OR the switch-back case: a beta
+        /// build on the Stable channel offers the newest stable release even
+        /// though it's older (see <see cref="IsDowngrade"/>). Returns false on
+        /// any parse failure or when no check has succeeded yet.</summary>
         public bool IsUpdateAvailable
         {
             get
             {
                 var latest = ParseVersion(LatestVersionTag);
-                return latest != null && latest > CurrentVersion;
+                if (latest == null) return false;
+                return latest > CurrentVersion || IsDowngrade;
+            }
+        }
+
+        /// <summary>True when the RUNNING build matches a GitHub release flagged
+        /// prerelease, i.e. this install came from the beta branch. Computed from
+        /// the fetched release list; false until a check succeeds.</summary>
+        public bool CurrentVersionIsPrerelease { get; private set; }
+
+        /// <summary>True when the release currently offered as "latest" is a
+        /// GitHub prerelease, i.e. accepting the update moves this install onto
+        /// the beta branch. Drives the pre-beta backup in the update modal
+        /// (a stable-to-beta crossing snapshots user data first).</summary>
+        public bool LatestIsPrerelease { get; private set; }
+
+        /// <summary>Set by the plugin: true when the user EXPLICITLY toggled the
+        /// beta channel off (Settings.BetaUpdatesEnabled == false) after having
+        /// been enrolled on this very build. Distinguishes "I want back on main"
+        /// from a beta build that simply hasn't been auto-enrolled yet.</summary>
+        public bool OfferStableSwitchBack { get; set; }
+
+        /// <summary>True when the offered "update" actually moves BACK to the
+        /// newest stable release: the user runs a beta (prerelease) build and has
+        /// explicitly toggled the beta channel off, so the newest eligible release
+        /// is older than the running version. The UI phrases this as switching
+        /// back to the main release rather than an upgrade.</summary>
+        public bool IsDowngrade
+        {
+            get
+            {
+                if (_includePrereleases || !OfferStableSwitchBack || !CurrentVersionIsPrerelease) return false;
+                var latest = ParseVersion(LatestVersionTag);
+                return latest != null && Cmp3(latest, CurrentVersion) < 0;
             }
         }
 
@@ -120,6 +149,25 @@ namespace TrueforceForAll.Plugin
         {
             var c = CurrentVersion ?? new Version(0, 0, 0);
             LatestVersionTag = "v" + new Version(c.Major, c.Minor + 1, 0).ToString(3);
+        }
+
+        /// <summary>Test hook (UPDATEPOLL access code): when true, EVERY CheckAsync
+        /// forces the result to "a newer release exists" (one minor above the
+        /// running build) once the network call has run. Distinct from
+        /// DebugSimulateUpdateAvailable, which a subsequent real CheckAsync would
+        /// immediately overwrite: this re-applies the fake on each poll, so a
+        /// tester can confirm that a BACKGROUND re-check discovers a release that
+        /// "shipped after launch" and surfaces the banner on its own, with no
+        /// restart and no real GitHub release. Sticky until DebugClearForcedUpdate.</summary>
+        public bool DebugForceUpdateAvailable { get; set; }
+
+        /// <summary>Clear the UPDATEPOLL override and drop the simulated tag so the
+        /// banner hides immediately; the next real CheckAsync repopulates the true
+        /// state.</summary>
+        public void DebugClearForcedUpdate()
+        {
+            DebugForceUpdateAvailable = false;
+            LatestVersionTag = null;
         }
 
         /// <summary>Display string for the latest tag, with the leading "v"
@@ -174,12 +222,12 @@ namespace TrueforceForAll.Plugin
                         }
                         AllReleases = list;
 
-                        // Pick the newest release eligible for the current
-                        // channel (Stable skips prereleases; Beta includes
-                        // them). Factored out so a channel switch at runtime
-                        // can re-select without a new fetch.
+                        // Publish the "latest" upgrade target from the fresh list,
+                        // honoring the current channel (Stable skips prereleases;
+                        // Beta includes them). Factored out so a channel switch at
+                        // runtime re-selects off the cached list with no re-fetch.
                         SelectLatest();
-                        LastError = null;
+                        LastError        = null;
 
                         Log($"Update check OK: parsed={list.Count} latest={LatestVersionTag} current={CurrentVersion} hasUpdate={IsUpdateAvailable}");
                     }
@@ -194,23 +242,34 @@ namespace TrueforceForAll.Plugin
                 LastError = ex.Message;
                 Log($"Update check failed: {ex.GetType().Name}: {ex.Message}");
             }
+            finally
+            {
+                // UPDATEPOLL test override: re-apply the simulated newer release
+                // after every poll (success OR failure) so a background re-check
+                // visibly surfaces the banner without a real GitHub release.
+                if (DebugForceUpdateAvailable) DebugSimulateUpdateAvailable();
+            }
         }
 
-        /// <summary>Pick the newest release eligible for the current channel
-        /// and publish it into the Latest* / DownloadUrl fields the update
-        /// button and modal read. On Stable, prereleases are skipped; on Beta
-        /// they count. Operates purely on the cached <see cref="AllReleases"/>,
-        /// so it's cheap and safe to call on a channel switch as well as
-        /// after each fetch.</summary>
+        /// <summary>Pick the newest release eligible for the current channel and
+        /// publish it into the Latest* / DownloadUrl fields the banner and update
+        /// modal read. On Stable, prereleases are skipped; on Beta they count.
+        /// Operates purely on the cached <see cref="AllReleases"/>, so it's cheap
+        /// and safe to call on a channel switch as well as after each fetch.</summary>
         private void SelectLatest()
         {
             ReleaseInfo latest = null;
+            bool currentIsPre = false;
             foreach (var r in AllReleases)
             {
                 if (r == null || r.Version == null) continue;
+                // Is the RUNNING build one of the prereleases? Drives beta-channel
+                // auto-enroll and the stable-channel switch-back (downgrade) offer.
+                if (r.IsPrerelease && Cmp3(r.Version, CurrentVersion) == 0) currentIsPre = true;
                 if (r.IsPrerelease && !_includePrereleases) continue;
                 if (latest == null || r.Version > latest.Version) latest = r;
             }
+            CurrentVersionIsPrerelease = currentIsPre;
             LatestIsPrerelease = latest?.IsPrerelease == true;
             LatestVersionTag = latest?.TagName;
             ReleaseNotes     = latest?.Body;
@@ -228,10 +287,20 @@ namespace TrueforceForAll.Plugin
         {
             if (string.IsNullOrEmpty(DownloadUrl))
                 throw new InvalidOperationException("No installer URL on the latest release.");
+            // Refuse any DownloadUrl that doesn't match the canonical
+            // Mhytee/Trueforce-For-All release-download path. Stops a
+            // hostile or compromised release feed from redirecting the
+            // user to an attacker-controlled installer.
+            if (!ChannelValidation.IsTrustedGitHubReleaseUrl(DownloadUrl))
+                throw new InvalidOperationException($"Untrusted download URL: {DownloadUrl}");
 
             EnableTls12();
             string fileName = $"TrueforceForAll-Setup-{LatestVersionDisplay}.exe";
-            string destPath = Path.Combine(Path.GetTempPath(), fileName);
+            // TOCTOU defense: write into a GUID-named .tmp first so a
+            // pre-existing predictable-name file at the destination can't
+            // be swapped in before we open it. The final move + hidden attr
+            // happens once the bytes are fully on disk.
+            string destPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".tmp");
 
             // Per-request timeout is intentionally generous (slow connections
             // pulling a multi-MB installer); cancellationToken is the fast path
@@ -246,6 +315,7 @@ namespace TrueforceForAll.Plugin
                     using (var src = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false))
                     using (var dst = File.Create(destPath))
                     {
+                        try { File.SetAttributes(destPath, FileAttributes.Hidden); } catch { }
                         var buf = new byte[81920];
                         long received = 0;
                         int read;
@@ -257,6 +327,14 @@ namespace TrueforceForAll.Plugin
                         }
                     }
                 }
+                // Move the verified temp file to its final name. .NET 4.8 has no
+                // 3-arg File.Move overload, so delete-then-move is the portable
+                // pattern. Best-effort: if delete fails, the move will surface
+                // the real error.
+                string finalPath = Path.Combine(Path.GetTempPath(), fileName);
+                try { if (File.Exists(finalPath)) File.Delete(finalPath); } catch { }
+                File.Move(destPath, finalPath);
+                destPath = finalPath;
             }
             Log($"Downloaded installer to {destPath}");
             return destPath;
@@ -288,6 +366,16 @@ namespace TrueforceForAll.Plugin
                     return (string)a["browser_download_url"];
             }
             return null;
+        }
+
+        // 3-component version compare (Major/Minor/Build, missing part = 0) so
+        // the 4-part assembly version (0.2.0.0) compares equal to a "v0.2.0"
+        // release tag instead of greater.
+        private static int Cmp3(Version a, Version b)
+        {
+            int c = a.Major.CompareTo(b.Major); if (c != 0) return c;
+            c = a.Minor.CompareTo(b.Minor);     if (c != 0) return c;
+            return Math.Max(a.Build, 0).CompareTo(Math.Max(b.Build, 0));
         }
 
         // Strip leading "v"/"V" + any pre-release suffix ("0.1.0-rc1" → "0.1.0")

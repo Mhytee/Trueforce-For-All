@@ -222,66 +222,78 @@ namespace TrueforceForAll.LoopbackHelper
                 const int  AUDCLNT_STREAMFLAGS_EVENTCALLBACK = 0x00040000;
                 int streamFlags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
 
-                // Try IAudioClient3 first, gives us a shared-mode engine period
-                // as low as ~3ms (vs 10ms default). Falls back to legacy
-                // IAudioClient::Initialize at 10ms if IAudioClient3 is
-                // unavailable (older Windows, or process-loopback restriction).
-                bool initialized = false;
+                // Shared-mode, event-driven loopback capture.
+                //
+                // We cannot lower the capture period below the shared audio
+                // engine period. IAudioClient3.InitializeSharedAudioStream is the
+                // only API that accepts a sub-default period, and it explicitly
+                // rejects AUDCLNT_STREAMFLAGS_LOOPBACK (returns
+                // AUDCLNT_E_ENDPOINT_CREATE_FAILED, 0x88890021). Confirmed
+                // against MS docs: the only stream flags it accepts are
+                // EVENTCALLBACK / AUTOCONVERTPCM / SRC_DEFAULT_QUALITY. So
+                // loopback is floored at whatever engine period the OS is
+                // currently running (default ~10 ms, but it DROPS automatically
+                // when the game itself opens a low-latency audio client, which
+                // racing sims typically do).
+                //
+                // What we CAN do: pass hnsBufferDuration = 0 to the legacy
+                // IAudioClient.Initialize so the engine sizes the endpoint buffer
+                // to its own minimum (one engine period) instead of the old
+                // hard-coded 10 ms. For loopback, capture latency is the gap
+                // between the engine's write position and our read position, so a
+                // minimum-size event-driven buffer keeps that gap near one
+                // period. When the shared engine is already below 10 ms (a
+                // low-latency game is running) this is where we win the time
+                // back; at the 10 ms default it is neutral (no regression). We
+                // still query GetSharedModeEnginePeriod purely to log the real
+                // period for diagnostics.
                 IntPtr ac3 = IntPtr.Zero;
                 Guid ac3Iid = IID_IAudioClient3;
-                int hr = Unknown_QueryInterface(_audioClientPtr, ref ac3Iid, out ac3);
-                if (hr >= 0 && ac3 != IntPtr.Zero)
+                int qiHr = Unknown_QueryInterface(_audioClientPtr, ref ac3Iid, out ac3);
+                if (qiHr >= 0 && ac3 != IntPtr.Zero)
                 {
                     try
                     {
                         uint defFr, fundFr, minFr, maxFr;
                         int qhr = AudioClient3_GetSharedModeEnginePeriod(ac3, fmtBuf,
                             out defFr, out fundFr, out minFr, out maxFr);
-                        if (qhr >= 0 && minFr > 0)
-                        {
-                            int ihr = AudioClient3_InitializeSharedAudioStream(ac3,
-                                streamFlags, minFr, fmtBuf, IntPtr.Zero);
-                            if (ihr >= 0)
-                            {
-                                Console.Error.WriteLine(
-                                    $"[helper] IAudioClient3 init OK; engine period {minFr} frames " +
-                                    $"({minFr * 1000.0 / CaptureSampleRate:F2} ms; default {defFr}, max {maxFr})");
-                                initialized = true;
-                            }
-                            else
-                            {
-                                Console.Error.WriteLine($"[helper] IAudioClient3.InitializeSharedAudioStream failed (0x{ihr:X8}), falling back");
-                            }
-                        }
+                        if (qhr >= 0)
+                            Console.Error.WriteLine(
+                                $"[helper] shared engine period: default {defFr} frames " +
+                                $"({defFr * 1000.0 / CaptureSampleRate:F2} ms), min {minFr} frames " +
+                                $"({minFr * 1000.0 / CaptureSampleRate:F2} ms), max {maxFr} frames");
                         else
-                        {
-                            Console.Error.WriteLine($"[helper] IAudioClient3.GetSharedModeEnginePeriod failed (0x{qhr:X8}) or minFr=0, falling back");
-                        }
+                            Console.Error.WriteLine($"[helper] GetSharedModeEnginePeriod query failed (0x{qhr:X8})");
                     }
                     finally
                     {
                         Unknown_Release(ac3);
                     }
                 }
-                else
-                {
-                    Console.Error.WriteLine($"[helper] IAudioClient3 not available (QI 0x{hr:X8}), using legacy 10ms IAudioClient");
-                }
 
-                if (!initialized)
-                {
-                    const long bufferDuration100ns = 10 * 10000;
-                    int lhr = AudioClient_Initialize(_audioClientPtr,
-                        AUDCLNT_SHAREMODE_SHARED, streamFlags,
-                        bufferDuration100ns, 0, fmtBuf, IntPtr.Zero);
-                    if (lhr < 0) throw new COMException($"IAudioClient::Initialize failed (0x{lhr:X8})", lhr);
-                }
+                // hnsBufferDuration = 0: engine picks its minimum (one period).
+                // periodicity = 0 is required for shared-mode event-driven.
+                int lhr = AudioClient_Initialize(_audioClientPtr,
+                    AUDCLNT_SHAREMODE_SHARED, streamFlags,
+                    0, 0, fmtBuf, IntPtr.Zero);
+                if (lhr < 0) throw new COMException($"IAudioClient::Initialize failed (0x{lhr:X8})", lhr);
+
+                // Log the actual endpoint buffer the engine handed back. For
+                // loopback this is the capture-latency ceiling (the write-to-read
+                // position gap), so it is the number to watch when tuning or
+                // writing release notes. This line replaces the old guesswork
+                // about which init path ran.
+                uint bufFrames;
+                if (AudioClient_GetBufferSize(_audioClientPtr, out bufFrames) >= 0)
+                    Console.Error.WriteLine(
+                        $"[helper] capture init OK; endpoint buffer {bufFrames} frames " +
+                        $"({bufFrames * 1000.0 / CaptureSampleRate:F2} ms latency ceiling)");
 
                 _sampleReadyEvent = CreateEventEx(IntPtr.Zero, null, 0, EVENT_MODIFY_STATE | SYNCHRONIZE);
                 if (_sampleReadyEvent == IntPtr.Zero)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "CreateEventEx failed");
 
-                hr = AudioClient_SetEventHandle(_audioClientPtr, _sampleReadyEvent);
+                int hr = AudioClient_SetEventHandle(_audioClientPtr, _sampleReadyEvent);
                 if (hr < 0) throw new COMException($"IAudioClient::SetEventHandle failed (0x{hr:X8})", hr);
 
                 Guid capIid = IID_IAudioCaptureClient;
@@ -298,6 +310,16 @@ namespace TrueforceForAll.LoopbackHelper
 
         private void CaptureLoop()
         {
+            // Register the capture thread with MMCSS "Pro Audio" so it shares the
+            // multimedia real-time scheduling band with the audio engine, keeping
+            // capture wakeups punctual under load. Best-effort; null on failure.
+            uint mmcssTaskIndex = 0;
+            IntPtr mmcss = AvSetMmThreadCharacteristics("Pro Audio", ref mmcssTaskIndex);
+            if (mmcss != IntPtr.Zero)
+            {
+                AvSetMmThreadPriority(mmcss, AVRT_PRIORITY_HIGH);
+                Console.Error.WriteLine("[helper] capture thread joined MMCSS Pro Audio");
+            }
             try
             {
                 int blockAlign = BlockAlign;
@@ -341,6 +363,10 @@ namespace TrueforceForAll.LoopbackHelper
             {
                 RecordingStopped?.Invoke(this, new CaptureStoppedEventArgs(ex));
                 return;
+            }
+            finally
+            {
+                if (mmcss != IntPtr.Zero) AvRevertMmThreadCharacteristics(mmcss);
             }
             RecordingStopped?.Invoke(this, new CaptureStoppedEventArgs());
         }
@@ -458,6 +484,12 @@ namespace TrueforceForAll.LoopbackHelper
         private static int AudioClient_Initialize(IntPtr p, int sm, int sf, long bd, long per, IntPtr fmt, IntPtr sg)
             => GetMethod<IAudioClient_Initialize_t>(p, 3)(p, sm, sf, bd, per, fmt, sg);
         private static int AudioClient_Start(IntPtr p) => GetMethod<IAudioClient_NoArg_t>(p, 10)(p);
+        // GetBufferSize is slot 4. Returns the endpoint buffer size in frames;
+        // for loopback that frame count is the capture-latency ceiling.
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int IAudioClient_GetBufferSize_t(IntPtr pThis, out uint numBufferFrames);
+        private static int AudioClient_GetBufferSize(IntPtr p, out uint frames)
+            => GetMethod<IAudioClient_GetBufferSize_t>(p, 4)(p, out frames);
         private static int AudioClient_Stop(IntPtr p)  => GetMethod<IAudioClient_NoArg_t>(p, 11)(p);
         private static int AudioClient_SetEventHandle(IntPtr p, IntPtr ev)
             => GetMethod<IAudioClient_SetEventHandle_t>(p, 13)(p, ev);
@@ -531,6 +563,22 @@ namespace TrueforceForAll.LoopbackHelper
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool CloseHandle(IntPtr hObject);
+
+        // ---------- avrt (MMCSS) ----------
+        // Pro Audio task registration for the capture thread. AVRT_PRIORITY_HIGH = 1.
+
+        private const int AVRT_PRIORITY_HIGH = 1;
+
+        [DllImport("avrt.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr AvSetMmThreadCharacteristics(string taskName, ref uint taskIndex);
+
+        [DllImport("avrt.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AvSetMmThreadPriority(IntPtr avrtHandle, int priority);
+
+        [DllImport("avrt.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AvRevertMmThreadCharacteristics(IntPtr avrtHandle);
 
         // ---------- mmdevapi ----------
         // ExactSpelling=true: the function has no A/W suffix; without ExactSpelling the

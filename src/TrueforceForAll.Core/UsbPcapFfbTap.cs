@@ -140,13 +140,18 @@ namespace TrueforceForAll.Core
         // Status surfaced to the UI / logs. Populated by the reader thread.
         public string Status { get; private set; } = "Stopped";
         public bool IsRunning => _proc != null && !_proc.HasExited;
-        public long PacketsParsed { get; private set; }
+        // Backed by an explicit field with Interlocked so the liveness watchdog
+        // (a different thread) can't read a torn 64-bit value on the 32-bit host
+        // and mis-fire the capture-kill. Incremented once per parsed packet.
+        private long _packetsParsed;
+        public long PacketsParsed => Interlocked.Read(ref _packetsParsed);
         public long FfbSamplesCaptured { get; private set; }
 
         // Packets that passed the device-address filter, i.e. traffic that is
-        // really the wheel's. Interlocked-backed because in whole-bus capture
-        // this is the liveness signal (see LivenessProgress) and the watchdog
-        // thread must not read a torn 64-bit value on the 32-bit host.
+        // really the wheel's. Interlocked like _packetsParsed because in
+        // whole-bus capture this is the liveness signal (see LivenessProgress)
+        // and the watchdog thread must not read a torn 64-bit value on the
+        // 32-bit host.
         private long _packetsForOurDevice;
         public long PacketsForOurDevice => Interlocked.Read(ref _packetsForOurDevice);
 
@@ -171,6 +176,22 @@ namespace TrueforceForAll.Core
         public long InterruptOutOnOurDevice => _outTransferTypeCounts[1];
         public long ControlOutOnOurDevice   => _outTransferTypeCounts[2];
         public long BulkOutOnOurDevice      => _outTransferTypeCounts[3];
+
+        // Interlocked mirror of the interrupt-OUT count so the blind-capture
+        // probe (a different thread than the parser) reads an untorn 64-bit
+        // value on the 32-bit host. This is our own ep3 stream as the capture
+        // sees it: it climbs on a healthy capture and stays flat when USBPcap
+        // has no filter on the wheel. See BlindCaptureClassifier.
+        private long _interruptOutSeen;
+        public long InterruptOutSeen => Interlocked.Read(ref _interruptOutSeen);
+        // Trueforce stream packets seen on the wheel from ANY writer: ours, a
+        // game's native SDK, G HUB. Counted in the parse loop by shape (one
+        // 64-byte report 0x01 on an interrupt OUT request). The plugin
+        // subtracts its own write count (TrueforceDevice.Ep3Writes) to find a
+        // second writer; see TrueforceStreamContentionDetector.
+        private long _trueforceStreamPackets;
+        public long TrueforceStreamPacketsOnOurDevice => Interlocked.Read(ref _trueforceStreamPackets);
+
         public long[] SnapshotOutEndpointCounts()
         {
             var snap = new long[16];
@@ -213,43 +234,72 @@ namespace TrueforceForAll.Core
         // old 0x11-only extractor dropped every 0x12 packet, so cur was never
         // populated and the device never entered active mode.
         //
-        // The 0x12 extraction and the 0x11+0x12 resolver summing are gated
-        // behind ExperimentalCapture (off by default) OR Rs50Identified
-        // (positive RS50 identification at discovery), so RS50 owners get the
-        // issue-#8 path out of the box. The lowered sample floor stays
-        // experimental-only: with the 0x10 seed it no longer matters on an
-        // identified RS50. With both off, behaviour is byte-identical to the
-        // shipped 0.1.18 path (0x11-only, floor 200), so existing users are
-        // untouched; testers opt in via the FFBX access code.
+        // Both report IDs are extracted and both count toward the resolver:
+        // which one carries the stream is decided per session by
+        // FfbReportArbiter (the RS50 puts most of it on 0x12, and the owner's
+        // G PRO ran two whole sessions on 0x12 only on 2026-08-28). The
+        // experimental opt-in that used to gate 0x12 is retired.
         private const byte FfbFeatureIndexSeed = 0x0e;
         // Min cumulative func-0x20 samples at a candidate index before the
-        // resolver switches off the seed. Default 200 (the shipped value).
-        // Experimental lowers it to 32 so short / menu-heavy sessions still
-        // latch the real index (Infinitum9's whole capture had only 26 func-2
-        // packets); the 4x-dominance rule + re-entrant re-evaluation +
-        // confirm-lock are the real guard against a stray settings-write burst.
-        private const long FfbIndexMinSamplesDefault      = 200;
-        private const long FfbIndexMinSamplesExperimental = 32;
-        private long FfbIndexMinSamples =>
-            ExperimentalCapture ? FfbIndexMinSamplesExperimental : FfbIndexMinSamplesDefault;
+        // resolver switches off the seed. 32 so short / menu-heavy sessions
+        // still latch the real index (Infinitum9's whole capture had only 26
+        // func-2 packets); the 4x-dominance rule + re-entrant re-evaluation +
+        // confirm-lock are the real guard against a stray settings-write
+        // burst, and known wheels start on a per-model seed anyway.
+        private const long FfbIndexMinSamples = 32;
 
-        // Experimental FFB-capture path (opt-in via the FFBX access code,
-        // persisted as Settings.ExperimentalFfbCapture, applied by the plugin
-        // on every tap (re)start). Gates the issue-#8 work and any future
-        // self-learning capture heuristics. Off = shipped 0.1.18 behaviour.
-        // volatile: UI thread writes, parser thread reads each packet.
-        public volatile bool ExperimentalCapture;
         // Positive RS50 identification from discovery (native RS50 PID, or an
-        // RS50 product string on a spoofed G PRO PID; mescon, 2026-07). Widens
-        // the report-0x12 gates without the FFBX opt-in. Never set for other
-        // wheels, so G PRO / G923 paths are untouched. volatile: plugin thread
-        // writes at wiring time, parser thread reads each packet.
+        // RS50 product string on a spoofed G PRO PID; mescon, 2026-07). Kept
+        // for the capture fingerprint. volatile: plugin thread writes at
+        // wiring time, parser thread reads.
         public volatile bool Rs50Identified;
         // Per-model seed for the feature index (default: G PRO's 0x0e). Set by
         // the plugin before Start() from PID + product string, see
         // SetFfbFeatureIndexSeed below.
         private volatile byte _ffbSeed = FfbFeatureIndexSeed;
         private volatile byte _ffbFeatureIndex = FfbFeatureIndexSeed;
+
+        // Hardware-confirmed FFB feature indices, pinned per wheel so the
+        // statistical resolver can never wander onto non-FFB traffic. Field
+        // lesson (FM8, 2026-07-03): with the game's real FFB silent, FM8 still
+        // streams high-rate func-0x20 writes on feat 0x12 (LED/aux), the
+        // resolver latched them, "extracted" their payload bytes as force and
+        // CONFIRMED itself — the wheel buzzed on rendered LED data. The
+        // "wrong indices never produce extracted samples" assumption in the
+        // confirm-gate comment below is simply false for that traffic shape,
+        // so for wheels whose index we have proven on hardware we don't vote,
+        // we pin. Unlisted wheels keep the auto-resolver unchanged.
+        //   C26D/C26E (G923 Xbox/PC): 0x0B — proven 2026-07-02, TFFA driver
+        //     harness (FFB_LEAK_PASS at 0x0B + selective-intercept validation).
+        //   C276 (RS50): 0x10 — issue #5 woTF Windows capture.
+        //   C266/C267 (G923 PS): predicted 0x08 but NOT hardware-confirmed,
+        //     deliberately unpinned until someone proves it.
+        private volatile bool _ffbIndexPinned;
+        public bool IsFfbFeatureIndexPinned => _ffbIndexPinned;
+
+        private static byte? KnownFfbIndexForWheel(ushort vid, ushort pid)
+        {
+            if (vid != 0x046D) return null;
+            switch (pid)
+            {
+                case 0xC26D:
+                case 0xC26E: return 0x0B;   // G923 Xbox/PC
+                case 0xC276: return 0x10;   // RS50
+                default:     return null;
+            }
+        }
+
+        private void MaybePinKnownFfbIndex(ushort vid, ushort pid)
+        {
+            if (_ffbIndexPinned) return;
+            byte? known = KnownFfbIndexForWheel(vid, pid);
+            if (!known.HasValue) return;
+            _ffbFeatureIndex  = known.Value;
+            _ffbIndexResolved = true;
+            _ffbIndexPinned   = true;
+            Log($"FFB feature index PINNED to 0x{known.Value:X2} for wheel {vid:X4}:{pid:X4} " +
+                "(hardware-confirmed; statistical resolution disabled for this wheel).");
+        }
         private bool _ffbIndexResolved;                 // parser-thread only
         // Set true the first time real FFB is actually extracted on the
         // currently-selected index (i.e. force flowed, not just "an index hit
@@ -267,53 +317,149 @@ namespace TrueforceForAll.Core
         // Capture fingerprint: recorded once, the first time real FFB is
         // extracted on any path. A compact, human-readable description of the
         // wire shape that worked (transport, report ID, feature index,
-        // encoding) plus which experimental sub-mechanism, if any, was
-        // load-bearing (needed=[...]). Surfaced in the Export-logs manifest and
-        // the "experimental fixed your wheel" report so a single line tells us
-        // what to graduate out of experimental. Null until first extraction.
-        // volatile: parser writes, UI/plugin threads read.
+        // encoding, which report the arbiter settled on). Surfaced in the
+        // Export-logs manifest and the compatibility report. Null until first
+        // extraction. volatile: parser writes, UI/plugin threads read.
         private volatile string _captureFingerprint;
         public string CaptureFingerprint => _captureFingerprint;
-        // bestCount at which the resolver last switched off the seed index
-        // (0 = never switched, i.e. ran on the seed). Read at confirmation to
-        // decide whether the lowered experimental floor was load-bearing.
-        private long _resolveSwitchedAtCount;
-        // Per-report-ID "real force flowed here" flags, used to attribute the
-        // capture accurately. report0x12 is only credited as load-bearing if
-        // force flowed on 0x12 but NEVER on 0x11 (if 0x11 also carried force,
-        // the default path would have worked, so experimental wasn't needed).
-        private volatile bool _forceSeenOn0x11;
-        private volatile bool _forceSeenOn0x12;
-        // 0x11-vs-0x12 arbitration. 0x12 is a FALLBACK, used only while 0x11
-        // isn't the live force channel. Last-write-wins merging let near-zero /
-        // management 0x12 traffic clobber a wheel whose real FFB is on 0x11
-        // (G PRO: notchy feel + a hard pull from a 0x12 management message when
-        // a game opened / paused). We remember when 0x11 last carried
-        // NON-TRIVIAL force; while that's recent, 0x12 is ignored. On a wheel
-        // whose 0x11 is only idle noise (RS50: +/-3), this never latches, so
-        // 0x12 is used and the RS50 still works.
-        private int _lastReal0x11Tms;             // Environment.TickCount of last real 0x11 force
-        private const int Real0x11FloorLsb = 64;  // |force| over this counts as "real" (RS50's 0x11 is +/-3)
-        private const int Real0x11HoldMs   = 1000;
-        // Latch: once 0x11 has EVER carried real force this capture, the wheel
-        // is confirmed to put its FFB on the expected path (e.g. G PRO), so we
-        // stop falling back to 0x12 entirely, even when 0x11 goes quiet (held
-        // wheel at a standstill). Without this, the 1s _lastReal0x11Tms window
-        // lapses at standstill and the 0x12 fallback re-engages and reads
-        // garbage on a 0x11 wheel -> jerky FFB (G PRO + AC, 2026-05-25). The
-        // RS50's 0x11 is only +/-3 noise so it never trips the latch and still
-        // uses 0x12.
-        private bool _sawReal0x11;
-        // Sustained-0x12 gate. Real driving force on 0x12 streams continuously
-        // (hundreds/sec), but at game open / pause the wheel sends occasional
-        // lone HID++ management messages on 0x12 (effect setup, autocenter)
-        // whose offset 10-11 we'd misread as a large force, yanking the wheel.
-        // Require a short consecutive run of 0x12 before it drives cur: a real
-        // burst clears it in ~10 ms, a lone message never does.
-        private int _consec0x12;
-        private int _last0x12Tms;
-        private const int Min0x12RunToTrust = 4;
-        private const int Max0x12GapMs      = 200;   // a longer gap restarts the run
+        // 0x11-vs-0x12 arbitration lives in FfbReportArbiter: exactly one
+        // report is the live force channel per session and the other one's
+        // same-shaped management writes are ignored, whichever way round the
+        // driver has it. Parser thread only.
+        private readonly FfbReportArbiter _reportArbiter = new FfbReportArbiter();
+
+        /// <summary>Which HID++ report the game's force is arriving on this
+        /// session: 0 until decided, else 0x11 or 0x12. Diagnostics only.</summary>
+        public byte LiveForceReport => _reportArbiter.LiveReport;
+
+        // Stopwatch stamp of the newest fn2 write on the FFB feature that the
+        // live report (or any report, while undecided) carried, taken BEFORE
+        // the arbiter and the NOFFB simulation get a say. Compared against the
+        // last decoded sample by ForceTrafficSinceLastSample so the plugin can
+        // tell "the game has gone quiet" from "the game is writing force we
+        // are not decoding": the quiet-spell hold is only right for the first.
+        private long _lastForceTrafficTicks;
+
+        // The rev-light LEVEL the wheel was last told to show, per HID++
+        // feature index, from any host writer (the game's own lighting, G HUB,
+        // or us): a long-report fn6 on the rev-light feature carries the lit
+        // step count in byte 9. When we rewrite a colour slot mid-game the
+        // upload has to raise the level to at least one to land, and this is
+        // what lets the write settle the strip back to what the game had on it
+        // instead of to dark. Parser thread writes, UI thread reads; both are
+        // whole-int stores so a torn read is impossible.
+        private readonly int[]  _lastLevelByFeature      = new int[256];
+        private readonly long[] _lastLevelTicksByFeature = new long[256];
+
+        // Rev-light write ACTIVITY per feature index, for the contention
+        // diagnostic: how many level writes landed since the last sample and
+        // the longest gap between two consecutive ones. Windowed and reset by
+        // the sampler, because the question is whether the writer is being
+        // starved RIGHT NOW and a running total cannot answer that. A game
+        // whose light writes are stalled by other traffic on the same HID++
+        // pipe shows up as a long GAP, not as a wrong level, so the level
+        // alone (all _lastLevelByFeature carries) cannot see it.
+        private readonly long[] _levelWritesByFeature = new long[256];
+        private readonly long[] _levelMaxGapByFeature = new long[256];
+
+        /// <summary>Log every effect download the wheel is sent, decoded from
+        /// the wire. Off by default: it is one line per download and a game
+        /// re-downloads constantly.</summary>
+        public bool LogEffectDownloads { get; set; }
+
+        private static ushort TraceU16(byte[] p, int off) => (ushort)((p[off] << 8) | p[off + 1]);
+        private static short  TraceS16(byte[] p, int off) => (short)((p[off] << 8) | p[off + 1]);
+
+        private void TraceEffectDownload(byte[] payload, int off, int len)
+        {
+            byte typeByte = payload[off + 5];
+            byte type     = (byte)(typeByte & 0x7f);
+            var sb = new System.Text.StringBuilder();
+            sb.Append("FFB tap: DOWNLOAD slot=").Append(payload[off + 4])
+              .Append(" type=0x").Append(type.ToString("X2"))
+              .Append(" (").Append(HidppEffectEngine.TypeName(type)).Append(")");
+            if ((typeByte & HidppEffectEngine.AutostartBit) != 0) sb.Append(" autostart");
+            sb.Append(" len=").Append((payload[off + 6] << 8) | payload[off + 7]).Append("ms")
+              .Append(" delay=").Append((payload[off + 8] << 8) | payload[off + 9]).Append("ms");
+            // Raw wire values, deliberately: the point is to compare against
+            // what was sent, and a normalized float hides a scaling mistake.
+            if (type >= HidppEffectEngine.TypeSpring && type <= HidppEffectEngine.TypeInertia && len >= 22)
+                sb.Append(" leftSat=").Append(TraceU16(payload, off + 10))
+                  .Append(" leftCoeff=").Append(TraceS16(payload, off + 12))
+                  .Append(" deadband=").Append(TraceU16(payload, off + 14))
+                  .Append(" center=").Append(TraceS16(payload, off + 16))
+                  .Append(" rightCoeff=").Append(TraceS16(payload, off + 18))
+                  .Append(" rightSat=").Append(TraceU16(payload, off + 20));
+            else if (type == HidppEffectEngine.TypeRamp && len >= 20)
+                sb.Append(" start=").Append(TraceS16(payload, off + 10))
+                  .Append(" end=").Append(TraceS16(payload, off + 12));
+            else if (len >= 18)
+                sb.Append(" mag=").Append(TraceS16(payload, off + 10))
+                  .Append(" offset=").Append(TraceS16(payload, off + 12))
+                  .Append(" period=").Append(TraceU16(payload, off + 14)).Append("ms")
+                  .Append(" phase=").Append(TraceU16(payload, off + 16));
+            Log(sb.ToString());
+        }
+
+        private void NoteLevelWrite(byte featIdx, int level)
+        {
+            _lastLevelByFeature[featIdx] = level;
+            long now  = _sw.ElapsedTicks & TimestampMask;
+            long prev = Interlocked.Exchange(ref _lastLevelTicksByFeature[featIdx], now);
+            // The first write of a session has no predecessor to measure from.
+            if (prev != 0)
+            {
+                long gap = (now - prev) & TimestampMask;
+                if (gap > Interlocked.Read(ref _levelMaxGapByFeature[featIdx]))
+                    Interlocked.Exchange(ref _levelMaxGapByFeature[featIdx], gap);
+            }
+            Interlocked.Increment(ref _levelWritesByFeature[featIdx]);
+        }
+
+        /// <summary>Rev-light write activity on one feature index: the RUNNING
+        /// total of level writes any host writer has landed there, the level
+        /// the newest one left, and how long ago it landed. False when nothing
+        /// has ever written to this index, which is the "nobody is driving the
+        /// bar" answer rather than a failure.
+        ///
+        /// Cumulative and non-destructive on purpose. Two callers read this
+        /// (the ownership detector and the ACLEDS diagnostic) on different
+        /// cadences, and a read that reset the count would have them stealing
+        /// each other's writes: whoever sampled first would see the traffic and
+        /// the other would see silence, which is exactly the wrong answer to
+        /// "is anybody driving the bar". Each caller keeps its own baseline
+        /// and subtracts.</summary>
+        public bool GetLevelWriteTotals(byte featIdx, out long writes, out int lastLevel,
+                                        out double sinceLastMs)
+        {
+            writes    = Interlocked.Read(ref _levelWritesByFeature[featIdx]);
+            lastLevel = _lastLevelByFeature[featIdx];
+            long t = Interlocked.Read(ref _lastLevelTicksByFeature[featIdx]);
+            sinceLastMs = t == 0 ? -1.0
+                        : (((_sw.ElapsedTicks & TimestampMask) - t) & TimestampMask)
+                          / (Stopwatch.Frequency / 1000.0);
+            return t != 0;
+        }
+
+        /// <summary>Take and reset the longest gap seen between two consecutive
+        /// level writes on this feature index. Destructive because a max is
+        /// only meaningful over a window; the diagnostic is its only caller.</summary>
+        public double TakeLevelWriteMaxGapMs(byte featIdx)
+            => Interlocked.Exchange(ref _levelMaxGapByFeature[featIdx], 0)
+               / (Stopwatch.Frequency / 1000.0);
+
+        /// <summary>The strip level most recently written to
+        /// <paramref name="featIdx"/> by anyone, if that write is no older than
+        /// <paramref name="maxAgeMs"/>.</summary>
+        public bool TryGetLastLevelWrite(byte featIdx, int maxAgeMs, out int level)
+        {
+            level = _lastLevelByFeature[featIdx];
+            long t = Interlocked.Read(ref _lastLevelTicksByFeature[featIdx]);
+            if (t == 0) return false;
+            long now = _sw.ElapsedTicks & TimestampMask;
+            long ageTicks = (now - t) & TimestampMask;
+            return ageTicks <= (Stopwatch.Frequency / 1000L) * maxAgeMs;
+        }
         // Shape of the first extraction, stashed for the fingerprint string.
         private bool   _firstShapeSet;
         private string _firstTransport;
@@ -339,8 +485,8 @@ namespace TrueforceForAll.Core
         /// compat-mode RS50 keeps feature 0x10 live, so the RS50 seed is
         /// expected correct. Adopts the seed immediately unless extracted
         /// force has already confirmed an index; ResetFeatureIndexResolution
-        /// also re-arms to this value, so an FFBX toggle keeps the per-model
-        /// seed.</summary>
+        /// also re-arms to this value, so an experimental-capture toggle keeps
+        /// the per-model seed.</summary>
         public void SetFfbFeatureIndexSeed(byte seed)
         {
             _ffbSeed = seed;
@@ -349,28 +495,27 @@ namespace TrueforceForAll.Core
 
         /// <summary>Re-arm the feature-index resolver: drop back to the seed
         /// index and clear the resolved/confirmed latches so the next pass
-        /// re-evaluates under the current <see cref="ExperimentalCapture"/> /
-        /// <see cref="Rs50Identified"/> rules. Called when the FFBX toggle
-        /// flips, so a live change takes effect without a SimHub restart.
+        /// re-evaluates from scratch, and forget which report carried force.
         /// Keeps the accumulated tuple history, so if 0x12 traffic was
         /// already seen the re-resolve to the real index is immediate.</summary>
         public void ResetFeatureIndexResolution()
         {
-            _ffbFeatureIndex       = _ffbSeed;
-            _ffbIndexResolved      = false;
+            // A hardware-pinned index survives re-arms: the pin exists because
+            // the statistical path proved unsafe for this wheel. Confirmation
+            // and fingerprint state still reset below so the next capture
+            // re-records what worked.
+            if (!_ffbIndexPinned)
+            {
+                _ffbFeatureIndex   = _ffbSeed;
+                _ffbIndexResolved  = false;
+            }
             _ffbIndexConfirmed     = false;
             _nextFfbResolveTicks   = 0;
-            _captureFingerprint     = null;   // let the new rules re-record what worked
-            _resolveSwitchedAtCount = 0;
-            _forceSeenOn0x11        = false;
-            _forceSeenOn0x12        = false;
+            _captureFingerprint     = null;   // let the next capture re-record what worked
             _firstShapeSet          = false;
             _firstReportId          = -1;
             _firstFeatIdx           = -1;
-            _lastReal0x11Tms        = 0;
-            _sawReal0x11            = false;
-            _consec0x12             = 0;
-            _last0x12Tms            = 0;
+            _reportArbiter.Reset();
         }
 
         // Note one extracted FFB sample's wire shape. Records which report ID
@@ -381,8 +526,6 @@ namespace TrueforceForAll.Core
         // MaybeConfirmCaptureFingerprint.
         private void NoteExtraction(string transport, int reportId, int featIdx, string encoding)
         {
-            if (reportId == 0x11) _forceSeenOn0x11 = true;
-            else if (reportId == 0x12) _forceSeenOn0x12 = true;
             if (!_firstShapeSet)
             {
                 _firstTransport = transport;
@@ -394,39 +537,52 @@ namespace TrueforceForAll.Core
         }
 
         // Once a sustained run of samples has been extracted, record the
-        // capture fingerprint a single time, with an accurate needed=[...]
-        // verdict (computed now that we know whether force ever flowed on 0x11
-        // vs only 0x12). Cheap to call every parse iteration: a null check and
-        // a counter compare until it fires.
+        // capture fingerprint a single time. Cheap to call every parse
+        // iteration: a null check and a counter compare until it fires.
         private void MaybeConfirmCaptureFingerprint()
         {
             if (_captureFingerprint != null || !_firstShapeSet) return;
             if (FfbSamplesCaptured < CaptureConfirmSamples) return;
 
-            var needed = new List<string>();
-            // needed=[...] means "the FFBX toggle was load-bearing" (it gates
-            // the experimental-success banner and the graduation evidence).
-            // 0x12 counts only if force flowed on 0x12 and never on 0x11 AND
-            // RS50 identity had not already opened the gate; when identity
-            // covered it, FFBX wasn't needed even if it is also on, and the
-            // rs50Id=ON marker below carries the attribution instead.
-            if (ExperimentalCapture && !Rs50Identified && _forceSeenOn0x12 && !_forceSeenOn0x11)
-                needed.Add("report0x12");
-            if (ExperimentalCapture && _resolveSwitchedAtCount > 0
-                && _resolveSwitchedAtCount < FfbIndexMinSamplesDefault)
-                needed.Add("loweredFloor");
-            // "signatureDetector" will be added by the fallback detector path.
-
             string ridStr  = _firstReportId >= 0 ? $"reportId=0x{_firstReportId:X2} " : "";
             string featStr = _firstFeatIdx  >= 0 ? $"featIdx=0x{_firstFeatIdx:X2} " : "";
-            string neededStr = needed.Count > 0 ? string.Join(", ", needed) : "none";
+            byte live = _reportArbiter.LiveReport;
+            string liveStr = live != 0 ? $" live=0x{live:X2}" : "";
 
             _captureFingerprint =
-                $"transport={_firstTransport} {ridStr}{featStr}encoding={_firstEncoding} " +
-                $"experimental={(ExperimentalCapture ? "ON" : "OFF")}" +
-                $"{(Rs50Identified ? " rs50Id=ON" : "")} needed=[{neededStr}]";
+                $"transport={_firstTransport} {ridStr}{featStr}encoding={_firstEncoding}" +
+                $"{liveStr}{(Rs50Identified ? " rs50Id=ON" : "")}";
 
             Log($"FFB capture confirmed (sustained, {FfbSamplesCaptured} samples): {_captureFingerprint}");
+        }
+
+        /// <summary>True when the wheel has received a force write on the live
+        /// report (or any report while none is live yet) more recently than
+        /// the last sample this tap decoded: the game is driving the wheel in
+        /// a shape we are not turning into a target. The plugin's quiet-spell
+        /// hold must not treat that as the game having gone quiet.</summary>
+        public bool ForceTrafficSinceLastSample
+        {
+            get
+            {
+                long traffic = Interlocked.Read(ref _lastForceTrafficTicks);
+                if (traffic == 0) return false;
+                long sample = Interlocked.Read(ref _lastSampleTicks);
+                if (sample == 0) return true;
+                long d = (traffic - sample) & TimestampMask;
+                return d > 0 && d < (TimestampMask >> 1);
+            }
+        }
+
+        // Stamp a force write on the FFB feature before anything can reject
+        // it. Only the live report counts once one is chosen: the other
+        // report's management writes share the fn2 shape and would otherwise
+        // read as "undecoded force" through every parked quiet spell.
+        private void NoteForceTraffic(byte reportId)
+        {
+            byte live = _reportArbiter.LiveReport;
+            if (live != 0 && reportId != live) return;
+            Interlocked.Exchange(ref _lastForceTrafficTicks, _sw.ElapsedTicks & TimestampMask);
         }
 
         // Returns a snapshot of the tuple histogram. Safe to call from any
@@ -469,17 +625,82 @@ namespace TrueforceForAll.Core
         public string CurrentRawPacketLogPath => _rawLogPath;
         public long RawLogBytesWritten => Interlocked.Read(ref _rawLogBytesWritten);
 
-        // Wall-clock ticks of the last periodic diagnostics emission. Emitted
-        // by the parser thread every ~5 seconds when the tap is active so the
-        // exported logs reliably contain at least one snapshot of the
-        // counters/histogram during the user's repro session.
+        // Wall-clock ticks of the next diagnostics CHECK. The parser thread
+        // checks every ~5 seconds while the tap is active, which is the floor
+        // on how often a transition can reach the log; MaybeEmitDiagnostics
+        // then decides whether that check has anything worth saying. Every
+        // capture still emits one full snapshot of the counters/histogram, so
+        // the exported logs always carry a baseline for the user's repro
+        // session.
         private long _nextDiagEmitTicks;
         private const int DiagEmitIntervalMs = 5000;
 
+        // Nothing material has changed for this long: emit one line anyway, so
+        // a long steady session still leaves dated marks in the log. Be exact
+        // about what that proves, because it is narrower than it looks: this
+        // method is only ever called from the parse loop, after the packet has
+        // been matched to our device, so a heartbeat says "packets for the
+        // wheel were still arriving at 21:14" and nothing more. It cannot
+        // report a capture that has died, because a dead capture stops calling
+        // us at all; the liveness watchdog (MaybeWatchdog) owns that case.
+        // Bounding the silence is still worth doing: without it a quiet session
+        // can run an hour on a single line, and the reader cannot tell a tap
+        // that sat idle from a log that got truncated. Ten minutes costs six
+        // lines an hour, against the 718 an hour the unconditional five-second
+        // emit used to cost. A real transition never waits for this.
+        private const int DiagHeartbeatMs = 600000;
+
+        // Diagnostics suppression state, all of it parser-thread only exactly
+        // like _nextDiagEmitTicks above: no interlocks and no volatile,
+        // because nothing else touches these.
+        //
+        // False until the first line goes out, so every capture gets one
+        // baseline reading whatever else is or is not true. ParseFromCore
+        // clears it again on each restart.
+        private bool _diagEverEmitted;
+
+        // Packed fingerprint of every material fact in the last emitted line
+        // (MaybeEmitDiagnostics documents the bit layout). One long comparison
+        // is what keeps the quiet path cheap on the capture thread.
+        private long _diagLastSig;
+
+        // Order-independent signature of the SET of (report, feature, func)
+        // tuples as of the last emitted line. Kept apart from _diagLastSig
+        // because it can only be computed under _tupleLock.
+        private long _diagLastTupleSig;
+
+        // The DI live-effect description as of the last emitted line, or null
+        // when nothing was playing (or when the payload would not have printed
+        // it). Compared ordinally: "spring=1" turning into "spring=1
+        // periodic=2" is the shape of a stacked effect and has to reach the log
+        // the moment it happens.
+        private string _diagLastDiLive;
+
+        // Environment.TickCount at the last emitted line. A suppressed stretch
+        // hides real time, so every line after the first reports how long the
+        // tap had been quiet before it.
+        private long _diagLastEmitMs;
+
+        // Device packet count at the last emitted line, so the same line can
+        // report how much traffic went by unreported during the quiet window.
+        // A suppressed interval should not be information lost.
+        private long _diagLastEmitPackets;
+
+        // Counters as of the PREVIOUS five-second check, not as of the previous
+        // emitted line. This is what turns a monotonic total into the fact
+        // worth logging: this kind of traffic is arriving right now, or it has
+        // stopped. Sampling line to line instead would let traffic stop in the
+        // middle of a ten-minute quiet stretch and still look alive, because
+        // the total does differ from ten minutes ago. -1 means no check has
+        // happened yet, so nothing is called flowing on the very first one.
+        private long _diagPrevTickSamples = -1;
+        private long _diagPrevTickEp0     = -1;
+        private long _diagPrevTickSetrep  = -1;
+
         // The FFB feature-index resolver is gated on its own fast cadence,
-        // separate from the 5 s diagnostics emit, so first FFB on a non-0x0e
+        // separate from the 5 s diagnostics check, so first FFB on a non-0x0e
         // wheel (RS50 -> 0x10) latches sub-second instead of waiting up to one
-        // diagnostics interval. Runs until _ffbIndexConfirmed (real FFB
+        // diagnostics check. Runs until _ffbIndexConfirmed (real FFB
         // actually extracted), not merely until a tentative resolve; after
         // confirmation the gate stops calling it entirely (zero steady-state
         // cost). Before confirmation it may re-switch indices, which is what
@@ -497,6 +718,28 @@ namespace TrueforceForAll.Core
         // Milliseconds since the last FFB sample was latched, or long.MaxValue
         // if we've never latched one. Used by the UI to detect the "process
         // running but no data flowing" state.
+        // Newest packet of any kind parsed for our device. While the plugin
+        // streams ep3 at 1 kHz this advances every millisecond, so a stall
+        // here means the CAPTURE has died (USBPcap stalled, the wheel moved
+        // address), not that the game has gone quiet. The plugin's quiet-spell
+        // hold reads it so a dead capture can never keep an active zero on the
+        // wheel: with no capture there is nothing to know the game by.
+        private long _lastDevicePacketTicks;
+
+        /// <summary>Milliseconds since the capture last delivered a packet for
+        /// the wheel, or long.MaxValue if it never has.</summary>
+        public long MsSinceDevicePacket
+        {
+            get
+            {
+                long last = Interlocked.Read(ref _lastDevicePacketTicks);
+                if (last == 0) return long.MaxValue;
+                long now = _sw.ElapsedTicks & TimestampMask;
+                long ageTicks = (now - last) & TimestampMask;
+                return ageTicks * 1000L / Stopwatch.Frequency;
+            }
+        }
+
         public long MsSinceLastSample
         {
             get
@@ -694,7 +937,12 @@ namespace TrueforceForAll.Core
             try { _livenessThread?.Join(1500); } catch { }
             _readerThread = null;
             _livenessThread = null;
+            try { _proc?.Dispose(); } catch { }   // Kill() doesn't release the managed handles
             _proc = null;
+            // Belt and braces with the reader's own finally: a tap stopped while
+            // its thread is wedged (the join above times out) would otherwise
+            // keep the trace file locked against whatever replaces it.
+            CloseRawLog();
             Status = "Stopped";
         }
 
@@ -719,11 +967,54 @@ namespace TrueforceForAll.Core
 
         /// <summary>Drop the last captured FFB target so TryGetFreshFfbTarget
         /// returns null until a genuinely fresh game packet is captured. The
-        /// plugin calls this when it stops the stream for a pause, so a stream
-        /// restart mid-transition (FH6 quick travel / teleport) can't replay the
-        /// stale pre-pause force and slam the wheel to lock (issue #13). The
-        /// reader thread repopulates this the instant real FFB flows again.</summary>
-        public void ClearLastFfbTarget() => System.Threading.Interlocked.Exchange(ref _packed, 0);
+        /// plugin calls this while it holds the stream stopped for a pause, so a
+        /// stream restart mid-transition (FH6 quick travel / teleport) can't
+        /// replay a stale pre-pause force and slam the wheel to lock (issue #13).
+        /// The reader thread repopulates this the instant real FFB flows again.
+        /// Also arms a reset of the classic slot state, so a wheel on that path
+        /// cannot have a bare PLAY after the pause republish the pre-pause
+        /// force from a slot we still believe is loaded.</summary>
+        public void ClearLastFfbTarget()
+        {
+            _classicResetRequested = true;
+            // Drop the spring snapshot NOW, from this thread: the parser only
+            // honors the reset request at its next command, and a paused game
+            // may send none. A published spring must not keep producing
+            // emulated force across the pause (the spring analogue of the
+            // stale-force replay this method exists to prevent). Safe here: a
+            // volatile reference write; slot state itself stays parser-owned.
+            _playingSprings = null;
+            // Same reasoning for the HID++ parametric table: a paused game's
+            // held spring or damper must not keep rendering; the game
+            // re-downloads its effects the moment it drives the wheel again.
+            // Snapshot drops NOW (cross-thread-safe volatile write); the slot
+            // table clears on the parser thread via the deferred flag, so
+            // parser-owned state is never mutated from here (the classic
+            // path's _classicResetRequested pattern; audit 2026-09-01).
+            _hidppResetRequested = true;
+            _hidppEffects.ClearPlayingSnapshot();
+            System.Threading.Interlocked.Exchange(ref _packed, 0);
+        }
+
+        /// <summary>Drop the captured SCALAR force only, leaving every decoded
+        /// effect the game still has loaded exactly where it is. The narrow
+        /// half of <see cref="ClearLastFfbTarget"/>, for a caller that is
+        /// handing the wheel back to pass-through while the game keeps
+        /// driving: spring mode disarming. That disarm needs the stale scalar
+        /// gone (spring mode ignored everything the tap captured while it was
+        /// armed, and on Farming Simulator a misdecoded heartbeat stayed
+        /// "fresh" for ten seconds and drove the wheel to lock), but it must
+        /// NOT wipe the condition table: the game is mid-session, the classic
+        /// spring the mode was rendering is still loaded on the wire, and the
+        /// engine's additive copy of it is the renderer that takes over the
+        /// instant the mode stands down. A full reset here left that copy
+        /// silent until the game re-downloaded the spring, which on Forza
+        /// (menu spring sent once, then left playing) is never.</summary>
+        public void ClearCapturedForceKeepingEffects()
+        {
+            _classicScalarResetRequested = true;
+            System.Threading.Interlocked.Exchange(ref _packed, 0);
+        }
 
         // ---------- reader thread ----------
 
@@ -755,6 +1046,12 @@ namespace TrueforceForAll.Core
             {
                 healVid = _hidFoundVid; healPid = _hidFoundPid;
             }
+
+            // Pin the FFB feature index as soon as the wheel identity is
+            // known — the pin is about the HID++ feature layout, not the bus
+            // address, so it doesn't need the scan below to succeed.
+            if (healVid.HasValue && healPid.HasValue)
+                MaybePinKnownFfbIndex(healVid.Value, healPid.Value);
 
             if (healVid.HasValue && healPid.HasValue
                 && (forceRevalidate || !haveTarget || !_ffbIndexConfirmed))
@@ -802,6 +1099,7 @@ namespace TrueforceForAll.Core
                 {
                     _usbPcapInterface = hit.Interface;
                     _deviceAddress = hit.DeviceAddress;
+                    MaybePinKnownFfbIndex(hit.Vid, hit.Pid);
                     Log($"Auto-discovered: {hit}");
                     return true;
                 }
@@ -823,6 +1121,18 @@ namespace TrueforceForAll.Core
 
             if (_ffbIndexConfirmed) return false;                 // working; never thrash
             if (FfbSamplesCaptured > _ffbAtCaptureStart) return false; // FFB flowing this capture
+            // Spring-parameter captures are FFB flowing too (FS25-class games
+            // never produce a force value); without this the escalation chain
+            // would tell a user with working spring emulation that no FFB is
+            // reaching the plugin.
+            if (SpringUpdatesCaptured > _springsAtCaptureStart) return false;
+            // Same for classic damper/friction parameters rendered through
+            // the condition engine (a C266 game playing only conditions).
+            if (ClassicConditionUpdatesCaptured > _classicCondAtCaptureStart) return false;
+            // The plugin's synthetic spring owns FFB (FS on wheels the game
+            // sends only heartbeats to, so not even spring parameters arrive):
+            // no game FFB is expected at all, don't escalate or warn.
+            if (SyntheticFfbActive) return false;
             if (!_gameFfbExpected) return false;                  // not driving -> no FFB expected
 
             // If the user pinned a device that isn't a Logitech wheel, there's
@@ -910,6 +1220,16 @@ namespace TrueforceForAll.Core
 
         private void ReaderLoop()
         {
+            // Register the pcap reader in the MMCSS "Pro Audio" band (NORMAL) so
+            // a freshly captured FFB force is latched promptly even under game
+            // CPU load; the 1 kHz pump that consumes it is already in this band.
+            // Best-effort, reverted when the thread exits.
+            using (MmcssScope.Enter("Pro Audio", MmcssScope.PriorityNormal))
+                ReaderLoopCore();
+        }
+
+        private void ReaderLoopCore()
+        {
             // Outer loop owns BOTH discovery (when there's no manual override)
             // and capture. Splitting them here means a stale-cache failure on
             // first try can be recovered by replugging the wheel mid-session
@@ -971,6 +1291,7 @@ namespace TrueforceForAll.Core
                     Status = "USBPcap needs administrator rights. Run SimHub as administrator to enable FFB pass-through.";
                     Log($"UsbPcapFfbTap: USBPcapCMD requires elevation (Win32 {w32.NativeErrorCode}); backing off {ElevationBackoffMs / 1000}s.");
                     try { _proc?.Kill(); } catch { }
+                    try { _proc?.Dispose(); } catch { }
                     _proc = null;
                     if (SleepInterruptible(ElevationBackoffMs)) break;
                     continue;
@@ -983,6 +1304,7 @@ namespace TrueforceForAll.Core
                 finally
                 {
                     try { _proc?.Kill(); } catch { }
+                    try { _proc?.Dispose(); } catch { }   // dispose every restart, not just GC-finalize
                     _proc = null;
                 }
 
@@ -1070,9 +1392,15 @@ namespace TrueforceForAll.Core
             };
             _proc = Process.Start(psi);
             if (_proc == null) throw new InvalidOperationException("Process.Start returned null");
+            // Kill-on-close job: the capture child must die with SimHub, or it
+            // survives taskkill /F holding the USBPcap device + inherited
+            // sockets and poisons the next session (see ChildProcessJob).
+            ChildProcessJob.TryAssign(_proc, Log);
             // Baselines for the watchdog: FFB count at the start of this capture
             // session, and the next watchdog tick.
             _ffbAtCaptureStart = FfbSamplesCaptured;
+            _springsAtCaptureStart = SpringUpdatesCaptured;
+            _classicCondAtCaptureStart = ClassicConditionUpdatesCaptured;
             _nextWatchdogMs = Environment.TickCount + WatchdogIntervalMs;
             // Liveness baseline: fresh capture gets a full grace window before
             // a stall can be declared. Uses the same selector the watchdog
@@ -1085,23 +1413,50 @@ namespace TrueforceForAll.Core
             Log($"UsbPcapFfbTap started: {_usbPcapInterface} dev {_deviceAddress}{(_useBroadCapture ? " (whole-bus capture)" : "")}");
 
             // Drain stderr so it doesn't fill its pipe buffer and stall the child.
+            // Snapshot the process into a local: _proc gets reassigned by a later
+            // capture restart, and closing over the field would make this thread
+            // read the restarted process's stderr (or NRE on the disposed old one)
+            // and leak, blocked in ReadLine, one thread per restart. Bound to this
+            // process, the thread exits cleanly when this capture is killed.
+            var stderrProc = _proc;
             new Thread(() =>
             {
                 try
                 {
                     string line;
-                    while ((line = _proc.StandardError.ReadLine()) != null)
+                    while ((line = stderrProc.StandardError.ReadLine()) != null)
                         Log($"[USBPcapCMD] {line}");
                 }
                 catch { }
             }) { IsBackground = true, Name = "UsbPcapFfbTap-stderr" }.Start();
         }
 
+        // Reusable 16-byte pcap record-header buffer. Reused across the parse
+        // loop so the wheel's ~250-1000+ Hz OUT-report stream doesn't allocate a
+        // fresh array per packet (steady Gen0 fuel that contributes to the
+        // GC-pause-driven ring underruns). Safe to reuse: the header is only read
+        // for caplen and handed to MaybeLogPcap, whose first param is discarded.
+        private readonly byte[] _recHdr = new byte[16];
+
         private void ParseStream() => ParseFrom(_proc.StandardOutput.BaseStream);
 
         // Split from ParseStream so a test can drive the parser with a
         // synthetic capture stream (no child process).
+        //
+        // The trace handle must not outlive the reader. A tap dying mid-stream
+        // is routine (an EndOfStreamException every time the device is cycled,
+        // including our own startup re-attach), and the close used to sit after
+        // the read loop where an exception skipped it. The file then stayed
+        // locked by a dead tap, the REPLACEMENT tap could not open it, and the
+        // trace silently stopped recording: worst for exactly the person who
+        // turned it on to diagnose something (owner, 2026-09-09).
         internal void ParseFrom(Stream s)
+        {
+            try { ParseFromCore(s); }
+            finally { CloseRawLog(); }
+        }
+
+        private void ParseFromCore(Stream s)
         {
             // ---- pcap global header (24 bytes, LE) ----
             byte[] gh = ReadExact(s, 24);
@@ -1110,17 +1465,32 @@ namespace TrueforceForAll.Core
             if (magic != 0xa1b2c3d4 || linkType != DLT_USBPCAP)
                 throw new InvalidDataException($"Not a USBPcap stream (magic=0x{magic:x8}, linktype={linkType})");
 
+            // Slot state describes the wheel's live FFB slots; a fresh capture
+            // (first start, or a watchdog restart) knows nothing about them.
+            ResetClassicState();
+            // Same reasoning for the diagnostics line: the reader loop reuses
+            // this instance across restarts, so without this a whole-bus retry
+            // or a device cycle would produce no fresh snapshot at all. The
+            // counters it reports are never reset, so the material fingerprint
+            // usually comes out identical across the restart and the next line
+            // could be up to a heartbeat away. The moment a capture comes back
+            // is exactly the moment a support case wants the numbers, so force
+            // one why=first line on the next check.
+            _diagEverEmitted = false;
+            _classicResetRequested = false;
+            _classicScalarResetRequested = false;
+
             byte[] payload = new byte[1024];
 
             while (!_stopping)
             {
-                byte[] rh = ReadExact(s, 16);
-                int caplen = BitConverter.ToInt32(rh, 8);
+                ReadExactInto(s, _recHdr, 0, 16);
+                int caplen = BitConverter.ToInt32(_recHdr, 8);
                 if (caplen <= 0 || caplen > 65535)
                     throw new InvalidDataException($"caplen={caplen}");
                 if (payload.Length < caplen) payload = new byte[caplen];
                 ReadExactInto(s, payload, 0, caplen);
-                PacketsParsed++;
+                Interlocked.Increment(ref _packetsParsed);
 
                 // ---- USBPcap pseudo-header ----
                 if (caplen < 27) continue;
@@ -1142,10 +1512,11 @@ namespace TrueforceForAll.Core
                 // running the call early is a no-op there. MaybeLogPcap is
                 // itself a cheap null-check when the toggle is off.
                 bool isOut = (ep & 0x80) == 0;
-                if (isOut) MaybeLogPcap(rh, payload, caplen);
+                if (isOut) MaybeLogPcap(_recHdr, payload, caplen);
 
                 if (dev != _deviceAddress) continue;
                 Interlocked.Increment(ref _packetsForOurDevice);
+                Interlocked.Exchange(ref _lastDevicePacketTicks, _sw.ElapsedTicks & TimestampMask);
 
                 // Per-direction / per-transfer-type / per-endpoint breakdown.
                 // OUT direction is the host writing to the wheel (FFB and our
@@ -1155,33 +1526,35 @@ namespace TrueforceForAll.Core
                 if (isOut)
                 {
                     if (xfer < _outTransferTypeCounts.Length) _outTransferTypeCounts[xfer]++;
+                    if (xfer == 1) Interlocked.Increment(ref _interruptOutSeen);
                     _outEndpointCounts[epNum]++;
+
+                    // Trueforce stream packets, whoever wrote them: an interrupt
+                    // OUT request (info bit 0 clear: USBPcap logs OUT data on the
+                    // request record, and the completion carries none, which is
+                    // why the per-endpoint count above runs at twice the stream
+                    // rate) whose data is exactly one 64-byte report 0x01, the
+                    // shape of every packet on the stream endpoint. HID++ very
+                    // long reports are 64 bytes too but carry id 0x12; classic
+                    // slot commands are 7 bytes. Not keyed on the endpoint
+                    // number, which differs by wheel.
+                    if (xfer == 0x01 && (payload[16] & 0x01) == 0
+                        && caplen - headerLen == TrueforceDevice.PacketLen
+                        && payload[headerLen] == 0x01)
+                        Interlocked.Increment(ref _trueforceStreamPackets);
                 }
 
-                // DirectInput-style FFB path: a non-Trueforce game writes the
-                // FFB target as report 0x11 / cmd 0x08 on an interrupt OUT
-                // endpoint (the wheel's normal FFB endpoint), force = int8
-                // offset-binary centered at 0x80 at report offset 2. Decoded
-                // from the FH5 G923 capture 2026-05-17. For interrupt OUT the
-                // report data starts right after the USBPcap pseudo-header
+                // Classic Logitech FFB path: a non-Trueforce game writes force
+                // as the slot-based classic protocol on an interrupt OUT
+                // endpoint (the wheel's normal FFB endpoint). For interrupt OUT
+                // the report data starts right after the USBPcap pseudo-header
                 // (no setup stage, unlike the ep0 control path below).
                 // Independent of the ep0 HID++ path; whichever transport the
                 // running game uses latches the freshest value, and
-                // TryGetFreshFfbTarget arbitrates by recency. Normalized to
-                // the int16 scale the HID++ path uses (<<8) so FfbScale tuning
-                // behaves the same regardless of which path fed the value.
-                if (isOut && xfer == 0x01 && headerLen + 3 <= caplen
-                    && payload[headerLen] == 0x11 && payload[headerLen + 1] == 0x08)
-                {
-                    int force8 = payload[headerLen + 2] - 0x80;   // -128..+127
-                    short ffbTarget = (short)(force8 << 8);        // -> int16 scale
-                    long ts = _sw.ElapsedTicks & TimestampMask;
-                    long pk = (ts << 16) | (uint)(ushort)ffbTarget;
-                    System.Threading.Interlocked.Exchange(ref _packed, pk);
-                    System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
-                    FfbSamplesCaptured++;
-                    NoteExtraction("interrupt-out", -1, -1, "dinput-int8@2 (report 0x11/0x08)");
-                }
+                // TryGetFreshFfbTarget arbitrates by recency. See
+                // HandleClassicFfbCommand for the protocol state machine.
+                if (isOut && xfer == 0x01 && headerLen < caplen)
+                    HandleClassicFfbCommand(payload, headerLen, caplen - headerLen);
 
                 // Interrupt-OUT HID++ FFB path. Some wheels deliver the SAME
                 // HID++ 0x8123 FFB long-form report as the ep0 control path
@@ -1197,28 +1570,34 @@ namespace TrueforceForAll.Core
                 // path's resolver only sees ep0 traffic, so without this an
                 // interrupt-only wheel never resolves and never matches.
                 if (isOut && xfer == 0x01 && headerLen + 12 <= caplen
-                    && payload[headerLen] == 0x11 && payload[headerLen + 1] == 0xff)
+                    && (payload[headerLen] == 0x11 || payload[headerLen] == 0x12)
+                    && payload[headerLen + 1] == 0xff)
                 {
+                    byte iRid  = payload[headerLen];
                     byte iFeat = payload[headerLen + 2];
                     byte iFunc = payload[headerLen + 3];
-                    RecordTupleSeen(0x11, iFeat, iFunc);
-                    if (iFeat == _ffbFeatureIndex && (iFunc & 0xf0) == 0x20 && !SimulateNoFfbCapture)
-                    {
-                        short ffbTarget = (short)((payload[headerLen + 10] << 8) | payload[headerLen + 11]);
-                        long ts = _sw.ElapsedTicks & TimestampMask;
-                        long pk = (ts << 16) | (uint)(ushort)ffbTarget;
-                        System.Threading.Interlocked.Exchange(ref _packed, pk);
-                        System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
-                        FfbSamplesCaptured++;
-                        _ffbIndexConfirmed = true;   // real FFB flowed on this index; lock the resolver
-                        if (Math.Abs((int)ffbTarget) > Real0x11FloorLsb)
-                        {
-                            _lastReal0x11Tms = Environment.TickCount;   // interrupt 0x11 carrying real force
-                            _sawReal0x11 = true;                        // confirm: 0x11 wheel, stop the 0x12 fallback
-                        }
-                        NoteExtraction("interrupt-out", 0x11, iFeat, "hidpp-int16be@10");
-                    }
+                    RecordTupleSeen(iRid, iFeat, iFunc);
+                    if (iRid == 0x11 && (iFunc & 0xf0) == 0x60) NoteLevelWrite(iFeat, payload[headerLen + 9]);
+                    if (iFeat == _ffbFeatureIndex)
+                        HandleHidppFfbFunction(iRid, iFunc, payload, headerLen, caplen - headerLen, "interrupt-out");
                 }
+
+                // HID++ replies ride interrupt IN. The one we need is the
+                // DOWNLOAD_EFFECT ack: the wheel assigns the slot for a
+                // new-effect download (slot byte 0) and names it in
+                // params[0] (fn2 echo; seen as `12 ff 0e 2a 01` on a G PRO).
+                if (!isOut && xfer == 0x01 && headerLen + 5 <= caplen
+                    && (payload[headerLen] == 0x11 || payload[headerLen] == 0x12)
+                    && payload[headerLen + 1] == 0xff
+                    && payload[headerLen + 2] == _ffbFeatureIndex
+                    && (payload[headerLen + 3] & 0xf0) == 0x20
+                    // Not while a pause suspend is pending: the ack's slot
+                    // move republishes the snapshot, and a reply completing a
+                    // pre-pause request must not resurrect effects mid-pause
+                    // (only an OUT command proves the game is driving again;
+                    // verify workflow 2026-09-01).
+                    && !_hidppResetRequested)
+                    _hidppEffects.AssignSlotFromReply(payload[headerLen + 4]);
 
                 MaybeConfirmCaptureFingerprint();
                 MaybeEmitDiagnostics();
@@ -1256,54 +1635,511 @@ namespace TrueforceForAll.Core
                 byte featIdx  = payload[dataOffset + 2];
                 byte funcByte = payload[dataOffset + 3];
                 RecordTupleSeen(reportId, featIdx, funcByte);
+                // A rev-light level write (long report, fn6): remember what the
+                // strip was told to show so a slot rewrite can put it back.
+                if (reportId == 0x11 && (funcByte & 0xf0) == 0x60)
+                    NoteLevelWrite(featIdx, payload[dataOffset + 9]);
 
                 // G-series FFB: HID++ page 0x8123 long (0x11) or very-long
-                // (0x12) form, function 2 (high nibble of funcByte), at the
-                // per-wheel-resolved feature index. Both report IDs share the
-                // same header+payload layout (force = signed int16, big-endian,
-                // at offset 10-11). Some wheels (RS50 on FH6, issue #8) send the
-                // bulk of FFB as 0x12; accepting it is gated behind the FFBX
-                // opt-in or positive RS50 identification, so the default path
-                // on other wheels stays 0x11-only.
-                bool is0x11 = reportId == 0x11;
-                bool is0x12 = (ExperimentalCapture || Rs50Identified) && reportId == 0x12;
-                if ((is0x11 || is0x12) && featIdx == _ffbFeatureIndex && (funcByte & 0xf0) == 0x20 && !SimulateNoFfbCapture)
+                // (0x12) form at the per-wheel-resolved feature index. fn2
+                // downloads either carry the constant force (signed int16 BE
+                // at offset 10-11; the legacy scalar path, arbitrated by
+                // FfbReportArbiter) or a parametric effect (type byte at
+                // offset 5; the effect engine). fn1/3/4/8 are the slot
+                // engine's state functions. Which report id a driver uses is
+                // its own business (RS50: conditions ride 0x12 because the
+                // 18-byte block does not fit 0x11; the owner's G PRO ran two
+                // whole sessions of constants on 0x12 on 2026-08-28); the
+                // type byte classifies either way.
+                if ((reportId == 0x11 || reportId == 0x12) && featIdx == _ffbFeatureIndex)
+                    HandleHidppFfbFunction(reportId, funcByte, payload, dataOffset, dataLen, "ep0-ctrl");
+            }
+        }
+
+        // ---------- classic Logitech FFB protocol (slot state machine) -------
+        //
+        // The G923 PS/PC (C266) is the only supported wheel that never speaks
+        // HID++: its own captures (FH5 and ACC, 2026-05-17) contain ZERO ep0
+        // SET_REPORT and zero "11 ff" interrupt HID++ writes, so every guard on
+        // the HID++ paths (feature-index pinning, the 0x11/0x12 report
+        // arbiter) is dead code on it. Its force arrives as
+        // the classic slot protocol on ep01, which is STATEFUL: a force is
+        // downloaded into one of four slots and plays until it is stopped.
+        //
+        // The old handler matched one shape ("11 08", slot 1 download-and-play,
+        // variable force) and treated every other command as if it did not
+        // exist. That included STOP (109 of them in a 5 minute FH5 capture): on
+        // a stop the wheel goes quiet but the tap kept replaying the last
+        // downloaded force for up to FfbTargetMaxAgeMs (10 s), so our ep3
+        // stream held a force the game had already cancelled. That is the same
+        // failure ClearLastFfbTarget was written for (issue #13's full-lock),
+        // one layer down, and the reason a strong force can be held long after
+        // the game stopped commanding it.
+        //
+        // Byte 0 is (slotMask << 4) | command; byte 1 is the force type on the
+        // commands that carry one. 0xF8 is the whole-byte extended-command
+        // prefix (rev LEDs on this wheel), not a slot/command pair.
+        private const int  ClassicSlotCount   = 4;
+        private const byte ClassicTypeVariable = 0x08;   // params: force X at byte 2, offset-binary
+        private const byte ClassicTypeLoResDamper = 0x02; // params: 3-bit K1/K2 (Table 27) + S bits, no clip
+        private const byte ClassicTypeHiResSpring = 0x0b; // params: dead band + slopes + clip (see ParseHiResSpring)
+        private const byte ClassicTypeHiResDamper = 0x0c; // params: 4-bit K1/K2 + S bits; clip byte is a DFP-only extension
+        private const byte ClassicTypeFriction    = 0x0e; // params: 8-bit K1/K2 + clip + S bits
+        // The remaining classic force types (Logitech Force Feedback Protocol
+        // V1.6, Table 23). Every one of the fifteen is rendered: the wheel
+        // accepts them all, so a game may send any of them, and what we do not
+        // decode goes silent under our stream.
+        private const byte ClassicTypeConstant        = 0x00;
+        private const byte ClassicTypeLoResSpring     = 0x01;
+        private const byte ClassicTypeAutoCenter      = 0x03;
+        private const byte ClassicTypeSawtoothUp      = 0x04;
+        private const byte ClassicTypeSawtoothDown    = 0x05;
+        private const byte ClassicTypeTrapezoid       = 0x06;
+        private const byte ClassicTypeRectangle       = 0x07;
+        private const byte ClassicTypeRamp            = 0x09;
+        private const byte ClassicTypeSquare          = 0x0a;
+        private const byte ClassicTypeHiResAutoCenter = 0x0d;
+
+        // Force levels are offset binary across the wheel's full range:
+        // 127/128 is no force, 0 and 255 are full force each way (Table 22).
+        private static float ClassicLevel(float b) => (b - 127.5f) / 127.5f;
+
+        // Every timing parameter in the classic protocol counts main loops,
+        // and a main loop is 2 ms with fixed loop mode on (Table 18).
+        private const float ClassicLoopMs = 2f;
+
+        // A decoded periodic or ramp, in the engine's normalized units.
+        private struct ClassicWaveform
+        {
+            public byte  EngineType;
+            public bool  IsRamp;
+            public float Magnitude, Offset, Phase;
+            public int   PeriodMs, LengthMs;
+            public float TrapRise, TrapHigh, TrapFall;
+            public float RampStart, RampEnd;
+            public string Shape;
+        }
+        private const byte ClassicMaxForceType = 0x0e;   // highest defined type (0x0e friction; 0x0d is hi-res auto-center)
+        private const byte ClassicCmdDownload        = 0x0;
+        private const byte ClassicCmdDownloadAndPlay = 0x1;
+        private const byte ClassicCmdPlay            = 0x2;
+        private const byte ClassicCmdStop            = 0x3;
+        private const byte ClassicCmdRefreshForce    = 0xc;
+        private const byte ClassicExtendedCommand    = 0xf8;
+
+        // Parser-thread only. Per slot: the last decoded force, whether we
+        // could decode it at all, and whether the slot is currently playing.
+        private readonly short[] _classicSlotForce   = new short[ClassicSlotCount];
+        private readonly bool[]  _classicSlotDecoded = new bool[ClassicSlotCount];
+        private readonly bool[]  _classicSlotPlaying = new bool[ClassicSlotCount];
+        private short _classicLastPublished;
+        private bool  _classicHavePublished;
+        // Set by ClearLastFfbTarget (plugin thread) and honored by the parser,
+        // so the slot state is only ever mutated on the parser thread. Without
+        // it a bare PLAY after a pause could republish the pre-pause force.
+        private volatile bool _classicResetRequested;
+        // The narrow sibling, set by ClearCapturedForceKeepingEffects: clear
+        // the per-slot SCALAR force only and leave the decoded effects (the
+        // engine's external slots, the classic spring records, the play
+        // flags) alone. Same deferred contract, same reason: slot state is
+        // parser-owned.
+        private volatile bool _classicScalarResetRequested;
+
+        /// <summary>Render the game's classic force slots through the
+        /// DirectInput condition engine, the same one the HID++ wheels'
+        /// conditions use. The G923 PS/PC's game force is this protocol and
+        /// nothing else, and the firmware ignores every slot while our stream
+        /// runs. Default off (CLASSICCOND, persisted on the plugin side); the
+        /// parser reads it per download.
+        ///
+        /// What it routes: every classic type except the two scalars (the
+        /// variable force 0x08 and the constant 0x00, which keep the
+        /// pass-through path). Damper (0x0c, 0x02), friction (0x0e), the four
+        /// springs (low-res 0x01, hi-res 0x0b, auto-center 0x03 and 0x0d) and
+        /// the periodics and ramp (0x04-0x07, 0x09, 0x0a) all land in the
+        /// engine's external slots and sum additively on top of whatever
+        /// force is streaming.
+        ///
+        /// The hi-res spring 0x0b is the one type with TWO renderers: it
+        /// keeps its own ClassicSpring record in parallel, because spring
+        /// mode uses that as the base force when it arms, and the engine copy
+        /// stands down while that mode owns the wheel (see
+        /// ClassicSpringModeActive). Its slope reads linear on both
+        /// renderers under this gate (see TryEvaluateClassicSprings).</summary>
+        public volatile bool ClassicConditionsEnabled;
+
+        // Parser-thread only. One first-decode log line per classic type per
+        // tap instance (bit = type byte), the _parametricLogged pattern.
+        private int _classicConditionLoggedTypes;
+
+        private void ResetClassicState()
+        {
+            Array.Clear(_classicSlotForce, 0, ClassicSlotCount);
+            Array.Clear(_classicSlotDecoded, 0, ClassicSlotCount);
+            Array.Clear(_classicSlotPlaying, 0, ClassicSlotCount);
+            Array.Clear(_classicSlotSpring, 0, ClassicSlotCount);
+            _playingSprings = null;
+            // The engine's classic slots go with the rest of the slot state
+            // (capture start, and the deferred pause reset armed by
+            // ClearLastFfbTarget). The HID++ pool is retained, as today.
+            _hidppEffects.ResetExternal();
+            _classicLastPublished = 0;
+            _classicHavePublished = false;
+        }
+
+        // The scalar half of the reset above: the force values the slots hold
+        // and the published target derived from them, and nothing else. A
+        // bare PLAY after this finds an undecoded slot and publishes nothing
+        // (the issue #13 guard), while a spring or a condition the game still
+        // has loaded keeps rendering.
+        private void ResetClassicScalarState()
+        {
+            Array.Clear(_classicSlotForce, 0, ClassicSlotCount);
+            Array.Clear(_classicSlotDecoded, 0, ClassicSlotCount);
+            _classicLastPublished = 0;
+            _classicHavePublished = false;
+        }
+
+        // ---------- classic spring emulation (FS25-class games) --------------
+        //
+        // Some classic-protocol games never stream a force value at all: they
+        // command force as a parametric HIGH-RESOLUTION SPRING (type 0x0b) and
+        // let the wheel's firmware compute torque from its own position.
+        // Farming Simulator 25 drives its entire FFB this way (a servo spring
+        // whose dead band tracks where the game wants the wheel; reporter
+        // capture 2026-08-06), and the owner's FH5 capture shows the same type
+        // holding an auto-center at 0x80. In Trueforce mode the firmware does
+        // not run that math, which reads as "FFB dead" even though the game is
+        // commanding centering the whole time. The parser stores the playing
+        // springs' parameters here; the plugin evaluates them against the
+        // wheel's PHYSICAL position (WheelSteeringReader) at the 1 kHz pump
+        // via TryEvaluateClassicSprings and streams the result as cur on ep3.
+        //
+        // Wire layout (classic 7-byte report, after the slot/cmd + type pair):
+        //   byte2 = D1 upper 8 bits, byte3 = D2 upper 8 bits (11-bit dead band
+        //   edges over the full lock range), byte4 = K2<<4 | K1 (per-side
+        //   slope nibbles), byte5 = [D2 low 3][S2][D1 low 3][S1] (dead band
+        //   LSBs + per-side invert bits), byte6 = CLIP (torque saturation).
+        // Validated against the FS25 corpus (dead band tracks steering, edges
+        // ordered, S bits zero); the torque model below (fraction = deviation
+        // * 2^K, capped at CLIP) is the plausible reading of the slope nibble
+        // and is the one thing that still needs an on-wheel confirmation.
+        private sealed class ClassicSpring
+        {
+            public float D1, D2;     // dead band edges, 0..1 of full lock range
+            public int   K1, K2;     // per-side slope exponents (0..15)
+            public bool  S1, S2;     // per-side invert (push away, not toward)
+            public float Clip;       // torque saturation, 0..1
+        }
+
+        // Slot springs are parser-thread state, like the force arrays above.
+        // _playingSprings is the cross-thread snapshot: rebuilt (fresh array,
+        // reference-swapped) whenever a change touches a spring, read by the
+        // pump thread. Elements are never mutated after publish.
+        private readonly ClassicSpring[] _classicSlotSpring = new ClassicSpring[ClassicSlotCount];
+        private volatile ClassicSpring[] _playingSprings;
+
+        /// <summary>Spring parameter writes captured into a playing slot. The
+        /// spring analogue of FfbSamplesCaptured: proof the game is commanding
+        /// FFB even though no force value ever appears on the wire.</summary>
+        public long SpringUpdatesCaptured { get; private set; }
+        private long _springsAtCaptureStart;
+
+        /// <summary>Classic damper/friction parameter writes captured into a
+        /// playing slot (the condition analogue of SpringUpdatesCaptured):
+        /// proof the game commands FFB even though no force value appears on
+        /// the wire and no HID++ effect is ever downloaded.</summary>
+        public long ClassicConditionUpdatesCaptured { get; private set; }
+        private long _classicCondAtCaptureStart;
+
+        /// <summary>Set by the plugin while its synthetic spring owns the
+        /// wheel's FFB (FS spring mode): no game FFB is expected on the bus,
+        /// so the no-FFB watchdog must not escalate capture modes or warn.
+        /// Volatile-free by design: written from the plugin tick, read from
+        /// the parse loop, and a stale read for one watchdog interval is
+        /// harmless.</summary>
+        public bool SyntheticFfbActive { get; set; }
+
+        /// <summary>Set by the plugin while FS spring mode is armed, on the
+        /// same tick as <see cref="SyntheticFfbActive"/>. The captured hi-res
+        /// spring (0x0b) has TWO renderers: its own ClassicSpring path, which
+        /// spring mode uses as the base force, and the additive engine copy
+        /// this gate silences, so the wheel never gets one spring twice.
+        ///
+        /// WHERE THE STAND-DOWN ACTS, and why it is here rather than in the
+        /// parse loop: refusing the upsert at parse time would leave whatever
+        /// the engine already held when the mode armed later (spring mode can
+        /// arm with no further download in sight: Forza sends its menu spring
+        /// once and leaves it playing), so the spring would be stuck ON.
+        /// Removing the slot on the transition instead would need the parser
+        /// to notice the transition, and the parser only runs when a packet
+        /// arrives, so on that same quiet bus the spring would be stuck on
+        /// until the next download and stuck OFF after a disarm. Carrying the
+        /// flag into the engine and reading it per evaluation costs one
+        /// volatile read per effect per tick and cannot go stale in either
+        /// direction: the very next 1 kHz tick after an arm renders without
+        /// it, and the very next tick after a disarm renders with it again.
+        /// The slot table is never rewritten, so nothing about the game's
+        /// effect is lost across the round trip: the plugin's disarm clears
+        /// only the captured scalar (ClearCapturedForceKeepingEffects), not
+        /// the effects the game still has loaded.
+        ///
+        /// It silences the copy only for a caller that really is substituting
+        /// its own spring. The pause and focus releases evaluate the game's
+        /// conditions on their own and never reach that substitution, so they
+        /// pass allowSpringModeStandDown false and get the captured spring:
+        /// standing it down there would leave a menu wheel limp, which is the
+        /// failure those releases exist to prevent.</summary>
+        public bool ClassicSpringModeActive
+        {
+            get { return _hidppEffects.SpringModeActive; }
+            set { _hidppEffects.SpringModeActive = value; }
+        }
+
+        /// <summary>True while any captured classic spring is playing. LED /
+        /// OLED writes gate on "game FFB is quiet"; a playing spring is game
+        /// FFB even though TryGetFreshFfbTarget stays null, so the quiet
+        /// probe must consult this too.</summary>
+        public bool AnyClassicSpringPlaying => !SimulateNoFfbCapture && _playingSprings != null;
+
+        // ---------- HID++ parametric effects (DirectInput conditions) --------
+        //
+        // The Windows runtime downloads the game's DirectInput effects to the
+        // wheel as the mainline hidpp_ff slot dialect on 0x8123 (fn2 with the
+        // effect type at payload offset 5; docs/di-condition-engine.md). The
+        // firmware ignores the whole slot engine while our ep3 stream is
+        // live, so everything except the constant force (which the scalar
+        // path above already mirrors) is decoded into HidppEffectEngine and
+        // rendered by the plugin at the 1 kHz pump against the physical
+        // wheel's position and velocity. Routing non-constant types here is
+        // also what keeps a condition download's saturation field (0x7FFF at
+        // offset 10-11) out of the scalar extractor for good.
+        private readonly HidppEffectEngine _hidppEffects = new HidppEffectEngine();
+
+        // Pause SUSPEND for the parametric table, deferred to the parser
+        // thread exactly like _classicResetRequested: ClearLastFfbTarget
+        // (plugin threads) sets the flag and drops the playing snapshot; the
+        // parser honors the flag on the next HID++ FFB function (the game is
+        // driving again) by republishing the RETAINED table, so a game that
+        // downloads its conditions once and then only sends state commands
+        // keeps them across every pause, like the firmware would (verify
+        // workflow 2026-09-01). A game's own fn1 RESET_ALL still wipes.
+        private volatile bool _hidppResetRequested;
+
+        // Arming gate for everything the parametric decode is allowed to DO
+        // beyond populating the table (render, stamp samples, confirm the
+        // feature index): either the index was already confirmed by the
+        // constant path, or the same (slot, type) has been downloaded
+        // ParametricArmStreak times in a row. One parametric-shaped packet
+        // on an unconfirmed index guess must not lock the resolver, disarm
+        // the no-FFB watchdog and render garbage as torque (the FM8
+        // LED-feature class; verify workflow 2026-09-01). Real games re-send
+        // a stable (slot, type) constantly; random non-FFB bytes do not.
+        private const int ParametricArmStreak = 4;
+        private volatile bool _parametricArmed;
+        private bool _parametricLogged;
+        private int _paraStreakKey = -1;
+        private int _paraStreak;
+        private ushort _lastLoggedGain = 0xffff;
+
+        // The wheel's configured rotation range in degrees, as last SET by
+        // whoever configures it (G HUB, or a game's soft lock through the
+        // Logitech driver): HID++ 0x8123 fn6 SET_APERTURE, BE16 degrees in
+        // params[0..1]. Read-only bookkeeping. We never send fn6, and we do
+        // not send the fn5 GET either: the router only ever sees host->device
+        // traffic, so this stays 0 (unknown) until something else sets the
+        // range while we are capturing.
+        //
+        // Why it is worth having: every steering value in the plugin is
+        // normalized to -1..1 across THIS range, so it is the missing unit on
+        // the condition engine's velocity metric and on any damper gain
+        // measured against it. Diagnostics for now, not wired into force.
+        //
+        // Bounds of a real Logitech rotation range: 40 degrees was the
+        // narrowest the old Profiler would set, 1080 the widest any supported
+        // wheel offers (G PRO; the G29/G920/G923 family stops at 900). Only a
+        // value inside this band is accepted as an aperture.
+        private const int MinPlausibleRangeDeg = 40;
+        private const int MaxPlausibleRangeDeg = 1080;
+        private volatile int _observedRangeDeg;
+
+        /// <summary>The wheel's configured rotation range in degrees, or null
+        /// while nothing has set it in our hearing. Observed only: see
+        /// <see cref="_observedRangeDeg"/>.</summary>
+        public int? ObservedRotationRangeDeg
+        {
+            get { int d = _observedRangeDeg; return d > 0 ? d : (int?)null; }
+        }
+
+        /// <summary>The decoded DirectInput effect table (conditions,
+        /// periodics, ramps). Counters and gain are diagnostics; evaluation
+        /// goes through <see cref="TryEvaluateHidppEffects"/>.</summary>
+        public HidppEffectEngine HidppEffects => _hidppEffects;
+
+        /// <summary>True while any decoded parametric effect is live
+        /// (expiry-aware). Like <see cref="AnyClassicSpringPlaying"/>: it is
+        /// captured game FFB even though no scalar force appears, so
+        /// quiet-probe and no-FFB escalation logic must consult it.</summary>
+        /// <summary>How many times a re-created condition replaced an
+        /// already-playing one of its type. Climbing means destroys are being
+        /// missed and effects would otherwise have accumulated.</summary>
+        public int HidppReplacedStaleConditions => _hidppEffects.ReplacedStaleConditions;
+
+        /// <summary>What is live right now, by type ("spring=1 damper=2"), or
+        /// null when nothing is. Answers the question the counters cannot: a
+        /// damper that FEELS like it grew with every pit reset is either one
+        /// strong damper or several summed ones, and only this tells them
+        /// apart in a log after the fact.</summary>
+        public string HidppLiveConditions
+            => _parametricArmed && !SimulateNoFfbCapture
+             ? _hidppEffects.DescribeLive(_sw.ElapsedTicks, Stopwatch.Frequency)
+             : null;
+
+        public bool AnyHidppParametricPlaying
+            => _parametricArmed && !SimulateNoFfbCapture
+               && _hidppEffects.AnyPlayingAt(_sw.ElapsedTicks, Stopwatch.Frequency);
+
+        /// <summary>A decoded damper or friction condition is live right now
+        /// (expiry-aware): the CSP-synthesized damper stands down only while
+        /// this is true, so an expired decoded damper cannot pin the
+        /// fallback off (audit 2026-09-01).</summary>
+        public bool AnyHidppDamperPlayingNow
+            => _parametricArmed && !SimulateNoFfbCapture
+               && _hidppEffects.AnyDamperPlayingAt(_sw.ElapsedTicks, Stopwatch.Frequency);
+
+        /// <summary>Evaluate the playing parametric effects at the wheel's
+        /// physical state. Inputs in normalized units (position -1..1, +1 =
+        /// right; velocity per second; acceleration per second squared).
+        /// Sign space matches the classic springs and the scalar decode:
+        /// positive pulls toward lower steer. velTermSign flips only the
+        /// velocity-derived terms (DAMPSIGN's job; the spring never flips).
+        /// Returns null when nothing is playing (or NOFFB simulates a dead
+        /// capture); the caller caps and sums into the stream target.
+        /// Allocation-free; safe at 1 kHz.</summary>
+        public short? TryEvaluateHidppEffects(float posNorm, float velNormPerSec, float accel,
+                                              float damperGain, float inertiaGain,
+                                              int velTermSign = 1, float springGain = 1f,
+                                              float frictionGain = 1f, float periodicGain = 1f,
+                                              float rampGain = 1f,
+                                              bool allowSpringModeStandDown = true)
+        {
+            if (!_parametricArmed || SimulateNoFfbCapture) return null;
+            float f = _hidppEffects.Evaluate(posNorm, velNormPerSec, accel,
+                                             damperGain, inertiaGain,
+                                             _sw.ElapsedTicks, Stopwatch.Frequency,
+                                             out bool anyPlaying, velTermSign, springGain, frictionGain,
+                                             periodicGain, rampGain, allowSpringModeStandDown);
+            if (!anyPlaying) return _hidppEffects.AnyPlaying ? (short?)0 : null;
+            int v = (int)(f * 32767f);
+            if (v > 32767) v = 32767; else if (v < -32768) v = -32768;
+            return (short)v;
+        }
+
+        // Shared HID++ 0x8123 function router for both transports (ep0
+        // SET_REPORT and raw interrupt OUT). fn2 constants stay on the
+        // legacy scalar pipeline (arbiter, _packed, freshness); fn2
+        // parametric types and the state functions feed the effect engine.
+        private void HandleHidppFfbFunction(byte reportId, byte funcByte,
+                                            byte[] payload, int off, int len, string transport)
+        {
+            if (_hidppResetRequested)
+            {
+                // The game is driving again after a pause suspend: restore
+                // the retained effects (a native wheel's slots survive a
+                // pause too), then process this command against them.
+                _hidppResetRequested = false;
+                _hidppEffects.RepublishFromTable();
+            }
+            switch (funcByte & 0xf0)
+            {
+                case 0x20:   // DOWNLOAD_EFFECT
                 {
-                    short ffbTarget = (short)((payload[dataOffset + 10] << 8) | payload[dataOffset + 11]);
-
-                    bool accept = true;
-                    if (is0x12)
+                    NoteForceTraffic(reportId);
+                    // An effect download of a type this build does not know,
+                    // with the autostart bit set (the bit makes it definitely
+                    // an effect download, not some foreign dialect's force
+                    // write): count and drop, so its parameter bytes can
+                    // never publish as force (audit 2026-09-01). Without the
+                    // bit the packet is ambiguous and falls through to the
+                    // scalar path, where the arbiter's change gate guards it;
+                    // dropping those too could deafen an unknown dialect.
+                    // Effect-download trace (FXDUMP). What the wheel was
+                    // actually ASKED for, as against what we believe we asked
+                    // for. Built for the native-vs-engine bench: a DirectInput
+                    // effect passes through Windows and Logitech's driver
+                    // before it reaches the wire, and either could substitute a
+                    // type or reshape the parameters without us being able to
+                    // feel the difference. Logged before every type check, so
+                    // constant and unknown types show up too.
+                    if (LogEffectDownloads && len >= 12) TraceEffectDownload(payload, off, len);
+                    if (len >= 12 && (payload[off + 5] & 0x7f) > HidppEffectEngine.TypeRamp
+                        && (payload[off + 5] & HidppEffectEngine.AutostartBit) != 0)
                     {
-                        // 0x12 is a fallback: drop it once the wheel has proven
-                        // it uses 0x11 (latched, never un-latches this capture),
-                        // or while 0x11 is currently the live force channel, so
-                        // 0x11-real wheels (G PRO) are never clobbered by 0x12.
-                        bool real0x11Recent = _lastReal0x11Tms != 0
-                            && unchecked(Environment.TickCount - _lastReal0x11Tms) < Real0x11HoldMs;
-                        if (_sawReal0x11 || real0x11Recent)
-                        {
-                            accept = false;
-                        }
-                        else
-                        {
-                            // Require a sustained run before trusting 0x12, so a
-                            // lone open/pause management message can't be misread
-                            // as a hard-left force.
-                            int now = Environment.TickCount;
-                            if (_last0x12Tms == 0 || unchecked(now - _last0x12Tms) > Max0x12GapMs)
-                                _consec0x12 = 0;
-                            _consec0x12++;
-                            _last0x12Tms = now;
-                            if (_consec0x12 < Min0x12RunToTrust) accept = false;
-                        }
+                        _hidppEffects.CountUnknownType();
+                        if (_hidppEffects.UnknownTypeDownloads == 1)
+                            Log($"FFB tap: game downloaded an effect type this build does not know " +
+                                $"(0x{payload[off + 5] & 0x7f:X2}); ignored, not rendered.");
+                        return;
                     }
-                    else if (Math.Abs((int)ffbTarget) > Real0x11FloorLsb)
+                    if (len >= 12 && HidppEffectEngine.IsParametricType(payload[off + 5]))
                     {
-                        _lastReal0x11Tms = Environment.TickCount;   // 0x11 is carrying real force
-                        _sawReal0x11 = true;                        // confirm: this wheel uses 0x11, stop the 0x12 fallback
+                        bool indexWasConfirmed = _ffbIndexConfirmed;
+                        if (_hidppEffects.HandleDownload(payload, off, len, _sw.ElapsedTicks)
+                            && !SimulateNoFfbCapture)
+                        {
+                            // Arm the side effects (render, sample stamps,
+                            // index confirm) only when this is credibly the
+                            // FFB feature: the constant path already
+                            // confirmed the index, or the same (slot, type)
+                            // pair has streamed ParametricArmStreak downloads
+                            // in a row. Until then downloads only populate
+                            // the table: nothing renders, nothing confirms,
+                            // the resolver and no-FFB watchdog stay live (one
+                            // parametric-shaped packet on a wrong index guess
+                            // must not lock the session; the FM8 LED-feature
+                            // class, verify workflow 2026-09-01).
+                            int paraKey = (payload[off + 4] << 8) | (payload[off + 5] & 0x7f);
+                            if (paraKey == _paraStreakKey) _paraStreak++;
+                            else { _paraStreakKey = paraKey; _paraStreak = 1; }
+                            if (indexWasConfirmed || _paraStreak >= ParametricArmStreak)
+                                _parametricArmed = true;
+                            if (_parametricArmed)
+                            {
+                                // Decoded game FFB with no scalar to publish.
+                                // Stamp the sample clock so re-downloads (a
+                                // parked AC re-sends the damper on every
+                                // coefficient jitter) don't read as undecoded
+                                // traffic and break the quiet-spell hold, and
+                                // confirm the feature index so a
+                                // condition-only game does not trip the
+                                // no-FFB escalation (audit 2026-09-01). NOFFB
+                                // simulates a dead capture: it does neither.
+                                System.Threading.Interlocked.Exchange(
+                                    ref _lastSampleTicks, _sw.ElapsedTicks & TimestampMask);
+                                _ffbIndexConfirmed = true;
+                                NoteExtraction(transport, reportId, _ffbFeatureIndex, "hidpp-slot-effect@5");
+                                if (!_parametricLogged)
+                                {
+                                    _parametricLogged = true;
+                                    Log($"FFB tap: game uses DirectInput parametric effects " +
+                                        $"(type=0x{payload[off + 5] & 0x7f:X2} on report 0x{reportId:X2}); rendering into the stream.");
+                                }
+                            }
+                        }
+                        return;
                     }
-
-                    if (accept)
+                    // A constant download between a new-effect parametric
+                    // download and its ack makes the pending ack ambiguous
+                    // (constants never enter the effect table, so their acks
+                    // would pass the move-guard and relocate the parametric
+                    // effect); stop waiting for it (verify workflow
+                    // 2026-09-01).
+                    _hidppEffects.CancelProvisional();
+                    short ffbTarget = (short)((payload[off + 10] << 8) | payload[off + 11]);
+                    bool accept = _reportArbiter.Accept(reportId, ffbTarget, Environment.TickCount);
+                    string decision = _reportArbiter.TakeDecision();
+                    if (decision != null) Log("FFB tap: " + decision);
+                    if (accept && !SimulateNoFfbCapture)
                     {
                         long timestamp = _sw.ElapsedTicks & TimestampMask;
                         long packed = (timestamp << 16) | (uint)(ushort)ffbTarget;
@@ -1311,11 +2147,741 @@ namespace TrueforceForAll.Core
                         System.Threading.Interlocked.Exchange(ref _lastSampleTicks, timestamp);
                         FfbSamplesCaptured++;
                         _ffbIndexConfirmed = true;   // real FFB flowed on this index; lock the resolver
-                        NoteExtraction("ep0-ctrl", reportId, featIdx, "hidpp-int16be@10");
+                        NoteExtraction(transport, reportId, _ffbFeatureIndex, "hidpp-int16be@10");
                     }
+                    return;
+                }
+                case 0x10:   // RESET_ALL
+                    _hidppEffects.ResetAll();
+                    return;
+                case 0x30:   // SET_EFFECT_STATE [slot, state]
+                    if (len >= 6) _hidppEffects.HandleSetState(payload[off + 4], payload[off + 5], _sw.ElapsedTicks);
+                    return;
+                case 0x40:   // DESTROY_EFFECT [slot]
+                    if (len >= 5) _hidppEffects.HandleDestroy(payload[off + 4]);
+                    return;
+                case 0x60:   // SET_APERTURE [range u16, degrees]
+                    // The host telling the wheel its rotation range. Purely
+                    // observed; a value outside what any Logitech wheel
+                    // accepts means this is not an aperture write (a foreign
+                    // dialect reusing fn6, or a short report whose params are
+                    // padding), so drop it rather than publish a wrong unit.
+                    if (len >= 6)
+                    {
+                        int deg = (payload[off + 4] << 8) | payload[off + 5];
+                        if (deg >= MinPlausibleRangeDeg && deg <= MaxPlausibleRangeDeg
+                            && deg != _observedRangeDeg)
+                        {
+                            _observedRangeDeg = deg;
+                            Log($"FFB tap: wheel rotation range set to {deg} degrees.");
+                        }
+                    }
+                    return;
+                case 0x80:   // SET_GLOBAL_GAINS [gain u16, boost u16]
+                    if (len >= 6)
+                    {
+                        ushort g = (ushort)((payload[off + 4] << 8) | payload[off + 5]);
+                        // Log on CHANGE only: a title that re-sends or ramps
+                        // its gain per frame must not write one line per
+                        // packet (verify workflow 2026-09-01).
+                        if (g != _lastLoggedGain)
+                        {
+                            _lastLoggedGain = g;
+                            if (g != 0xffff) Log($"FFB tap: game set global FFB gain to {g / 655.35:F0}%.");
+                        }
+                        _hidppEffects.HandleSetGain(g);
+                    }
+                    return;
+            }
+        }
+
+        // One decoded classic condition (damper or friction), already in the
+        // engine's normalized units plus the raw wire fields for the log line.
+        private struct ClassicCondition
+        {
+            public byte  EngineType;                 // HidppEffectEngine.TypeDamper / TypeFriction
+            public float LeftCoeff, RightCoeff;      // -1..1, sign per the S bits
+            public float LeftSat, RightSat;          // 0..1
+            public int   K1, K2, Clip;               // raw; Clip = -1 when the type carries none
+            public bool  S1, S2, ClipIgnored;
+            public float Deadband, Center;            // springs only
+            public string MapName;                   // which inverse produced the coefficients
+        }
+
+        // Logitech Table 27 (low-res 3-bit K): 1/4, 1/2, 3/4, 1, 3/2, 2, 3, 4
+        // times the offset, normalized to K = 7. Note K = 0 is a real slope.
+        private static readonly float[] ClassicLowResCoeff =
+            { 1f / 16f, 1f / 8f, 3f / 16f, 1f / 4f, 3f / 8f, 1f / 2f, 3f / 4f, 1f };
+
+        // Classic damper/friction -> engine condition. Layouts from Logitech's
+        // Force Feedback Protocol V1.6 (Tables 29, 49, 51), byte-identical to
+        // new-lg4ff's encoder. K is LINEAR per that document ("Linear slope
+        // with 0 being the weakest force and 15 being the strongest"; the
+        // Windows driver encodes a 50 % DirectInput damper as K = 8), so the
+        // inverse is K/15 for the 4-bit form and K/255 for the 8-bit one; the
+        // absolute factor is device dependent and DAMPCAL's damperGain fits
+        // it. The spring path keeps its older 2^K guess with the gate off and
+        // goes linear only under the gate (TryEvaluateClassicSprings); do not
+        // copy either way without a rig session.
+        //
+        // K1/S1 is the low (left, push, velocity < 0) side = the engine's
+        // LeftCoeff, K2/S2 the high (right, pull) side = RightCoeff; S = 1
+        // inverts (an "ice" anti-damper), which the engine's signed
+        // coefficient carries as is. No dead band or center on the wire.
+        //
+        // The hi-res damper's byte 6 CLIP is a Driving Force Pro extension
+        // ("only for PID_C298"); the G923 ignores it and the Windows driver
+        // writes 0x01 there for a full-saturation effect, so honoring it
+        // would render every Windows damper at 1/255. Saturation 1.0, raw
+        // byte kept for the log. Friction's CLIP (byte 4) is real.
+        private static bool TryParseClassicCondition(byte type, byte[] p, int off, int len,
+                                                     out ClassicCondition c)
+        {
+            c = default(ClassicCondition);
+            if (len < 7) return false;
+            switch (type)
+            {
+                case ClassicTypeHiResDamper:
+                    c.EngineType  = HidppEffectEngine.TypeDamper;
+                    c.K1 = p[off + 2] & 0x0f;   c.S1 = (p[off + 3] & 0x01) != 0;
+                    c.K2 = p[off + 4] & 0x0f;   c.S2 = (p[off + 5] & 0x01) != 0;
+                    c.Clip = p[off + 6];        c.ClipIgnored = true;
+                    c.LeftCoeff  = (c.S1 ? -1f : 1f) * c.K1 / 15f;
+                    c.RightCoeff = (c.S2 ? -1f : 1f) * c.K2 / 15f;
+                    c.LeftSat = c.RightSat = 1f;
+                    c.MapName = "K/15 linear, clip ignored";
+                    return true;
+                case ClassicTypeLoResDamper:
+                    c.EngineType  = HidppEffectEngine.TypeDamper;
+                    c.K1 = p[off + 2] & 0x07;   c.S1 = (p[off + 3] & 0x01) != 0;
+                    c.K2 = p[off + 4] & 0x07;   c.S2 = (p[off + 5] & 0x01) != 0;
+                    c.Clip = -1;
+                    c.LeftCoeff  = (c.S1 ? -1f : 1f) * ClassicLowResCoeff[c.K1];
+                    c.RightCoeff = (c.S2 ? -1f : 1f) * ClassicLowResCoeff[c.K2];
+                    c.LeftSat = c.RightSat = 1f;
+                    c.MapName = "Table 27, no clip";
+                    return true;
+                case ClassicTypeFriction:
+                    c.EngineType  = HidppEffectEngine.TypeFriction;
+                    c.K1 = p[off + 2];          c.K2 = p[off + 3];
+                    c.Clip = p[off + 4];
+                    c.S1 = (p[off + 5] & 0x01) != 0;
+                    c.S2 = (p[off + 5] & 0x10) != 0;
+                    c.LeftCoeff  = (c.S1 ? -1f : 1f) * c.K1 / 255f;
+                    c.RightCoeff = (c.S2 ? -1f : 1f) * c.K2 / 255f;
+                    c.LeftSat = c.RightSat = c.Clip / 255f;
+                    c.MapName = "K/255 linear, clip/255";
+                    return true;
+                case ClassicTypeLoResSpring:
+                    // Table 25/26: D1/D2 are the dead band edges in axis
+                    // counts, K per Table 27, CLIP the per-side saturation.
+                    // S inverts that side's slope.
+                    c.EngineType = HidppEffectEngine.TypeSpring;
+                    c.K1 = p[off + 4] & 0x07;   c.S1 = (p[off + 5] & 0x01) != 0;
+                    c.K2 = (p[off + 4] >> 4) & 0x07; c.S2 = (p[off + 5] & 0x10) != 0;
+                    c.Clip = p[off + 6];
+                    {
+                        int d1 = p[off + 2], d2 = p[off + 3];
+                        if (d2 < d1) { int t = d1; d1 = d2; d2 = t; }
+                        c.Center   = ClassicLevel((d1 + d2) / 2f);
+                        c.Deadband = (d2 - d1) / 2f / 127.5f;
+                    }
+                    c.LeftCoeff  = (c.S1 ? -1f : 1f) * ClassicLowResCoeff[c.K1];
+                    c.RightCoeff = (c.S2 ? -1f : 1f) * ClassicLowResCoeff[c.K2];
+                    c.LeftSat = c.RightSat = c.Clip / 255f;
+                    c.MapName = "Table 27, clip/255";
+                    return true;
+                case ClassicTypeHiResSpring:
+                {
+                    // The hi-res spring ALSO lands here, additively, beside
+                    // its own ClassicSpring path. That path only ever renders
+                    // under spring mode, which is a REPLACEMENT mode gated on
+                    // a bus with no constant force for two seconds, so in any
+                    // game that streams road force and a centering spring
+                    // together (Forza: 5,955 force commands beside 276 of
+                    // these springs in the owner's capture) the spring was
+                    // never rendered at all. As an engine condition it sums
+                    // on top of the pass-through force like the dampers do.
+                    //
+                    // Parameters come from ParseHiResSpring, unchanged, so
+                    // there is one decode of the wire bytes. Its D1/D2 are
+                    // band edges in p = (steerNorm + 1) / 2, the 0..1
+                    // lock-to-lock axis; the engine measures steerNorm, which
+                    // is -1..1. So s = 2p - 1, and:
+                    //   band edges  s1 = 2*D1 - 1, s2 = 2*D2 - 1
+                    //   center      (s1 + s2) / 2 = D1 + D2 - 1
+                    //   half-width  (s2 - s1) / 2 = D2 - D1
+                    // A p-distance d is a steerNorm distance 2d, which is
+                    // exactly why the classic path carries the factor 2 in
+                    // its slope (2 * K/15 per unit of p) and the engine does
+                    // not (K/15 per unit of steerNorm): the two render the
+                    // same force.
+                    //
+                    // Slope is LINEAR, K/15 per side, matching the hi-res
+                    // auto-center below; sign inverted by that side's S bit.
+                    // Sign check against the engine's contract (positive
+                    // force pulls toward LOWER steer; ConditionTerm applies
+                    // RightCoeff when dev > deadband): right of the band with
+                    // S2 clear the classic path adds +f, so RightCoeff is
+                    // positive there, and left of it with S1 clear it adds
+                    // -f, which ConditionTerm produces from a POSITIVE
+                    // LeftCoeff times a negative deviation. Both sides carry
+                    // the S bit as a plain sign, as on every other type.
+                    var hs = ParseHiResSpring(p, off, len);
+                    if (hs == null) return false;
+                    c.EngineType = HidppEffectEngine.TypeSpring;
+                    c.K1 = hs.K1; c.S1 = hs.S1;
+                    c.K2 = hs.K2; c.S2 = hs.S2;
+                    c.Clip = (int)(hs.Clip * 255f + 0.5f);
+                    c.Center   = hs.D1 + hs.D2 - 1f;
+                    c.Deadband = hs.D2 - hs.D1;
+                    c.LeftCoeff  = (hs.S1 ? -1f : 1f) * hs.K1 / 15f;
+                    c.RightCoeff = (hs.S2 ? -1f : 1f) * hs.K2 / 15f;
+                    c.LeftSat = c.RightSat = hs.Clip;
+                    c.MapName = "K/15 linear, clip/255, band in steerNorm";
+                    return true;
+                }
+                case ClassicTypeAutoCenter:
+                case ClassicTypeHiResAutoCenter:
+                {
+                    // Tables 31 and 50. The wheel centers this on the axis
+                    // midpoint with a two-count dead band, so center 0 and a
+                    // dead band small enough to be inaudible. The low-res form
+                    // takes Table 27, the high-res one the linear 4-bit scale.
+                    bool hi = type == ClassicTypeHiResAutoCenter;
+                    c.EngineType = HidppEffectEngine.TypeSpring;
+                    c.K1 = p[off + 2] & (hi ? 0x0f : 0x07);
+                    c.K2 = p[off + 3] & (hi ? 0x0f : 0x07);
+                    c.Clip = p[off + 4];
+                    c.Center = 0f;
+                    c.Deadband = 1f / 127.5f;
+                    float lo = hi ? c.K1 / 15f : ClassicLowResCoeff[c.K1];
+                    float hg = hi ? c.K2 / 15f : ClassicLowResCoeff[c.K2];
+                    c.LeftCoeff = lo; c.RightCoeff = hg;
+                    c.LeftSat = c.RightSat = c.Clip / 255f;
+                    c.MapName = hi ? "auto-center, K/15 linear, clip/255"
+                                   : "auto-center, Table 27, clip/255";
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        }
+
+        // The periodics and the ramp. Levels are offset binary (Table 22) and
+        // every duration counts 2 ms main loops. A zero step or zero interval
+        // means "as fast as the loop runs", which is one loop, and a zero step
+        // size would never move at all, so it renders as a steady level.
+        private static bool TryParseClassicWaveform(byte type, byte[] p, int off, int len,
+                                                    out ClassicWaveform w)
+        {
+            w = default(ClassicWaveform);
+            if (len < 7) return false;
+            switch (type)
+            {
+                case ClassicTypeSawtoothUp:
+                case ClassicTypeSawtoothDown:
+                {
+                    // Tables 32-35: L1 max, L2 min, L0 initial, then an
+                    // increment of INC every T3 loops.
+                    int l1 = p[off + 2], l2 = p[off + 3];
+                    int t3 = (p[off + 6] >> 4) & 0x0f, inc = p[off + 6] & 0x0f;
+                    if (l2 > l1) { int t = l1; l1 = l2; l2 = t; }
+                    w.EngineType = type == ClassicTypeSawtoothUp
+                        ? HidppEffectEngine.TypeSawtoothUp : HidppEffectEngine.TypeSawtoothDown;
+                    w.Magnitude = (ClassicLevel(l1) - ClassicLevel(l2)) / 2f;
+                    w.Offset    = (ClassicLevel(l1) + ClassicLevel(l2)) / 2f;
+                    int steps = inc > 0 ? (l1 - l2) / inc : 0;
+                    if (steps < 1) { steps = 1; w.Magnitude = 0f; w.Offset = ClassicLevel(p[off + 4]); }
+                    w.PeriodMs = (int)(steps * (t3 > 0 ? t3 : 1) * ClassicLoopMs);
+                    if (w.PeriodMs < 1) w.PeriodMs = 1;
+                    w.Shape = type == ClassicTypeSawtoothUp ? "sawtooth up" : "sawtooth down";
+                    return true;
+                }
+                case ClassicTypeTrapezoid:
+                case ClassicTypeRectangle:
+                {
+                    // Tables 36-39. The rectangle is the trapezoid with no
+                    // ramps, which is why one engine shape renders both.
+                    int l1 = p[off + 2], l2 = p[off + 3];
+                    int t1 = p[off + 4], t2 = p[off + 5];
+                    if (l2 > l1) { int t = l1; l1 = l2; l2 = t; }
+                    int rampLoops = 0;
+                    if (type == ClassicTypeTrapezoid)
+                    {
+                        int t3 = (p[off + 6] >> 4) & 0x0f, stp = p[off + 6] & 0x0f;
+                        rampLoops = stp > 0 ? (l1 - l2) / stp * (t3 > 0 ? t3 : 1) : 0;
+                    }
+                    float total = t1 + t2 + 2f * rampLoops;
+                    if (total < 1f) total = 1f;
+                    w.EngineType = HidppEffectEngine.TypeTrapezoid;
+                    w.Magnitude  = (ClassicLevel(l1) - ClassicLevel(l2)) / 2f;
+                    w.Offset     = (ClassicLevel(l1) + ClassicLevel(l2)) / 2f;
+                    w.TrapRise   = rampLoops / total;
+                    w.TrapHigh   = t1 / total;
+                    w.TrapFall   = rampLoops / total;
+                    w.PeriodMs   = (int)(total * ClassicLoopMs);
+                    if (w.PeriodMs < 1) w.PeriodMs = 1;
+                    if (type == ClassicTypeRectangle)
+                    {
+                        // Table 39: phase counts main loops into the cycle.
+                        int ph = p[off + 6];
+                        w.Phase = ph > total ? 0f : ph / total;
+                        w.Shape = "rectangle";
+                    }
+                    else w.Shape = "trapezoid";
+                    return true;
+                }
+                case ClassicTypeSquare:
+                {
+                    // Tables 44-45: amplitude, then a 16-bit half-period in
+                    // main loops, low byte first, and a repeat count where
+                    // zero means 256.
+                    int amp = p[off + 2];
+                    int half = p[off + 3] | (p[off + 4] << 8);
+                    int n = p[off + 5];
+                    if (half < 1) half = 1;
+                    w.EngineType = HidppEffectEngine.TypeSquare;
+                    w.Magnitude  = amp / 255f;
+                    w.Offset     = 0f;
+                    w.PeriodMs   = (int)(2 * half * ClassicLoopMs);
+                    if (w.PeriodMs < 1) w.PeriodMs = 1;
+                    w.LengthMs   = (n > 0 ? n : 256) * w.PeriodMs;
+                    w.Shape = "square wave";
+                    return true;
+                }
+                case ClassicTypeRamp:
+                {
+                    // Tables 42-43. It stops when it reaches the target, so
+                    // the ramp carries a finite length.
+                    int l1 = p[off + 2], l2 = p[off + 3];
+                    bool down = (p[off + 4] & 0x01) != 0;
+                    int t = (p[off + 5] >> 4) & 0x0f, stp = p[off + 5] & 0x0f;
+                    if (l2 > l1) { int q = l1; l1 = l2; l2 = q; }
+                    int steps = stp > 0 ? (l1 - l2) / stp : 0;
+                    if (steps < 1) steps = 1;
+                    w.EngineType = HidppEffectEngine.TypeRamp;
+                    w.IsRamp     = true;
+                    w.RampStart  = down ? ClassicLevel(l1) : ClassicLevel(l2);
+                    w.RampEnd    = down ? ClassicLevel(l2) : ClassicLevel(l1);
+                    w.LengthMs   = (int)(steps * (t > 0 ? t : 1) * ClassicLoopMs);
+                    if (w.LengthMs < 1) w.LengthMs = 1;
+                    w.Shape = "ramp";
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        }
+
+        private static string ClassicTypeLabel(byte type)
+            => type == ClassicTypeFriction ? "friction"
+             : type == ClassicTypeLoResDamper ? "low-res damper"
+             : type == ClassicTypeHiResDamper ? "damper"
+             : type == ClassicTypeHiResSpring ? "hi-res spring"
+             : type == ClassicTypeVariable ? "variable"
+             : type == ClassicTypeConstant ? "constant"
+             : type == ClassicTypeLoResSpring ? "low-res spring"
+             : type == ClassicTypeAutoCenter ? "auto-center spring"
+             : type == ClassicTypeHiResAutoCenter ? "hi-res auto-center spring"
+             : type == ClassicTypeSawtoothUp ? "sawtooth up"
+             : type == ClassicTypeSawtoothDown ? "sawtooth down"
+             : type == ClassicTypeTrapezoid ? "trapezoid"
+             : type == ClassicTypeRectangle ? "rectangle"
+             : type == ClassicTypeRamp ? "ramp"
+             : type == ClassicTypeSquare ? "square wave" : "type";
+
+        private static string ClassicCmdLabel(int cmd)
+        {
+            switch (cmd)
+            {
+                case ClassicCmdDownload:        return "download";
+                case ClassicCmdDownloadAndPlay: return "download-and-play";
+                case ClassicCmdPlay:            return "play";
+                case ClassicCmdStop:            return "stop";
+                case ClassicCmdRefreshForce:    return "refresh";
+                default:                        return "cmd";
+            }
+        }
+
+        // First decoded classic damper/friction of each type per tap instance
+        // (the _parametricLogged pattern). Raw K/S/clip beside the derived
+        // coefficients on purpose: the raw nibble is what settles the
+        // driver's coefficient map on a real C266, and a normalized float
+        // hides a scaling mistake.
+        private void LogFirstClassicCondition(byte type, int slotIndex, int cmd, ref ClassicCondition c)
+        {
+            int bit = 1 << type;
+            if ((_classicConditionLoggedTypes & bit) != 0) return;
+            _classicConditionLoggedTypes |= bit;
+            string clip = c.Clip < 0 ? "n/a" : $"0x{c.Clip:X2}{(c.ClipIgnored ? " (ignored on this type)" : "")}";
+            Log($"FFB tap: classic {ClassicTypeLabel(type)} 0x{type:X2} slot={slotIndex + 1} cmd={ClassicCmdLabel(cmd)}" +
+                $" raw K1={c.K1} S1={(c.S1 ? 1 : 0)} K2={c.K2} S2={(c.S2 ? 1 : 0)} clip={clip}" +
+                $" -> leftCoeff={c.LeftCoeff:+0.000;-0.000} rightCoeff={c.RightCoeff:+0.000;-0.000}" +
+                $" sat={c.RightSat:0.000} ({c.MapName})" +
+                // The band, on the types that carry one. For the damper and
+                // friction both fields are zero on the wire, but on the
+                // spring family the center and the half-width ARE the
+                // decode this line exists to check: a rig reading a Forza
+                // autocenter has to be able to see where the band landed,
+                // and a slope printed beside no band cannot show that.
+                (c.EngineType == HidppEffectEngine.TypeSpring
+                    ? $" band center={c.Center:+0.000;-0.000} halfWidth={c.Deadband:0.000}" : "") +
+                (SimulateNoFfbCapture ? "; NOFFB simulation, not rendered." : "; rendering into the stream."));
+        }
+
+        // One line per waveform type per tap instance, the periodic sibling
+        // of LogFirstClassicCondition.
+        private void LogFirstClassicWaveform(byte type, int slotIndex, int cmd, ref ClassicWaveform w)
+        {
+            if ((_classicConditionLoggedTypes & (1 << (type & 0x0f))) != 0) return;
+            _classicConditionLoggedTypes |= 1 << (type & 0x0f);
+            Log($"FFB tap: classic {w.Shape} 0x{type:X2} slot={slotIndex + 1} cmd={ClassicCmdLabel(cmd)}"
+                + (w.IsRamp
+                    ? $" ramp {w.RampStart:+0.000;-0.000} to {w.RampEnd:+0.000;-0.000} over {w.LengthMs} ms"
+                    : $" magnitude={w.Magnitude:0.000} offset={w.Offset:+0.000;-0.000} period={w.PeriodMs} ms"
+                      + (w.LengthMs > 0 ? $" for {w.LengthMs} ms" : " until stopped"))
+                + (SimulateNoFfbCapture ? "; NOFFB simulation, not rendered." : "; rendering into the stream."));
+        }
+
+        // FXDUMP's classic sibling: every slot command that passes the
+        // firewall, raw, so a C266 corpus can be read straight from the log.
+        private void TraceClassicSlotCommand(byte[] p, int off, int len, int slots, int cmd, byte type)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("FFB tap: CLASSIC slots=0x").Append(slots.ToString("X"))
+              .Append(" cmd=0x").Append(cmd.ToString("X")).Append(" (").Append(ClassicCmdLabel(cmd)).Append(")")
+              .Append(" type=0x").Append(type.ToString("X2")).Append(" (").Append(ClassicTypeLabel(type)).Append(")")
+              .Append(" raw=");
+            int n = len < 7 ? len : 7;
+            for (int i = 0; i < n; i++) sb.Append(p[off + i].ToString("x2")).Append(i + 1 < n ? " " : "");
+            Log(sb.ToString());
+        }
+
+        private static ClassicSpring ParseHiResSpring(byte[] p, int off, int len)
+        {
+            if (len < 7) return null;
+            byte lo = p[off + 5];
+            int d1 = (p[off + 2] << 3) | ((lo >> 1) & 0x07);
+            int d2 = (p[off + 3] << 3) | ((lo >> 5) & 0x07);
+            return new ClassicSpring
+            {
+                // Guard an inverted band; the force math assumes D1 <= D2.
+                D1   = Math.Min(d1, d2) / 2047f,
+                D2   = Math.Max(d1, d2) / 2047f,
+                K1   = p[off + 4] & 0x0f,
+                K2   = (p[off + 4] >> 4) & 0x0f,
+                S1   = (lo & 0x01) != 0,
+                S2   = (lo & 0x10) != 0,
+                Clip = p[off + 6] / 255f,
+            };
+        }
+
+        private void PublishSpringSnapshot()
+        {
+            int n = 0;
+            for (int i = 0; i < ClassicSlotCount; i++)
+                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null) n++;
+            if (n == 0) { _playingSprings = null; return; }
+            var arr = new ClassicSpring[n];
+            int j = 0;
+            for (int i = 0; i < ClassicSlotCount; i++)
+                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null) arr[j++] = _classicSlotSpring[i];
+            _playingSprings = arr;
+        }
+
+        /// <summary>Evaluate the playing classic springs at the wheel's
+        /// physical position. steerNorm is -1..1 (full left..full right).
+        /// Returns null when no spring is playing; 0 when the wheel sits
+        /// inside every dead band (the game commands a spring, the spring
+        /// commands nothing right now). Sign space matches the variable-force
+        /// decode and the stationary spring: positive pulls toward lower
+        /// steer, so a wheel right of the band gets a positive (leftward)
+        /// pull. Allocation-free; safe at 1 kHz.</summary>
+        public short? TryEvaluateClassicSprings(float steerNorm)
+        {
+            if (SimulateNoFfbCapture) return null;
+            var springs = _playingSprings;
+            if (springs == null) return null;
+            if (steerNorm < -1f) steerNorm = -1f; else if (steerNorm > 1f) steerNorm = 1f;
+            float p = (steerNorm + 1f) * 0.5f;
+            // Slope per unit of p (the 0..1 lock-to-lock axis). Two readings
+            // of the hi-res K nibble coexist here on purpose:
+            //   gate OFF: the shipped 2^K guess, byte-identical to before.
+            //   gate ON (CLASSICCOND): LINEAR, per Logitech's Force Feedback
+            //   Protocol document (hi-res K is "scaled linearly from 0 to
+            //   15") and the Windows driver's damper data point (WINCAP,
+            //   new-lg4ff issue #86: a DirectInput 0.5 damper arrives as
+            //   K = 8), carried over to the spring by the document's statement
+            //   that 0x0c uses the same 4-bit K scale as 0x0b; no spring data
+            //   point with a known DirectInput coefficient exists. The
+            //   DirectInput coefficient is defined per unit of the -1..1 axis,
+            //   so the factor 2 converts it into the p domain:
+            //   slope = 2 * K / 15. The absolute factor is unvalidated until a
+            //   spring calibration exists.
+            bool linear = ClassicConditionsEnabled;
+            float sum = 0f;
+            for (int i = 0; i < springs.Length; i++)
+            {
+                var s = springs[i];
+                if (p > s.D2)
+                {
+                    float slope = linear ? 2f * (s.K2 / 15f) : (1 << s.K2);
+                    float f = (p - s.D2) * slope;
+                    if (f > s.Clip) f = s.Clip;
+                    sum += s.S2 ? -f : f;
+                }
+                else if (p < s.D1)
+                {
+                    float slope = linear ? 2f * (s.K1 / 15f) : (1 << s.K1);
+                    float f = (s.D1 - p) * slope;
+                    if (f > s.Clip) f = s.Clip;
+                    sum += s.S1 ? f : -f;
                 }
             }
-            CloseRawLog();
+            int v = (int)(sum * 32767f);
+            if (v > 32767) v = 32767; else if (v < -32768) v = -32768;
+            return (short)v;
+        }
+
+        private void HandleClassicFfbCommand(byte[] payload, int off, int len)
+        {
+            if (_classicResetRequested)
+            {
+                _classicResetRequested = false;
+                _classicScalarResetRequested = false;   // subsumed by the full reset
+                ResetClassicState();
+            }
+            else if (_classicScalarResetRequested)
+            {
+                _classicScalarResetRequested = false;
+                ResetClassicScalarState();
+            }
+            if (len < 2) return;
+
+            byte b0 = payload[off];
+            if (b0 == ClassicExtendedCommand) return;   // rev LEDs and friends
+
+            int slots = (b0 >> 4) & 0x0f;
+            int cmd   = b0 & 0x0f;
+            // Slot mask 0 is not a classic command. This is what keeps our OWN
+            // ep3 Trueforce stream (report 0x01) out of the state machine.
+            if (slots == 0) return;
+
+            // HID++ firewall. Report IDs 0x10 / 0x11 / 0x12 collide with slot-1
+            // download / download-and-play / play, so a HID++ wheel's FFB would
+            // otherwise drive this state machine and clobber _packed. Byte 1 is
+            // the HID++ device index (0xff on a directly attached wheel) and a
+            // classic force type is never above 0x0e, so one range check
+            // separates them. Every command we act on carries either a force
+            // type or an unused zero here.
+            byte typeOrPad = payload[off + 1];
+            if (typeOrPad > ClassicMaxForceType) return;
+            if (LogEffectDownloads) TraceClassicSlotCommand(payload, off, len, slots, cmd, typeOrPad);
+
+            bool decodedForce = false;
+            bool springsTouched = false;
+            bool springIntoPlayingSlot = false;
+            bool conditionPlaced = false;
+            bool conditionIntoPlayingSlot = false;
+            switch (cmd)
+            {
+                case ClassicCmdDownload:          // load a slot, do NOT play it
+                case ClassicCmdDownloadAndPlay:
+                case ClassicCmdRefreshForce:      // retune a force already playing
+                {
+                    // VARIABLE decodes to a scalar force; HI-RES SPRING decodes
+                    // to parameters the plugin evaluates against the wheel's
+                    // physical position. Any other type still marks the slot
+                    // playing so a later STOP is accounted for, but contributes
+                    // nothing: guessing at an undecoded payload is how you
+                    // invent a force the game never asked for.
+                    bool isVariable = typeOrPad == ClassicTypeVariable && len >= 3;
+                    // Type 0x00 carries one level PER SLOT (Table 24), so its
+                    // value is read inside the loop rather than once here.
+                    bool isConstant = typeOrPad == ClassicTypeConstant && len >= 6;
+                    short f = isVariable ? (short)((payload[off + 2] - 0x80) << 8) : (short)0;
+                    ClassicSpring spring = typeOrPad == ClassicTypeHiResSpring
+                        ? ParseHiResSpring(payload, off, len) : null;
+                    // DAMPER / FRICTION decode to condition parameters the
+                    // engine evaluates against the wheel's physical velocity
+                    // (and position, for friction). Gated: off by default.
+                    // (Pre-assigned: with the gate off the && short-circuits
+                    // and C# definite assignment would otherwise reject the
+                    // use below.)
+                    ClassicCondition cond = default(ClassicCondition);
+                    bool isCondition = ClassicConditionsEnabled
+                        && TryParseClassicCondition(typeOrPad, payload, off, len, out cond);
+                    // The periodics and the ramp take the same external slots
+                    // through the engine's waveform ingest.
+                    ClassicWaveform wave = default(ClassicWaveform);
+                    bool isWaveform = ClassicConditionsEnabled && !isCondition
+                        && TryParseClassicWaveform(typeOrPad, payload, off, len, out wave);
+                    for (int i = 0; i < ClassicSlotCount; i++)
+                    {
+                        if ((slots & (1 << i)) == 0) continue;
+                        if (cmd == ClassicCmdRefreshForce && !_classicSlotPlaying[i]) continue;
+                        // Whatever this download is, it overwrites the slot:
+                        // a spring replaced by a variable force (or any other
+                        // type) must stop contributing spring torque.
+                        if (_classicSlotSpring[i] != null) { _classicSlotSpring[i] = null; springsTouched = true; }
+                        // Same rule for an engine-owned damper/friction: any
+                        // other download into the slot ends it (no-op when the
+                        // engine holds nothing there).
+                        if (!isCondition && !isWaveform) _hidppEffects.RemoveExternal(i);
+                        if (isVariable || isConstant)
+                        {
+                            _classicSlotForce[i]   = isConstant
+                                ? (short)((payload[off + 2 + i] - 0x80) << 8) : f;
+                            _classicSlotDecoded[i] = true;
+                            decodedForce = true;
+                        }
+                        else if (spring != null)
+                        {
+                            _classicSlotSpring[i]  = spring;
+                            _classicSlotDecoded[i] = false;   // no scalar; the spring path owns this slot
+                            springsTouched = true;
+                            // The SAME download also lands in the engine as
+                            // an additive spring (isCondition is true for
+                            // 0x0b under the gate). Two renderers, one at a
+                            // time: this copy stands down while spring mode
+                            // is armed, and the spring-mode path is the one
+                            // that stands down the rest of the time by never
+                            // arming. Not counted into
+                            // ClassicConditionUpdatesCaptured: the spring
+                            // counter below already counts this very
+                            // download, and one packet must not show up as
+                            // two captures.
+                            if (isCondition)
+                            {
+                                bool springPlays = cmd == ClassicCmdDownloadAndPlay || _classicSlotPlaying[i];
+                                _hidppEffects.UpsertExternalCondition(i, cond.EngineType,
+                                    cond.LeftCoeff, cond.RightCoeff, cond.LeftSat, cond.RightSat,
+                                    cond.Deadband, cond.Center, springPlays, _sw.ElapsedTicks,
+                                    standsDownForSpringMode: true);
+                                conditionPlaced = true;
+                                LogFirstClassicCondition(typeOrPad, i, cmd, ref cond);
+                            }
+                        }
+                        else if (isCondition)
+                        {
+                            bool willPlay = cmd == ClassicCmdDownloadAndPlay || _classicSlotPlaying[i];
+                            // Deadband and center are real on the spring
+                            // family (the low-res spring carries a band, the
+                            // auto-centers a two-count one) and zero on the
+                            // damper and friction, which have neither on the
+                            // wire; passing the decoded pair is what lets an
+                            // off-center band render where the game put it.
+                            _hidppEffects.UpsertExternalCondition(i, cond.EngineType,
+                                cond.LeftCoeff, cond.RightCoeff, cond.LeftSat, cond.RightSat,
+                                cond.Deadband, cond.Center, willPlay, _sw.ElapsedTicks);
+                            _classicSlotDecoded[i] = false;   // no scalar; the engine owns this slot
+                            conditionPlaced = true;
+                            if (willPlay) conditionIntoPlayingSlot = true;
+                            LogFirstClassicCondition(typeOrPad, i, cmd, ref cond);
+                        }
+                        else if (isWaveform)
+                        {
+                            bool willPlay = cmd == ClassicCmdDownloadAndPlay || _classicSlotPlaying[i];
+                            if (wave.IsRamp)
+                                _hidppEffects.UpsertExternalRamp(i, wave.RampStart, wave.RampEnd,
+                                    wave.LengthMs, willPlay, _sw.ElapsedTicks);
+                            else
+                                _hidppEffects.UpsertExternalPeriodic(i, wave.EngineType,
+                                    wave.Magnitude, wave.Offset, wave.PeriodMs, wave.Phase,
+                                    wave.LengthMs, wave.TrapRise, wave.TrapHigh, wave.TrapFall,
+                                    willPlay, _sw.ElapsedTicks);
+                            _classicSlotDecoded[i] = false;   // no scalar; the engine owns this slot
+                            conditionPlaced = true;
+                            if (willPlay) conditionIntoPlayingSlot = true;
+                            LogFirstClassicWaveform(typeOrPad, i, cmd, ref wave);
+                        }
+                        else
+                        {
+                            _classicSlotDecoded[i] = false;
+                        }
+                        if (cmd == ClassicCmdDownloadAndPlay) _classicSlotPlaying[i] = true;
+                        if (spring != null && _classicSlotPlaying[i]) springIntoPlayingSlot = true;
+                    }
+                    break;
+                }
+                case ClassicCmdPlay:
+                    for (int i = 0; i < ClassicSlotCount; i++)
+                        if ((slots & (1 << i)) != 0)
+                        {
+                            _classicSlotPlaying[i] = true;
+                            if (_classicSlotSpring[i] != null) springsTouched = true;
+                            _hidppEffects.SetExternalPlaying(i, true, _sw.ElapsedTicks);
+                        }
+                    break;
+                case ClassicCmdStop:
+                    for (int i = 0; i < ClassicSlotCount; i++)
+                        if ((slots & (1 << i)) != 0)
+                        {
+                            _classicSlotPlaying[i] = false;
+                            if (_classicSlotSpring[i] != null) springsTouched = true;
+                            _hidppEffects.SetExternalPlaying(i, false, _sw.ElapsedTicks);
+                        }
+                    break;
+                default:
+                    // Default spring on/off, set default spring, dead band and
+                    // the rest do not change the commanded force.
+                    return;
+            }
+
+            if (springsTouched) PublishSpringSnapshot();
+            // A spring landing in a playing slot is captured game FFB, even
+            // though no force value exists to publish: count it so the no-FFB
+            // escalation chain (whole-bus retry + user warning) stands down.
+            // A bare download into a stopped slot does NOT count, same
+            // reasoning as the never-played zero below.
+            if (springIntoPlayingSlot && !SimulateNoFfbCapture)
+            {
+                SpringUpdatesCaptured++;
+                NoteExtraction("interrupt-out", -1, -1, "classic-spring 0x0b (hi-res spring params)");
+            }
+            // Arm the parametric gates on the first classic condition placed:
+            // the HID++ path's 4-download streak guards fn2 packets on a wrong
+            // feature index, a class the classic firewall above already
+            // excludes. Never confirms the HID++ index, never stamps a sample
+            // (spring precedent). Landing in a PLAYING slot is captured game
+            // FFB for the no-FFB escalation, like a spring.
+            if (conditionPlaced && !SimulateNoFfbCapture) _parametricArmed = true;
+            if (conditionIntoPlayingSlot && !SimulateNoFfbCapture)
+            {
+                ClassicConditionUpdatesCaptured++;
+                NoteExtraction("interrupt-out", -1, -1, "classic-condition (damper/friction params)");
+            }
+
+            int sum = 0;
+            for (int i = 0; i < ClassicSlotCount; i++)
+                if (_classicSlotPlaying[i] && _classicSlotDecoded[i]) sum += _classicSlotForce[i];
+            if (sum > short.MaxValue) sum = short.MaxValue;
+            else if (sum < short.MinValue) sum = short.MinValue;
+            short ffbTarget = (short)sum;
+
+            // Publish when we learned something: a fresh force, or a state
+            // change that moved the effective force (a STOP publishing 0 is the
+            // whole point). Commands that taught us nothing must NOT refresh
+            // the timestamp, or an undecodable slot's traffic would keep a
+            // stale value looking fresh.
+            if (!decodedForce && _classicHavePublished && ffbTarget == _classicLastPublished) return;
+            // Never publish a zero out of nowhere. Until a force has actually
+            // played, a bare download or a stop leaves the wheel commanding
+            // nothing, and counting that as a captured sample would mark a dead
+            // capture as working (and make "the game is writing FFB" true on a
+            // game that never played any).
+            if (!_classicHavePublished && ffbTarget == 0) return;
+            _classicLastPublished = ffbTarget;
+            _classicHavePublished = true;
+            if (SimulateNoFfbCapture) return;
+
+            long ts = _sw.ElapsedTicks & TimestampMask;
+            long pk = (ts << 16) | (uint)(ushort)ffbTarget;
+            System.Threading.Interlocked.Exchange(ref _packed, pk);
+            System.Threading.Interlocked.Exchange(ref _lastSampleTicks, ts);
+            FfbSamplesCaptured++;
+            NoteExtraction("interrupt-out", -1, -1, "classic-slot int8@2 (Logitech slot protocol)");
         }
 
         private void RecordTupleSeen(byte reportId, byte featIdx, byte funcByte)
@@ -1351,6 +2917,7 @@ namespace TrueforceForAll.Core
         // driving, we switch to it, force flows, and only then do we lock.
         private void MaybeResolveFfbFeatureIndex()
         {
+            if (_ffbIndexPinned) return;      // hardware-confirmed; never vote
             if (_ffbIndexConfirmed) return;
             // No per-wheel gate: RS50 (C276) resolves to feat 0x10 by the same
             // dominant-tuple rule that resolves G PRO to 0x0e (issue #5 woTF
@@ -1369,11 +2936,7 @@ namespace TrueforceForAll.Core
                 {
                     // Key = (reportId<<16)|(featIdx<<8)|(funcByte&0xf0).
                     byte rid = (byte)(kv.Key >> 16);
-                    // Default: 0x11 only (shipped behaviour). The FFBX opt-in
-                    // or an identified RS50 also counts very-long 0x12 toward
-                    // the same feature index.
-                    bool ridOk = rid == 0x11 || ((ExperimentalCapture || Rs50Identified) && rid == 0x12);
-                    if (!ridOk) continue;                          // long / very-long form
+                    if (rid != 0x11 && rid != 0x12) continue;      // long / very-long form
                     if ((byte)kv.Key != 0x20) continue;            // function 2
                     byte f = (byte)(kv.Key >> 8);
                     perIndex.TryGetValue(f, out long acc);
@@ -1425,18 +2988,196 @@ namespace TrueforceForAll.Core
                 byte old = _ffbFeatureIndex;
                 _ffbFeatureIndex = bestIdx;
                 _ffbIndexResolved = true;
-                _resolveSwitchedAtCount = bestCount;   // for the capture-fingerprint "loweredFloor" verdict
                 Log($"FFB tap: selected HID++ 0x8123 feature index 0x{bestIdx:X2} " +
                     $"(was 0x{old:X2}); {bestCount} samples, runner-up {secondCount}. " +
                     "Will confirm once force is extracted.");
             }
         }
 
+        /// <summary>Say what the FFB tap is doing, but only when it changes.
+        ///
+        /// This one line is the whole picture of the tap: which report id owns
+        /// force, which HID++ feature index we settled on, how many forces we
+        /// matched, which (report, feature, func) tuples the wheel has sent,
+        /// and what the DI engine is playing. It used to go out every five
+        /// seconds regardless, and a measured one-hour session produced 718 of
+        /// the plugin's 766 log lines that way, every one of them reading
+        /// "live=none matched=0" because nothing was happening (log audit,
+        /// 2026-09-22). A log that is 94 percent one repeated sentence is a log
+        /// nobody can search, and the sentence that repeats drowns out the one
+        /// that matters, so a quiet tap now keeps a quiet log.
+        ///
+        /// The rules, in order: the first reading of each capture always goes
+        /// out, so every capture has a baseline; after that a line goes out
+        /// only when a MATERIAL fact moves; and when nothing material has moved
+        /// for ten minutes one line goes out anyway, so a steady session still
+        /// leaves dated marks. Counters climbing by themselves are not
+        /// material: packets arriving is the wheel being plugged in, not news.
+        /// What is news is a fact an operator reasons about, and every one of
+        /// those is folded into the fingerprint below.
+        ///
+        /// Because a suppressed stretch hides real time, every line after the
+        /// first says how long the tap was quiet and how many packets went by
+        /// in that window, so the silence still carries its own measurement.
+        ///
+        /// Parser thread only, like the rest of the diagnostics state; the one
+        /// shared structure (_tupleCounts) is read under the existing lock.
+        /// </summary>
         private void MaybeEmitDiagnostics()
         {
             long now = Environment.TickCount;
             if (now < _nextDiagEmitTicks) return;
             _nextDiagEmitTicks = now + DiagEmitIntervalMs;
+
+            // Flow is measured check to check, never line to line: the useful
+            // fact is "this kind of traffic is arriving right now", which is a
+            // transition, while the running total is not.
+            //
+            // ep0 control transfers and Set_Reports get the same treatment as
+            // matched forces, and for this wheel family that pair is the
+            // important one. A tap that goes deaf on ep0 while packets keep
+            // climbing is exactly how RaceRoom's limp FFB presents, and how the
+            // LED/FFB contention cut presents: setrep and ep0ctrl stop
+            // advancing, everything else looks healthy. Both numbers were
+            // already printed on this line and neither was in the change test,
+            // which would have left the most diagnosable failure we have
+            // waiting up to ten minutes for a heartbeat.
+            long packets = PacketsForOurDevice;
+            long samples = FfbSamplesCaptured;
+            long ep0     = Ep0ControlTransfersOnOurDevice;
+            long setrep  = SetReportsOnOurDevice;
+            bool samplesFlowing = _diagPrevTickSamples >= 0 && samples != _diagPrevTickSamples;
+            bool ep0Flowing     = _diagPrevTickEp0     >= 0 && ep0     != _diagPrevTickEp0;
+            bool setrepFlowing  = _diagPrevTickSetrep  >= 0 && setrep  != _diagPrevTickSetrep;
+            _diagPrevTickSamples = samples;
+            _diagPrevTickEp0     = ep0;
+            _diagPrevTickSetrep  = setrep;
+
+            // The material fingerprint: every fact in the emitted line that an
+            // operator actually reasons about, packed into one long so the
+            // change test on the common (quiet) path is a single comparison and
+            // allocates nothing. Deliberately absent: any raw counter value. A
+            // number going up by itself is the wheel being plugged in; what
+            // matters is a number leaving zero, or traffic starting and
+            // stopping.
+            //
+            // One rule holds the whole thing together: a bit enters the
+            // fingerprint only under the same condition that makes the payload
+            // print the field it describes. Break that rule and you get a line
+            // tagged why=change whose text is identical to the line before it,
+            // which tells the reader something moved and then hides what.
+            long sig = _reportArbiter.LiveReport;           // which report id owns force
+            sig |= (long)_ffbFeatureIndex << 8;             // which HID++ feature we decode
+            if (_ffbIndexResolved)  sig |= 1L << 16;        // and how sure we are of it
+            if (_ffbIndexConfirmed) sig |= 1L << 17;
+            if (samples > 0)        sig |= 1L << 18;        // ever matched a force at all
+            if (samplesFlowing)     sig |= 1L << 19;        // forces arriving right now
+            // Bit 20 is free, and deliberately not a "capture is alive" bit.
+            // This method runs only from the parse loop, after a packet has
+            // already been matched to our device, so such a bit could only ever
+            // read true; a capture that has stopped stops calling us instead,
+            // and MaybeWatchdog is what notices that.
+            if (SpringUpdatesCaptured > 0)           sig |= 1L << 21;
+            if (SpringUpdatesCaptured > 0 && _playingSprings != null)
+                                                     sig |= 1L << 22;
+            if (ClassicConditionUpdatesCaptured > 0) sig |= 1L << 23;
+            // The DI facts ride inside the payload's dieffects branch, so they
+            // are fingerprinted inside it too (see the one rule above).
+            bool di = _hidppEffects.ParametricDownloads > 0;
+            if (di)                                              sig |= 1L << 24;
+            if (di && _hidppEffects.AnyPlaying)                  sig |= 1L << 25;
+            if (di && _hidppEffects.ReplacedStaleConditions > 0) sig |= 1L << 26;
+            if (_rawLogStream != null)       sig |= 1L << 27;   // raw trace toggled
+            if (ControlOutOnOurDevice > 0)   sig |= 1L << 28;
+            if (InterruptOutOnOurDevice > 0) sig |= 1L << 29;
+            if (BulkOutOnOurDevice > 0)      sig |= 1L << 30;
+            if (IsoOutOnOurDevice > 0)       sig |= 1L << 31;
+            // Which OUT endpoints have ever carried traffic (bits 32..47). A
+            // wheel starting to use an endpoint it has never used before is
+            // exactly the kind of thing this line exists to catch, while the
+            // per-endpoint totals climbing is not. The layout depends on
+            // _outEndpointCounts being exactly 16 entries long, which is how it
+            // is declared; widen that array past 16 and these bits silently
+            // alias the gain field below.
+            for (int i = 0; i < _outEndpointCounts.Length; i++)
+                if (_outEndpointCounts[i] > 0) sig |= 1L << (32 + i);
+            // Global gain to the whole percent (bits 48..55). The game pulling
+            // gain down is a real complaint ("the wheel went light"), and
+            // rounding to a percent stops float jitter from logging on its own.
+            // Gated on the same two conditions the payload prints gain= under,
+            // rather than moving gain= out of the dieffects branch: the payload
+            // format is the thing support workflows are trained to read, so of
+            // the two ways to stop an invisible why=change, the one that leaves
+            // the printed line byte for byte alone wins.
+            if (di && _hidppEffects.GlobalGain < 0.999f)
+            {
+                int gainPct = (int)(_hidppEffects.GlobalGain * 100f + 0.5f);
+                if (gainPct < 0) gainPct = 0; else if (gainPct > 255) gainPct = 255;
+                sig |= (long)gainPct << 48;
+            }
+            // ep0 health (bits 56 and 57), the pair described at the top.
+            if (ep0Flowing)    sig |= 1L << 56;
+            if (setrepFlowing) sig |= 1L << 57;
+
+            // The SET of (report, feature, func) tuples, not their counts: a
+            // new tuple appearing is the smoking gun, the same tuple counting
+            // higher is just traffic. Summed rather than ordered so dictionary
+            // order can never fake a change, and computed without building the
+            // histogram string, so a quiet tap allocates nothing here.
+            //
+            // Load-bearing invariant: this hash is linear (Count plus a sum of
+            // scrambled keys), so it is collision-free only because
+            // _tupleCounts is never cleared anywhere in this file. The set only
+            // ever grows, so the Count folded in at the start already differs
+            // whenever the set differs, whatever the sum does. If a future
+            // change ever clears the dictionary (on capture restart, say), that
+            // guarantee is gone and this hash has to be strengthened: fold each
+            // key in with a rotate instead of adding it, so two different sets
+            // of the same size cannot sum alike.
+            long tupleSig;
+            lock (_tupleLock)
+            {
+                tupleSig = _tupleCounts.Count;
+                foreach (var kv in _tupleCounts)
+                    tupleSig += unchecked((kv.Key + 1) * 2654435761L);
+            }
+
+            // Live inventory by type, sampled once so the whole line describes
+            // one instant rather than drifting mid-string. Part of the change
+            // test as well, because what is playing changing is the single most
+            // useful transition on this line, but only as far as the payload
+            // shows it: dilive= sits inside the dieffects branch.
+            string diLive = _hidppEffects.DescribeLive(_sw.ElapsedTicks, Stopwatch.Frequency);
+            string diLiveShown = di ? diLive : null;
+
+            long quietMs = now - _diagLastEmitMs;
+            if (quietMs < 0) quietMs = 0;   // TickCount rolled past int: report no gap rather than a negative one
+            bool changed = sig != _diagLastSig
+                        || tupleSig != _diagLastTupleSig
+                        || !string.Equals(diLiveShown, _diagLastDiLive, StringComparison.Ordinal);
+
+            string why;
+            if (!_diagEverEmitted) why = "first";
+            else if (changed) why = "change";
+            else if (quietMs >= DiagHeartbeatMs) why = "heartbeat";
+            else return;                    // nothing material moved: stay quiet
+
+            long quietPackets = packets - _diagLastEmitPackets;
+            if (quietPackets < 0) quietPackets = 0;
+            _diagLastSig = sig;
+            _diagLastTupleSig = tupleSig;
+            _diagLastDiLive = diLiveShown;
+            _diagLastEmitMs = now;
+            _diagLastEmitPackets = packets;
+            _diagEverEmitted = true;
+
+            // Why this line exists sits in front of the payload, so a reader
+            // scanning the log sees the reason before wading into the numbers.
+            // The payload itself is untouched: support workflows, and our own
+            // eyes, are trained on it.
+            string whyClause = why == "first"
+                ? "why=first "
+                : $"why={why} quiet={quietMs / 1000}s quietpkt={quietPackets} ";
 
             // Build a short top-N tuple histogram. With AC + G PRO we expect
             // a single dominant tuple (0x11, 0x0e, 0x20). Multiple tuples is
@@ -1464,13 +3205,27 @@ namespace TrueforceForAll.Core
             for (int i = 0; i < _outEndpointCounts.Length; i++)
                 if (_outEndpointCounts[i] > 0) epOut.Add($"ep{i}={_outEndpointCounts[i]}");
 
-            Log($"FFB tap diag: packets={PacketsForOurDevice} " +
+            Log($"FFB tap diag: {whyClause}packets={packets} " +
                 $"out_ctrl={ControlOutOnOurDevice} out_int={InterruptOutOnOurDevice} " +
                 $"out_bulk={BulkOutOnOurDevice} out_iso={IsoOutOnOurDevice} " +
                 $"out_by_ep=[{string.Join(" ", epOut)}] " +
                 $"ep0ctrl={Ep0ControlTransfersOnOurDevice} setrep={SetReportsOnOurDevice} " +
                 $"ffbIdx=0x{_ffbFeatureIndex:X2}{(_ffbIndexConfirmed ? "**" : _ffbIndexResolved ? "*" : "")} " +
+                $"live={(_reportArbiter.LiveReport != 0 ? $"0x{_reportArbiter.LiveReport:X2}" : "none")} " +
                 $"matched={FfbSamplesCaptured} tuples=[{tuples}]" +
+                (SpringUpdatesCaptured > 0
+                    ? $" springs={SpringUpdatesCaptured}{(_playingSprings != null ? " (playing)" : "")}"
+                    : "") +
+                (ClassicConditionUpdatesCaptured > 0
+                    ? $" classiccond={ClassicConditionUpdatesCaptured}"
+                    : "") +
+                (_hidppEffects.ParametricDownloads > 0
+                    ? $" dieffects={_hidppEffects.ParametricDownloads}{(_hidppEffects.AnyPlaying ? " (playing)" : "")}" +
+                      (diLive != null ? $" dilive=[{diLive}]" : "") +
+                      (_hidppEffects.GlobalGain < 0.999f ? $" gain={_hidppEffects.GlobalGain:P0}" : "") +
+                      (_hidppEffects.ReplacedStaleConditions > 0
+                          ? $" restacked={_hidppEffects.ReplacedStaleConditions}" : "")
+                    : "") +
                 (_rawLogStream != null ? $" trace={RawLogBytesWritten}b" : ""));
         }
 
@@ -1493,13 +3248,32 @@ namespace TrueforceForAll.Core
             {
                 try
                 {
-                    // Create (truncate). Each enable starts a fresh trace,
-                    // and the global header below assumes byte 0 of the
-                    // file is the magic.
-                    _rawLogStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
-                    WritePcapGlobalHeader(_rawLogStream);
-                    _rawLogBytesWritten = 24;
-                    Log($"FFB tap: pcap trace opened at {path} (Wireshark + USBPcap dissector).");
+                    // APPEND, not truncate. A tap restart is routine (a device
+                    // cycle, the blind-capture self-heal, our own startup
+                    // re-attach) and the replacement tap arrives here with no
+                    // memory of the one before it. Truncating would wipe a
+                    // capture mid-session, which is precisely when the packets
+                    // worth having were recorded. The global header only belongs
+                    // at byte 0, so it is written only into an empty file.
+                    //
+                    // "Toggle off and on to reset" still holds: the Diagnostics
+                    // toggle deletes the file, which is where that intent lives.
+                    _rawLogStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
+                    _rawLogStream.Seek(0, SeekOrigin.End);
+                    if (_rawLogStream.Length == 0)
+                    {
+                        WritePcapGlobalHeader(_rawLogStream);
+                        _rawLogBytesWritten = 24;
+                        Log($"FFB tap: pcap trace opened at {path} (Wireshark + USBPcap dissector).");
+                    }
+                    else
+                    {
+                        // Counted from the file, so the 50 MB cap still measures
+                        // the whole capture rather than this instance's share.
+                        _rawLogBytesWritten = _rawLogStream.Length;
+                        Log($"FFB tap: pcap trace resumed at {path} "
+                            + $"({_rawLogBytesWritten / 1024} KB already captured).");
+                    }
                 }
                 catch (Exception ex)
                 {

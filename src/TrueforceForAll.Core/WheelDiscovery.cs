@@ -34,6 +34,15 @@ namespace TrueforceForAll.Core
     {
         public const ushort LogitechVid = 0x046D;
 
+        // Serializes HID++ discovery probes (root getFeature) across channels.
+        // The wheel's HID++ processor handles one transaction at a time, and a
+        // getFeature reply does not echo the page it answers: two concurrent
+        // probes mean one times out, or worse, reads the other's reply as its
+        // own (the rev-light probe latched the OLED display's feature index
+        // this way, 2026-08-08). Hold this for the probe only, never for
+        // steady-state writes.
+        internal static readonly object HidppProbeGate = new object();
+
         public static readonly (ushort Pid, string Model)[] SupportedPids =
         {
             (0xC272, "Logitech G PRO Racing Wheel (Xbox/PC)"),
@@ -59,6 +68,24 @@ namespace TrueforceForAll.Core
         private static readonly HashSet<ushort> UnverifiedPids = new HashSet<ushort>();
 
         public static bool IsUnverified(ushort pid) => UnverifiedPids.Contains(pid);
+
+        /// <summary>Bare chassis label for the Account session list / "last used wheel":
+        /// strips the "Logitech " prefix and the " Racing Wheel"/console-transport suffix,
+        /// e.g. "Logitech G PRO Racing Wheel (Xbox/PC)" -> "G PRO", "Logitech RS50" -> "RS50",
+        /// "Logitech G923 (PS/PC)" -> "G923". Keeps VID/PID out of the human-facing label.</summary>
+        public static string ShortModel(string fullModel)
+        {
+            if (string.IsNullOrEmpty(fullModel)) return null;
+            string s = fullModel.Trim();
+            const string prefix = "Logitech ";
+            if (s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                s = s.Substring(prefix.Length);
+            int cut = s.IndexOf(" Racing Wheel", StringComparison.OrdinalIgnoreCase);
+            if (cut < 0) cut = s.IndexOf(" (", StringComparison.Ordinal);
+            if (cut > 0) s = s.Substring(0, cut);
+            s = s.Trim();
+            return s.Length == 0 ? null : s;
+        }
 
         // True when (vid,pid) is one of our supported Trueforce wheels. Used to
         // tell a "USBPcap can't see the FFB" problem apart from "the user pinned
@@ -97,6 +124,24 @@ namespace TrueforceForAll.Core
         public static bool IsRs50(ushort pid, string productString) =>
             pid == 0xC276 || ClassifyProduct(productString) == WheelChassis.Rs50;
 
+        public static bool IsG923Pid(ushort pid) =>
+            pid == 0xC266 || pid == 0xC26D || pid == 0xC26E;
+
+        /// <summary>True for a G PRO switched to G923 compatibility mode in
+        /// G HUB. The wheel re-enumerates under a G923 PID (C26E for the
+        /// Xbox/PC edition; owner, 2026-08-29) but keeps its own product
+        /// string "PRO Racing Wheel" and its G PRO interface layout (HID++ on
+        /// mi_01, Trueforce on mi_02). The HID++ feature table follows the
+        /// G923: force on index 0x0B (which the tap's PID pin expects), the
+        /// rev bar 0x807A at 0x07 reporting a FIVE-step strip, and neither
+        /// the pattern slots (0x807B) nor the screen (0x8130) answer at all
+        /// (measured 2026-08-29). So the lights work through the G PRO
+        /// interface, while the screen and LIGHTSYNC stay off as on a real
+        /// G923. Anything keyed on the PID alone would skip the very
+        /// interface the lights live on.</summary>
+        public static bool IsGProInG923Mode(ushort pid, string productString) =>
+            IsG923Pid(pid) && ClassifyProduct(productString) == WheelChassis.GPro;
+
         /// <summary>Seed for the FFB tap's HID++ 0x8123 feature-index
         /// resolver: RS50 = 0x10, everything else = the G PRO's 0x0e (the
         /// historical seed for all wheels; G923 keeps it because its indices
@@ -118,6 +163,8 @@ namespace TrueforceForAll.Core
             if (m == null) return null;
             if (m.Pid != 0xC276 && ClassifyProduct(m.ProductString) == WheelChassis.Rs50)
                 return "Logitech RS50 (G PRO compatibility mode)";
+            if (IsGProInG923Mode(m.Pid, m.ProductString))
+                return "Logitech G PRO Racing Wheel (G923 compatibility mode)";
             return m.Model;
         }
 

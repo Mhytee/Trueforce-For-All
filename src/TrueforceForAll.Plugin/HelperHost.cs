@@ -60,6 +60,9 @@ namespace TrueforceForAll.Plugin
                 CreateNoWindow  = true,
             };
             _helper = Process.Start(psi);
+            // Kill-on-close job: helper dies with SimHub even on taskkill /F,
+            // same orphan protection as the USBPcapCMD capture children.
+            TrueforceForAll.Core.ChildProcessJob.TryAssign(_helper);
             // Order matters: subscribe before EnableRaisingEvents so that if
             // the helper has already exited, the property setter dispatches
             // the event to our handler synchronously. Then a HasExited check
@@ -111,7 +114,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                SimHub.Logging.Current.Error("[Trueforce] Failed to send PID to helper", ex);
+                SimHub.Logging.Current.Error("[TF4ALL] Failed to send PID to helper", ex);
             }
         }
 
@@ -129,21 +132,42 @@ namespace TrueforceForAll.Plugin
 
         private void StdoutPumpLoop()
         {
+            // Run the pipe-drain + DSP fan-out in the MMCSS "Pro Audio" band so
+            // this thread (which feeds the audio capture ring) matches the
+            // capture thread and the 1 kHz pump that already use it, instead of
+            // being the weakest scheduling link. NORMAL priority; best-effort.
+            using (TrueforceForAll.Core.MmcssScope.Enter(
+                       "Pro Audio", TrueforceForAll.Core.MmcssScope.PriorityNormal))
+                StdoutPumpLoopCore();
+        }
+
+        private void StdoutPumpLoopCore()
+        {
+            // Snapshot the process: Dispose() nulls _helper from another thread,
+            // so dereferencing the field mid-loop could NRE. Bound to the local,
+            // the loop sees a stable handle and exits via _shuttingDown / EOF.
+            var helper = _helper;
+            if (helper == null) return;
             try
             {
-                var stream = _helper.StandardOutput.BaseStream;
-                // 2 KB chunks ≈ 5 ms of audio at 48 kHz × 2 ch × 4 bytes
-                // (= 384 bytes/ms). The previous 16 KB buffer was an UPPER
-                // bound that almost never filled, but if the plugin thread
-                // ever stalled briefly (GC pause, etc.) the next read could
-                // accumulate up to ~42 ms of audio in one chunk, which would
-                // overflow the audio ring catastrophically downstream. 2 KB
-                // caps that p99 worst case at ~5 ms, which the current ring
-                // (16+ samples = 4+ ms at 4 kHz output) can absorb cleanly.
+                var stream = helper.StandardOutput.BaseStream;
+                // 1 KB chunks ≈ 2.7 ms of audio at 48 kHz × 2 ch × 4 bytes
+                // (= 384 bytes/ms). Each read fires one DataAvailable burst, and
+                // the downstream audio ring must hold a whole burst without
+                // lapping, so the burst size sets where the ring auto-ratchet
+                // settles. A 2 KB read delivered ~21 decimated samples per burst,
+                // which forced the 4 kHz ring up to 32 (8 ms); 1 KB delivers ~10,
+                // which the ring holds at 16 (4 ms), halving that buffering stage.
+                // Smaller reads also tighten the p99 stall accumulation: a brief
+                // plugin-thread stall (GC pause, etc.) now caps the catch-up read
+                // at ~2.7 ms instead of ~5 ms. (The previous 16 KB buffer could
+                // accumulate ~42 ms in one chunk and overflow the ring; 2 KB fixed
+                // that, and 1 KB tightens it further.) Cost is ~2× the read rate
+                // (still well under 1k reads/s), negligible CPU.
                 const int bytesPerFrame = 8;  // float32 stereo
-                var buf = new byte[2048];
+                var buf = new byte[1024];
                 int leftover = 0;
-                while (!_shuttingDown && !_helper.HasExited)
+                while (!_shuttingDown && !helper.HasExited)
                 {
                     // Carry any sub-frame tail from the previous read forward
                     // pipe Reads can return non-frame-aligned counts, and dropping
@@ -162,16 +186,18 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 if (!_shuttingDown)
-                    SimHub.Logging.Current.Error("[Trueforce] Helper audio read error", ex);
+                    SimHub.Logging.Current.Error("[TF4ALL] Helper audio read error", ex);
             }
         }
 
         private void StderrLogLoop()
         {
+            var helper = _helper;
+            if (helper == null) return;
             try
             {
                 string line;
-                while ((line = _helper.StandardError.ReadLine()) != null)
+                while ((line = helper.StandardError.ReadLine()) != null)
                 {
                     SimHub.Logging.Current.Info($"[Trueforce-helper] {line}");
                 }

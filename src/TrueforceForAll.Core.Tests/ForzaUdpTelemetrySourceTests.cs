@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -21,7 +21,10 @@ namespace TrueforceForAll.Core.Tests
         private const int OFF_CURRENT_RPM  = 16;
         private const int OFF_ACCEL_Y      = 24;   // heave (m/s^2, up)
         private const int OFF_NORM_SUSP_FL = 68;   // normalized susp travel[4], 0=droop..1=compressed
+        private const int OFF_SURFACE_RUMBLE_FL = 148; // per-tyre surface rumble[4]
+        private const int OFF_SLIP_ANGLE_FL = 164; // tyre slip angle[4], radians, signed
         private const int OFF_COMBINED_FL  = 180;  // tyre combined slip[4]
+        private const int OFF_SUSP_TRAVEL_M_FL = 196; // suspension travel[4], meters
         private const int OFF_CAR_ORDINAL  = 212;
         private const int OFF_NUM_CYL      = 228;
         private const int OFF_SPEED        = 256;  // m/s
@@ -40,7 +43,7 @@ namespace TrueforceForAll.Core.Tests
             int raceOn = 1, float maxRpm = 8000f, float rpm = 5000f, float heave = 9.0f,
             float combinedSlip = 0.7f, int carOrdinal = 2468, int cylinders = 8,
             float speedMs = 30f, byte accel = 200, byte gear = 4, sbyte steer = 0,
-            float suspTravel = 0.5f)
+            float suspTravel = 0.5f, float slipAngleRad = 0f, float suspTravelM = 0.2f)
         {
             var b = new byte[HorizonDashLength];
             PutInt32(b, OFF_IS_RACE_ON, raceOn);
@@ -48,7 +51,9 @@ namespace TrueforceForAll.Core.Tests
             PutFloat(b, OFF_CURRENT_RPM, rpm);
             PutFloat(b, OFF_ACCEL_Y, heave);
             for (int i = 0; i < 4; i++) PutFloat(b, OFF_NORM_SUSP_FL + i * 4, suspTravel);
+            for (int i = 0; i < 4; i++) PutFloat(b, OFF_SLIP_ANGLE_FL + i * 4, slipAngleRad);
             for (int i = 0; i < 4; i++) PutFloat(b, OFF_COMBINED_FL + i * 4, combinedSlip);
+            for (int i = 0; i < 4; i++) PutFloat(b, OFF_SUSP_TRAVEL_M_FL + i * 4, suspTravelM);
             PutInt32(b, OFF_CAR_ORDINAL, carOrdinal);
             PutInt32(b, OFF_NUM_CYL, cylinders);
             PutFloat(b, OFF_SPEED, speedMs);
@@ -73,7 +78,107 @@ namespace TrueforceForAll.Core.Tests
             Assert.Equal(1.0, f.Throttle01, 3);         // 255/255
             Assert.Equal("3", f.Gear);                  // gear byte 4 -> "3"
             Assert.Equal(8, f.NumCylinders);
+            Assert.False(f.EngineIsElectric);
             Assert.Equal(2468, src.CurrentCarOrdinal);
+        }
+
+        // ---- electric cars ----------------------------------------------
+        // Forza counts the loaded car's cylinders and an EV has none, so a
+        // zero here is the game answering "electric", not staying quiet. The
+        // count itself still reads as unknown: nothing fires at 0 cylinders.
+
+        [Fact]
+        public void ElectricCar_ZeroCylindersOnALivePacket_ReadsAsElectric()
+        {
+            var src = NewSource();
+            var f = src.ParsePacket(DashPacket(cylinders: 0, maxRpm: 12500f, rpm: 4000f),
+                                    HorizonDashLength);
+
+            Assert.True(f.EngineIsElectric);
+            Assert.Null(f.NumCylinders);
+        }
+
+        [Fact]
+        public void EmptyKeepalive_SaysNothingAboutElectric()
+        {
+            var src = NewSource();
+            // The zeroed packet FH6 interleaves between real frames. Its zero
+            // cylinder count is an empty field, so it must not be mistaken
+            // for an EV: every combustion car would flip electric mid-race.
+            var f = src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 0f, cylinders: 0,
+                                               speedMs: 0f, accel: 0, gear: 1),
+                                    HorizonDashLength);
+
+            Assert.Null(f.EngineIsElectric);
+            Assert.Null(f.NumCylinders);
+        }
+
+        // ---- gear scale -------------------------------------------------
+        // Two scales exist. The documented one is 0=R, 1=N, 2=1st. FH6
+        // numbers forward gears from 1 and puts neutral at 11, which showed
+        // 1st as N and every other forward gear one low. Which one a title
+        // uses is detected from physics, not assumed, so both must hold.
+
+        [Fact]
+        public void GearScale_Documented_ByteOneReadsNeutral()
+        {
+            var src = NewSource();
+            var f = src.ParsePacket(DashPacket(gear: 1, accel: 0, speedMs: 0f,
+                                               rpm: 800f, maxRpm: 8000f), HorizonDashLength);
+            Assert.Equal("N", f.Gear);
+        }
+
+        [Fact]
+        public void GearScale_ByteOneDrivingUnderLoad_RescalesForwardGears()
+        {
+            var src = NewSource();
+            // Neutral cannot do this: full throttle, 45 km/h, revs well off
+            // idle. Sustained, it is proof that byte 1 is a driving gear.
+            TelemetryFrame f = default;
+            for (int i = 0; i < 6; i++)
+                f = src.ParsePacket(DashPacket(gear: 1, accel: 255, speedMs: 12.5f,
+                                               rpm: 6000f, maxRpm: 10000f), HorizonDashLength);
+            Assert.Equal("1", f.Gear);
+
+            // The whole scale moves with it, and 11 becomes neutral.
+            f = src.ParsePacket(DashPacket(gear: 3, accel: 255, speedMs: 20f), HorizonDashLength);
+            Assert.Equal("3", f.Gear);
+        }
+
+        [Fact]
+        public void GearScale_ByteOneCoasting_StaysOnTheDocumentedScale()
+        {
+            var src = NewSource();
+            // Rolling in true neutral: moving, but shut off and near idle.
+            TelemetryFrame f = default;
+            for (int i = 0; i < 20; i++)
+                f = src.ParsePacket(DashPacket(gear: 1, accel: 0, speedMs: 12.5f,
+                                               rpm: 900f, maxRpm: 10000f), HorizonDashLength);
+            Assert.Equal("N", f.Gear);
+        }
+
+        [Fact]
+        public void GearByte11_AtWalkingPace_RescalesOnTheFirstShift()
+        {
+            var src = NewSource();
+            // 11 below 30 km/h cannot be 10th gear, so it is neutral, so the
+            // forward gears start at 1. Lands on the first gear change rather
+            // than waiting for a hard pull.
+            for (int i = 0; i < 3; i++)
+                src.ParsePacket(DashPacket(gear: 11, speedMs: 3f, accel: 0,
+                                           rpm: 900f, maxRpm: 10000f), HorizonDashLength);
+            var f = src.ParsePacket(DashPacket(gear: 2, speedMs: 4f, accel: 100), HorizonDashLength);
+            Assert.Equal("2", f.Gear);
+        }
+
+        [Fact]
+        public void GearByte11_BetweenGears_HoldsTheGearInsteadOfShowingTen()
+        {
+            var src = NewSource();
+            Assert.Equal("3", src.ParsePacket(DashPacket(gear: 4), HorizonDashLength).Gear);
+            // A shift passes through neutral; the readout must not flash.
+            Assert.Equal("3", src.ParsePacket(DashPacket(gear: 11), HorizonDashLength).Gear);
+            Assert.Equal("4", src.ParsePacket(DashPacket(gear: 5), HorizonDashLength).Gear);
         }
 
         [Theory]
@@ -152,14 +257,288 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void PausedFrame_ZeroesVolatileChannels()
+        public void Airborne_LoadWeightedSlip_GoesSilent()
         {
+            // Issue #30: a car in the air spins its unloaded wheels, so combined
+            // slip spikes, but no grip is being lost. Weighting each wheel by its
+            // suspension load drops the airborne wheels out, so the direct slip
+            // reads ~0 (silent) even with airborne ducking off.
             var src = NewSource();
-            var f = src.ParsePacket(DashPacket(raceOn: 0, rpm: 5000f, speedMs: 30f), HorizonDashLength);
+            src.ParsePacket(DashPacket(suspTravel: 0.5f), HorizonDashLength);   // grounded: arm the load latch + open settle
+            Thread.Sleep(450);
+            var f = src.ParsePacket(DashPacket(combinedSlip: 0.9f, suspTravel: 0.0f), HorizonDashLength);
+
+            Assert.True(f.Airborne.GetValueOrDefault());
+            Assert.Equal(0.0, f.WheelSlip.GetValueOrDefault(), 6);
+        }
+
+        [Fact]
+        public void OneWheelLift_LoadWeightedSlip_TracksGroundedWheels()
+        {
+            // Issue #30: one wheel lifted over a kerb spins up (high slip, ~0
+            // load) while the other three stay planted with little slip. The load
+            // weighting follows the grounded three, not the lone spinning wheel
+            // (the old max-abs would have read the 0.90 spike at full strength).
+            var src = NewSource();
+            src.ParsePacket(DashPacket(suspTravel: 0.5f), HorizonDashLength);
+            Thread.Sleep(450);
+
+            var b = DashPacket(suspTravel: 0.5f);        // three grounded wheels loaded...
+            PutFloat(b, OFF_COMBINED_FL + 0, 0.05f);     // FL grounded, low slip
+            PutFloat(b, OFF_COMBINED_FL + 4, 0.05f);     // FR grounded, low slip
+            PutFloat(b, OFF_COMBINED_FL + 8, 0.05f);     // RL grounded, low slip
+            PutFloat(b, OFF_COMBINED_FL + 12, 0.90f);    // RR spun up...
+            PutFloat(b, OFF_NORM_SUSP_FL + 12, 0.0f);    // ...and lifted (no load)
+            var f = src.ParsePacket(b, HorizonDashLength);
+
+            Assert.False(f.Airborne.GetValueOrDefault());   // not all four drooped
+            // Grounded three dominate: ~0.05, nowhere near the lifted wheel's 0.90.
+            Assert.InRange(f.WheelSlip.GetValueOrDefault(), 0.04, 0.10);
+        }
+
+        [Fact]
+        public void DeadSuspChannel_LoadWeightedSlip_FallsBackToLegacyMax()
+        {
+            // A hypothetical Forza title that never populates normalized
+            // suspension travel (all zeros) leaves the load channel unproven.
+            // Rather than silencing traction loss forever, the weighting falls
+            // back to the legacy max-abs so the effect still works (issue #30
+            // fallback) -- the loud branch the airborne test can't reach.
+            var src = NewSource();
+            src.ParsePacket(DashPacket(combinedSlip: 0.7f, suspTravel: 0.0f), HorizonDashLength);  // settle; never arms the latch
+            Thread.Sleep(450);
+            var f = src.ParsePacket(DashPacket(combinedSlip: 0.7f, suspTravel: 0.0f), HorizonDashLength);
+
+            Assert.Equal(0.7, f.WheelSlip.GetValueOrDefault(), 6);   // legacy max-abs, not silenced
+        }
+
+        [Fact]
+        public void Airborne_LoadWeightedSurface_GoesSilent()
+        {
+            // Issue #35: a car in the air spins its unloaded wheels, so the
+            // per-tyre SurfaceRumble[] spikes, but no surface is being touched.
+            // Weighting each wheel's rumble by its suspension load drops the
+            // airborne wheels out, so the surface channel reads ~0 (silent) even
+            // with airborne ducking off. Mirrors the #30 slip test.
+            var src = NewSource();
+            src.ParsePacket(DashPacket(suspTravel: 0.5f), HorizonDashLength);   // grounded: arm the load latch + open settle
+            Thread.Sleep(450);
+
+            var b = DashPacket(suspTravel: 0.0f);                    // all four drooped = airborne
+            for (int i = 0; i < 4; i++) PutFloat(b, OFF_SURFACE_RUMBLE_FL + i * 4, 0.8f);
+            var f = src.ParsePacket(b, HorizonDashLength);
+
+            Assert.True(f.Airborne.GetValueOrDefault());
+            Assert.Equal(0.0, f.SurfaceRumble.GetValueOrDefault(), 6);
+        }
+
+        [Fact]
+        public void OneWheelOnSurface_LoadWeightedSurface_TracksContact()
+        {
+            // Issue #35: one wheel brushing gravel (high rumble, ~0 load as it
+            // skips over the surface) must not read as the whole car on gravel.
+            // The load weighting follows the wheels actually carrying the car,
+            // not the loudest one (the old max-abs took the 0.90 spike at full
+            // strength).
+            var src = NewSource();
+            src.ParsePacket(DashPacket(suspTravel: 0.5f), HorizonDashLength);
+            Thread.Sleep(450);
+
+            var b = DashPacket(suspTravel: 0.5f);            // three grounded wheels loaded...
+            PutFloat(b, OFF_SURFACE_RUMBLE_FL + 0, 0.05f);   // FL grounded, faint rumble
+            PutFloat(b, OFF_SURFACE_RUMBLE_FL + 4, 0.05f);   // FR grounded, faint rumble
+            PutFloat(b, OFF_SURFACE_RUMBLE_FL + 8, 0.05f);   // RL grounded, faint rumble
+            PutFloat(b, OFF_SURFACE_RUMBLE_FL + 12, 0.90f);  // RR spiking...
+            PutFloat(b, OFF_NORM_SUSP_FL + 12, 0.0f);        // ...and lifted (no load)
+            var f = src.ParsePacket(b, HorizonDashLength);
+
+            Assert.False(f.Airborne.GetValueOrDefault());    // not all four drooped
+            // Grounded three dominate: ~0.05, nowhere near the lifted wheel's 0.90.
+            Assert.InRange(f.SurfaceRumble.GetValueOrDefault(), 0.04, 0.10);
+        }
+
+        [Fact]
+        public void DeadSuspChannel_LoadWeightedSurface_FallsBackToLegacyMax()
+        {
+            // A hypothetical Forza title that never populates normalized
+            // suspension travel leaves the load channel unproven. Rather than
+            // silencing surface rumble forever, the weighting falls back to the
+            // legacy max (issue #35 fallback, mirrors the slip channel).
+            var src = NewSource();
+            var b0 = DashPacket(suspTravel: 0.0f);           // settle; never arms the latch
+            for (int i = 0; i < 4; i++) PutFloat(b0, OFF_SURFACE_RUMBLE_FL + i * 4, 0.6f);
+            src.ParsePacket(b0, HorizonDashLength);
+            Thread.Sleep(450);
+
+            var b = DashPacket(suspTravel: 0.0f);
+            for (int i = 0; i < 4; i++) PutFloat(b, OFF_SURFACE_RUMBLE_FL + i * 4, 0.6f);
+            var f = src.ParsePacket(b, HorizonDashLength);
+
+            Assert.Equal(0.6, f.SurfaceRumble.GetValueOrDefault(), 6);   // legacy max, not silenced
+        }
+
+        [Fact]
+        public void DrivingFrame_ExtractsFrontSlipAngleAndSuspTravel()
+        {
+            // Past the settle window, the front-axle slip angle (Forza offset
+            // 164) and suspension travel in meters (offset 196) are extracted as
+            // the front-pair average. These are the SAT-model inputs the parser
+            // previously skipped entirely.
+            var src = NewSource();
+            src.ParsePacket(DashPacket(), HorizonDashLength);   // open + spend settle window
+            Thread.Sleep(450);
+            var f = src.ParsePacket(DashPacket(slipAngleRad: 0.12f, suspTravelM: 0.05f), HorizonDashLength);
+
+            Assert.True(f.FrontSlipAngleRad.HasValue);
+            Assert.Equal(0.12, f.FrontSlipAngleRad.Value, 4);
+            Assert.True(f.FrontSuspTravelMeters.HasValue);
+            Assert.Equal(0.05, f.FrontSuspTravelMeters.Value, 4);
+        }
+
+        [Fact]
+        public void FrontSlipAngle_IsSignedFrontPairAverage()
+        {
+            // Slip angle is signed (slip direction) and averaged across the two
+            // front tires, so opposite-sign fronts partially cancel and a
+            // negative pair yields a negative average (used as the SAT sign).
+            var src = NewSource();
+            src.ParsePacket(DashPacket(), HorizonDashLength);
+            Thread.Sleep(450);
+
+            var b = DashPacket();
+            PutFloat(b, OFF_SLIP_ANGLE_FL + 0, -0.20f);  // FL
+            PutFloat(b, OFF_SLIP_ANGLE_FL + 4, -0.10f);  // FR
+            var f = src.ParsePacket(b, HorizonDashLength);
+
+            Assert.Equal(-0.15, f.FrontSlipAngleRad.Value, 4);   // (-0.20 + -0.10)/2
+        }
+
+        [Fact]
+        public void SpawnFrame_SuppressesSatChannels()
+        {
+            // During the spawn settle window the SAT inputs are zeroed like the
+            // other grip channels, so a placement transient can't drive a jolt
+            // through a future SAT model.
+            var src = NewSource();
+            var f = src.ParsePacket(DashPacket(slipAngleRad: 0.3f, suspTravelM: 0.2f), HorizonDashLength);
+
+            Assert.Equal(0.0, f.FrontSlipAngleRad.GetValueOrDefault(), 6);
+            Assert.Equal(0.0, f.FrontSuspTravelMeters.GetValueOrDefault(), 6);
+        }
+
+        [Fact]
+        public void EmptyKeepalivePacket_ZeroesVolatileChannels()
+        {
+            // FH6 interleaves all-zero "keepalive" packets (EngineMaxRpm == 0)
+            // between real frames. The silence gate keys on maxRpm == 0, not on
+            // IsRaceOn, so a genuinely-empty packet zeroes the volatile channels
+            // even though it still carries a stray current-rpm/speed value.
+            var src = NewSource();
+            var f = src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 5000f, speedMs: 30f), HorizonDashLength);
 
             Assert.Equal(0.0, f.Rpms, 6);
             Assert.Equal(0.0, f.SpeedKmh, 6);
             Assert.Equal("N", f.Gear);
+            // Empty frame leaves the SAT inputs null (not provided), so a model
+            // can tell "paused" from "zero force".
+            Assert.Null(f.FrontSlipAngleRad);
+            Assert.Null(f.FrontSuspTravelMeters);
+        }
+
+        [Fact]
+        public void Keepalive_DoesNotStampRaceOn()
+        {
+            // An all-zero keepalive's IsRaceOn byte is zeroed payload, not
+            // state. Stamping it flapped LastIsRaceOn several times a second
+            // mid-race, which notched every consumer keyed on IsSessionActive
+            // (the FFB provider's pause-release above all).
+            var src = NewSource();
+            src.ParsePacket(DashPacket(raceOn: 1), HorizonDashLength);
+            Assert.True(src.LastIsRaceOn);
+
+            src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 0f, speedMs: 0f), HorizonDashLength);
+            Assert.True(src.LastIsRaceOn);   // unchanged by the empty
+        }
+
+        [Fact]
+        public void KeepaliveBetweenRealFrames_DoesNotReopenSettleWindow()
+        {
+            // A keepalive used to record a raceOn=0 level, so the next real
+            // frame looked like a 0->1 edge and re-opened the 400 ms settle
+            // window: with keepalives interleaving several times a second in
+            // FH6 races, the grip / impact channels never escaped suppression.
+            var src = NewSource();
+            src.ParsePacket(DashPacket(), HorizonDashLength);   // open + spend settle window
+            Thread.Sleep(450);
+            src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 0f, speedMs: 0f), HorizonDashLength);
+            var f = src.ParsePacket(DashPacket(heave: 50f, combinedSlip: 0.9f), HorizonDashLength);
+
+            Assert.True(Math.Abs(f.AccelerationHeave.GetValueOrDefault()) > 0.0);
+            Assert.True(f.WheelSlip.GetValueOrDefault() > 0.0);
+        }
+
+        [Fact]
+        public void ShouldEmit_SwallowsLoneKeepalives_PassesPersistentEmptiness()
+        {
+            // Lone keepalives adjacent to fresh real frames must not reach
+            // consumers (their zeroed speed / rpm / gear wipe scalar caches
+            // mid-race); only persistent emptiness (a real pause / menu) may
+            // pass the silencing zero frame through.
+            var src = NewSource();
+            long hz = System.Diagnostics.Stopwatch.Frequency;
+            var real  = new TelemetryFrame { MaxRpm = 8000 };
+            var empty = new TelemetryFrame { MaxRpm = 0 };
+
+            Assert.True(src.ShouldEmit(real, 10 * hz));
+            Assert.False(src.ShouldEmit(empty, 10 * hz + hz / 100));   // 10 ms later: lone
+            Assert.True(src.ShouldEmit(real, 10 * hz + hz / 50));
+            Assert.False(src.ShouldEmit(empty, 10 * hz + hz / 25));    // 20 ms since real: lone
+            Assert.True(src.ShouldEmit(empty, 11 * hz));               // ~1 s since real: pause
+        }
+
+        [Fact]
+        public void ShouldEmit_KeepaliveBeforeAnyRealFrame_FlowsThrough()
+        {
+            // Fresh source straight into a menu: no real frame has been seen,
+            // so the silencing zero frame must not be withheld.
+            var src = NewSource();
+            Assert.True(src.ShouldEmit(new TelemetryFrame { MaxRpm = 0 }, 123456));
+        }
+
+        [Fact]
+        public void PersistentKeepalives_DropRaceOn_AfterSilenceWindow()
+        {
+            // One zeroed payload is noise, but persistent emptiness is a real
+            // pause: the session flag must drop when the silencing frames
+            // start flowing, or the FFB provider's pause-release (issue #13
+            // full-lock protection) never engages on Horizon pauses.
+            var src = NewSource();
+            long hz = System.Diagnostics.Stopwatch.Frequency;
+            src.ParsePacket(DashPacket(raceOn: 1), HorizonDashLength);
+            Assert.True(src.LastIsRaceOn);
+
+            var real  = new TelemetryFrame { MaxRpm = 8000 };
+            var empty = new TelemetryFrame { MaxRpm = 0 };
+            Assert.True(src.ShouldEmit(real, 10 * hz));
+            Assert.False(src.ShouldEmit(empty, 10 * hz + hz / 100));
+            Assert.True(src.LastIsRaceOn);                 // lone empty: still driving
+            Assert.True(src.ShouldEmit(empty, 11 * hz));   // persistent: pause
+            Assert.False(src.LastIsRaceOn);
+        }
+
+        [Fact]
+        public void RaceOnZeroButLive_FlowsThrough()
+        {
+            // The counterpart to the keepalive gate: FH6 free-roam and replays
+            // report IsRaceOn == 0 while still sending real physics. Gating on
+            // maxRpm (not IsRaceOn) means these frames must flow through intact,
+            // otherwise the wheel goes dead in free-roam. Regression guard for
+            // the exact bug the maxRpm gate was introduced to fix.
+            var src = NewSource();
+            var f = src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 8000f, rpm: 5000f, speedMs: 30f), HorizonDashLength);
+
+            Assert.Equal(5000.0, f.Rpms, 3);
+            Assert.Equal(30.0 * 3.6, f.SpeedKmh, 3);
         }
 
         [Fact]
@@ -237,123 +616,6 @@ namespace TrueforceForAll.Core.Tests
 
             Assert.Null(f.SteeringAngle);
             Assert.Equal(0.0, f.SpeedKmh, 6);
-        }
-
-        // ---- FH6 keepalive gate (issue #39) ----------------------------------
-        // FH6 interleaves all-zero keepalive packets between real frames several
-        // times a second while driving. Their zeroed IsRaceOn byte is payload,
-        // not state: stamping it flapped LastIsRaceOn mid-race, which notched
-        // the FFB provider's pause-release and let the stop-stream-on-pause gate
-        // drop the wheel out of Trueforce mode for ~0.7 s whenever a DataUpdate
-        // tick sampled the window.
-
-        [Fact]
-        public void EmptyKeepalivePacket_ZeroesVolatileChannels()
-        {
-            // The silence gate keys on maxRpm == 0, not on IsRaceOn, so a
-            // genuinely-empty packet zeroes the volatile channels even when it
-            // still carries a stray current-rpm / speed value.
-            var src = NewSource();
-            var f = src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 5000f, speedMs: 30f),
-                                    HorizonDashLength);
-
-            Assert.Equal(0.0, f.Rpms, 6);
-            Assert.Equal(0.0, f.SpeedKmh, 6);
-            Assert.Equal("N", f.Gear);
-        }
-
-        [Fact]
-        public void Keepalive_DoesNotStampRaceOn()
-        {
-            var src = NewSource();
-            src.ParsePacket(DashPacket(raceOn: 1), HorizonDashLength);
-            Assert.True(src.LastIsRaceOn);
-
-            src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 0f, speedMs: 0f), HorizonDashLength);
-            Assert.True(src.LastIsRaceOn);   // unchanged by the empty
-        }
-
-        [Fact]
-        public void RaceOnZeroWithLivePhysics_StillReadsPaused()
-        {
-            // Guard on the half of the behavior this fix deliberately leaves
-            // alone: a REAL frame (maxRpm > 0) reporting IsRaceOn == 0 is a
-            // genuine pause / replay, so it still drops the flag and silences
-            // the volatile channels exactly as it did before the gate.
-            var src = NewSource();
-            src.ParsePacket(DashPacket(raceOn: 1), HorizonDashLength);
-            var f = src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 8000f, rpm: 5000f, speedMs: 30f),
-                                    HorizonDashLength);
-
-            Assert.False(src.LastIsRaceOn);
-            Assert.Equal(0.0, f.Rpms, 6);
-            Assert.Equal(0.0, f.SpeedKmh, 6);
-        }
-
-        [Fact]
-        public void KeepaliveBetweenRealFrames_DoesNotReopenSettleWindow()
-        {
-            // A keepalive used to record a raceOn=0 level, so the next real
-            // frame looked like a 0->1 edge and re-opened the 400 ms settle
-            // window: with keepalives interleaving several times a second, the
-            // grip / impact channels never escaped suppression during a race.
-            var src = NewSource();
-            src.ParsePacket(DashPacket(), HorizonDashLength);   // open + spend settle window
-            Thread.Sleep(450);
-            src.ParsePacket(DashPacket(raceOn: 0, maxRpm: 0f, rpm: 0f, speedMs: 0f), HorizonDashLength);
-            var f = src.ParsePacket(DashPacket(heave: 50f, combinedSlip: 0.9f), HorizonDashLength);
-
-            Assert.True(Math.Abs(f.AccelerationHeave.GetValueOrDefault()) > 0.0);
-            Assert.True(f.WheelSlip.GetValueOrDefault() > 0.0);
-        }
-
-        [Fact]
-        public void ShouldEmit_SwallowsLoneKeepalives_PassesPersistentEmptiness()
-        {
-            // Lone keepalives adjacent to fresh real frames must not reach
-            // consumers (their zeroed speed / rpm / gear wipe scalar caches
-            // mid-race); only persistent emptiness (a real pause / menu) may
-            // pass the silencing zero frame through.
-            var src = NewSource();
-            long hz = System.Diagnostics.Stopwatch.Frequency;
-            var real  = new TelemetryFrame { MaxRpm = 8000 };
-            var empty = new TelemetryFrame { MaxRpm = 0 };
-
-            Assert.True(src.ShouldEmit(real, 10 * hz));
-            Assert.False(src.ShouldEmit(empty, 10 * hz + hz / 100));   // 10 ms later: lone
-            Assert.True(src.ShouldEmit(real, 10 * hz + hz / 50));
-            Assert.False(src.ShouldEmit(empty, 10 * hz + hz / 25));    // 20 ms since real: lone
-            Assert.True(src.ShouldEmit(empty, 11 * hz));               // ~1 s since real: pause
-        }
-
-        [Fact]
-        public void ShouldEmit_KeepaliveBeforeAnyRealFrame_FlowsThrough()
-        {
-            // Fresh source straight into a menu: no real frame has been seen,
-            // so the silencing zero frame must not be withheld.
-            var src = NewSource();
-            Assert.True(src.ShouldEmit(new TelemetryFrame { MaxRpm = 0 }, 123456));
-        }
-
-        [Fact]
-        public void PersistentKeepalives_DropRaceOn_AfterSilenceWindow()
-        {
-            // One zeroed payload is noise, but persistent emptiness is a real
-            // pause: the session flag must drop when the silencing frames start
-            // flowing, or the FFB provider's pause-release (issue #13 full-lock
-            // protection) never engages on Horizon pauses.
-            var src = NewSource();
-            long hz = System.Diagnostics.Stopwatch.Frequency;
-            src.ParsePacket(DashPacket(raceOn: 1), HorizonDashLength);
-            Assert.True(src.LastIsRaceOn);
-
-            var real  = new TelemetryFrame { MaxRpm = 8000 };
-            var empty = new TelemetryFrame { MaxRpm = 0 };
-            Assert.True(src.ShouldEmit(real, 10 * hz));
-            Assert.False(src.ShouldEmit(empty, 10 * hz + hz / 100));
-            Assert.True(src.LastIsRaceOn);                 // lone empty: still driving
-            Assert.True(src.ShouldEmit(empty, 11 * hz));   // persistent: pause
-            Assert.False(src.LastIsRaceOn);
         }
     }
 }

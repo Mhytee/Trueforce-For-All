@@ -19,6 +19,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 
 namespace TrueforceForAll.Core
@@ -124,8 +126,10 @@ namespace TrueforceForAll.Core
                 log?.Invoke("WheelUsbDiscovery: no USBPcap interfaces reported. USBPcap's capture " +
                             "driver is not loaded. This is expected right after installing it: restart " +
                             "the computer so the driver attaches at boot, then relaunch SimHub. If it " +
-                            "persists after a reboot, USBPcap is missing or blocked (antivirus, or " +
-                            "Windows 11 Memory integrity / Smart App Control).");
+                            "persists after a reboot, either USBPcap is missing or Windows is refusing " +
+                            "to load it. Check for a BIOS update from your PC or motherboard maker " +
+                            "first: out-of-date Secure Boot keys are the usual reason, and updating " +
+                            "the BIOS refreshes them. Then check whether antivirus is blocking it.");
             }
             else if (totalCandidates == 0)
             {
@@ -256,6 +260,7 @@ namespace TrueforceForAll.Core
                 using (var proc = Process.Start(psi))
                 {
                     if (proc == null) return result;
+                    ChildProcessJob.TryAssign(proc, log);
                     string stdout = proc.StandardOutput.ReadToEnd();
                     proc.WaitForExit(2000);
 
@@ -308,6 +313,7 @@ namespace TrueforceForAll.Core
             {
                 proc = Process.Start(psi);
                 if (proc == null) return stat;
+                ChildProcessJob.TryAssign(proc, log);
                 Process p = proc;
                 ScanStats statCapture = stat;
 
@@ -485,5 +491,57 @@ namespace TrueforceForAll.Core
                 got += r;
             }
         }
+
+        // ---------- capture-driver presence ----------
+
+        // One per filtered root hub, and two is typical on a desktop. Probed
+        // individually rather than stopped at the first gap: a machine whose
+        // hubs changed can end up with a hole in the numbering.
+        private const int MaxProbedInterfaces = 16;
+
+        private const int ErrorInsufficientBuffer = 122;
+
+        /// <summary>True when USBPcap's capture driver is actually attached to
+        /// the USB stack, as opposed to merely installed on disk.
+        ///
+        /// The driver creates one control device per filtered root hub, which
+        /// surfaces in the DOS device namespace as USBPcap1, USBPcap2 and so
+        /// on. Those exist from boot onwards whether or not anything is
+        /// capturing, so reading the namespace is an honest answer that costs
+        /// no child process, no handle on the driver (which would contend with
+        /// a live capture) and no elevation.
+        ///
+        /// USBPcapCMD.exe sitting on disk answers a different question and was
+        /// the wrong one to ask (issue #44): a driver blocked by Windows 11
+        /// Memory integrity or Smart App Control, or one whose USB-class filter
+        /// registration is gone, leaves the CLI in place while every capture
+        /// enumerates zero interfaces.
+        ///
+        /// Probe failure reports true. This gates the repair UI, and a probe
+        /// that cannot run is no evidence that the driver is broken.</summary>
+        public static bool AnyUsbPcapInterfacePresent()
+        {
+            try
+            {
+                var sb = new StringBuilder(260);
+                for (int i = 1; i <= MaxProbedInterfaces; i++)
+                {
+                    if (QueryDosDeviceW("USBPcap" + i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                                        sb, (uint)sb.Capacity) != 0)
+                        return true;
+                    // A target path too long for the buffer still proves the
+                    // device exists; only "not found" means absent.
+                    if (Marshal.GetLastWin32Error() == ErrorInsufficientBuffer) return true;
+                }
+                return false;
+            }
+            catch (Exception)
+            {
+                return true;
+            }
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern uint QueryDosDeviceW(string lpDeviceName, StringBuilder lpTargetPath, uint ucchMax);
     }
 }

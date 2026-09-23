@@ -44,7 +44,9 @@ dotnet build src\TrueforceForAll.Plugin\TrueforceForAll.Plugin.csproj -c Release
 dotnet publish src\TrueforceForAll.LoopbackHelper\TrueforceForAll.LoopbackHelper.csproj -c Release -r win-x64
 ```
 
-The plugin csproj resolves SimHub assemblies via `$(SimHubPath)`, defaulting to `C:\Program Files (x86)\SimHub`. Override with `-p:SimHubPath="..."` if SimHub lives elsewhere. Drop the build outputs into your SimHub install folder and reload the plugin in SimHub. The full release build (with Inno Setup installer) is documented in [RELEASING.md](RELEASING.md), which is maintainer-facing.
+The plugin csproj resolves SimHub assemblies via `$(SimHubPath)`, defaulting to `C:\Program Files (x86)\SimHub`. Override with `-p:SimHubPath="..."` if SimHub lives elsewhere. Deploying by hand means copying THREE DLLs into the SimHub install folder: `User.TrueforceForAll.dll`, `TrueforceForAll.Core.dll`, and `TrueforceForAll.Engine.dll`. All three matter: a missing `TrueforceForAll.Engine.dll` means the plugin silently fails to load, and a stale `TrueforceForAll.Core.dll` means a silently dead wheel. The full release build (with Inno Setup installer) is documented in [RELEASING.md](RELEASING.md), which is maintainer-facing.
+
+Unit tests for the Core and Engine libraries (telemetry parsing, synthesis math, the effect and resampler suites, the golden-fixture replay parity gate) live in `src/TrueforceForAll.Core.Tests`. The test project is intentionally not in `TrueforceForAll.sln` (it targets net8.0 and would perturb the net48 plugin build); run it directly with `dotnet test src/TrueforceForAll.Core.Tests`. Please run it before submitting changes that touch `TrueforceForAll.Core` or `TrueforceForAll.Engine`.
 
 ## Adding a new effect
 
@@ -54,11 +56,12 @@ to end. `RevLimiterEffect` is a good template (telemetry-driven, with its own
 settings section). Grep the codebase for `RevLimiter` to find every spot you
 need to mirror, it currently appears in roughly eight files. The steps:
 
-1. **Effect class** in `src/TrueforceForAll.Plugin/Effects/`. Extend
-   `TelemetryEffect`, implement `OnTelemetry(TelemetryFrame)` to update state
-   and `RenderAdd(float[], int)` to synth into the buffer. Expose `Name`,
+1. **Effect class** in `src/TrueforceForAll.Engine/Effects/` (effects live in
+   the Engine assembly now, not the Plugin). Extend `TelemetryEffect`,
+   implement `OnTelemetry(TelemetryFrame)` to update state and
+   `RenderAdd(float[], int)` to synth into the buffer. Expose `Name`,
    `IsActive`, and (if it ducks other voices or should be duckable)
-   `ActivityLevel`. See `Effects/RevLimiterEffect.cs`.
+   `ActivityLevel`. See `src/TrueforceForAll.Engine/Effects/RevLimiterEffect.cs`.
 2. **Settings class** in `TrueforceSettings.cs`: a `XxxSettings` class with the
    tunables (`Enabled`, `Gain`, plus effect-specific fields). Add a slot for it
    in three places: the global `TrueforceSettings.Xxx`, the preset snapshot

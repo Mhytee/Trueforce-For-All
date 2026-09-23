@@ -1,18 +1,20 @@
-// Modal editor for a single CustomEngineDef. Opens via SettingsControl
-// when the user picks "Custom..." (new) from the engine dropdown, or via
-// the Edit button on the Custom Engines tab of ManagePresetsDialog.
+// Modal editor for a single CustomEngineDef. Opens via the Manage
+// variants modal ("Create custom engine…" footer link) or via the Edit
+// button on the Custom Engines tab of the preset library.
 //
 // On Save the dialog writes back to the CustomEngineDef passed in; the
 // caller is responsible for adding new entries to TrueforceSettings.CustomEngines
 // and persisting. Cancel closes without mutating the input.
 //
-// UI flow:
-//   - Top: Name textbox, Electric checkbox.
-//   - When Electric: only the Behavior dropdown is shown.
-//   - When Combustion: Shape dropdown + Count slider + Pattern textbox.
-//     Picking a shape or moving the count slider regenerates the pattern
-//     string from FiringPatternDb.BuildPatternString; the user can also
-//     hand-edit the textbox for expert tuning.
+// UI flow: intro explainer, Name textbox, Shape dropdown + Count slider
+// + Pattern textbox. Picking a shape or moving the count slider
+// regenerates the pattern string from FiringPatternDb.BuildPatternString;
+// the user can also hand-edit the textbox for expert tuning.
+//
+// Electric authoring was removed 2026-07-19 (a custom with no pattern
+// only duplicated the built-in Electric engine entry + EV behavior
+// setting). The runtime still honors IsElectric on legacy / imported /
+// community defs; this editor just always authors combustion patterns.
 
 using System;
 using System.Windows;
@@ -26,15 +28,20 @@ namespace TrueforceForAll.Plugin
         // it untouched so callers can rely on Save returning true => mutated.
         private CustomEngineDef _target;
         private bool _suppress;   // skip event handlers during programmatic UI updates
+        private string _lastGeneratedPattern;   // last auto-generated pattern; lets us detect hand-edits
 
         public CustomEngineEditor()
         {
             InitializeComponent();
+            // The cylinder count is the one number here a user is likely to know
+            // outright rather than hunt for, so let them type it. This window is
+            // a separate class from the settings panel, which is why its readout
+            // was read-only until the mechanism moved out into its own file.
+            EditableReadout.WireAll(this);
             // Default the shape dropdown to Even-fire so the count slider
             // starts in a sensible state; will be overridden in Init.
             _suppress = true;
             ShapeCombo.SelectedIndex = 0;
-            ElectricBehaviorCombo.SelectedIndex = 0;
             _suppress = false;
         }
 
@@ -52,22 +59,32 @@ namespace TrueforceForAll.Plugin
             try
             {
                 NameTextBox.Text = _target.Name ?? "";
-                ElectricCheck.IsChecked = _target.IsElectric;
-                ElectricBehaviorCombo.SelectedIndex =
-                    _target.ElectricMode == ElectricCarMode.Silent ? 1 : 0;
+                // Legacy electric def: warn that saving converts it (the
+                // editor always authors firing-pattern engines now).
+                ElectricConvertNote.Visibility = _target.IsElectric
+                    ? Visibility.Visible : Visibility.Collapsed;
 
                 // Seed combustion fields. Pattern defaults to even-fire 4-cyl
                 // for new entries so the user has something concrete to edit
                 // rather than an empty textbox.
                 bool hasPattern = !string.IsNullOrWhiteSpace(_target.Pattern);
-                PatternTextBox.Text = hasPattern
+                string seeded = hasPattern
                     ? _target.Pattern
                     : FiringPatternDb.BuildPatternString(FiringPatternDb.CustomEngineShape.EvenFire, 4);
-                ShapeCombo.SelectedIndex = 0;   // Even-fire
+                PatternTextBox.Text = seeded;
+                // Track the last auto-generated value so we can tell whether the
+                // user has hand-edited the pattern. For an existing entry the saved
+                // pattern is treated as user-owned (null marker) so a stray shape /
+                // count change never silently overwrites it.
+                _lastGeneratedPattern = hasPattern ? null : seeded;
+                // Reflect the saved pattern's shape instead of always "Even-fire"
+                // (so the dropdown isn't misleading and an explicit Regenerate
+                // doesn't silently switch shape). Falls back to 0 for a
+                // hand-edited pattern that matches no generated shape.
+                ShapeCombo.SelectedIndex = hasPattern ? InferShapeIndex(seeded) : 0;
                 CountSlider.Value = InferPulseCount(PatternTextBox.Text, fallback: 4);
                 CountText.Text = ((int)CountSlider.Value).ToString();
                 ApplyShapeConstraints();
-                UpdateElectricCombustionVisibility();
             }
             finally { _suppress = false; }
         }
@@ -96,6 +113,50 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        private const int ShapeComboMaxIndex = 10;
+
+        // Inverse of SelectedShape: the combo index that selects a given shape.
+        private static FiringPatternDb.CustomEngineShape ShapeForIndex(int idx)
+        {
+            switch (idx)
+            {
+                case 1:  return FiringPatternDb.CustomEngineShape.V8CrossPlane;
+                case 2:  return FiringPatternDb.CustomEngineShape.V6OddFire;
+                case 3:  return FiringPatternDb.CustomEngineShape.VTwin90;
+                case 4:  return FiringPatternDb.CustomEngineShape.VTwin60;
+                case 5:  return FiringPatternDb.CustomEngineShape.VTwin45;
+                case 6:  return FiringPatternDb.CustomEngineShape.Inline4CrossPlane;
+                case 7:  return FiringPatternDb.CustomEngineShape.Rotary;
+                case 8:  return FiringPatternDb.CustomEngineShape.Twin180;
+                case 9:  return FiringPatternDb.CustomEngineShape.V4TwinPulse;
+                case 10: return FiringPatternDb.CustomEngineShape.Boxer4Rumble;
+                default: return FiringPatternDb.CustomEngineShape.EvenFire;
+            }
+        }
+
+        // Best-effort: figure out which shape generated a saved pattern so the
+        // dropdown reflects it instead of always showing "Even-fire". Matches the
+        // saved string against each shape's generated pattern (at its fixed count,
+        // or the saved count for variable shapes). Returns 0 (Even-fire) when
+        // nothing matches, i.e. a hand-edited pattern.
+        private static int InferShapeIndex(string pattern)
+        {
+            if (string.IsNullOrWhiteSpace(pattern)) return 0;
+            string target = pattern.Trim();
+            int count = InferPulseCount(pattern, 4);
+            for (int idx = 0; idx <= ShapeComboMaxIndex; idx++)
+            {
+                var shape = ShapeForIndex(idx);
+                int n = FiringPatternDb.FixedCountForShape(shape) ?? count;
+                string gen;
+                try { gen = FiringPatternDb.BuildPatternString(shape, n); }
+                catch { continue; }
+                if (string.Equals(gen?.Trim(), target, StringComparison.Ordinal))
+                    return idx;
+            }
+            return 0;
+        }
+
         // Pull a sensible starting count from the saved pattern: the number
         // of comma-separated positions. Used only to seed the slider when
         // opening an existing entry; the actual pattern stays in the textbox.
@@ -110,28 +171,11 @@ namespace TrueforceForAll.Plugin
             return n;
         }
 
-        private void Electric_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_suppress) return;
-            UpdateElectricCombustionVisibility();
-        }
-
-        // Toggle which rows are visible based on the Electric checkbox so the
-        // user never sees a pattern textbox for an EV (or a behavior dropdown
-        // for a combustion entry).
-        private void UpdateElectricCombustionVisibility()
-        {
-            bool isElectric = ElectricCheck.IsChecked == true;
-            ShapeRow.Visibility            = isElectric ? Visibility.Collapsed : Visibility.Visible;
-            CountRow.Visibility            = isElectric ? Visibility.Collapsed : Visibility.Visible;
-            PatternRow.Visibility          = isElectric ? Visibility.Collapsed : Visibility.Visible;
-            PatternHelp.Visibility         = isElectric ? Visibility.Collapsed : Visibility.Visible;
-            ElectricBehaviorRow.Visibility = isElectric ? Visibility.Visible   : Visibility.Collapsed;
-        }
-
         private void Shape_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             if (_suppress) return;
+            // Same InitializeComponent-ordering guard as Count_ValueChanged.
+            if (CountSlider == null || CountText == null || PatternTextBox == null) return;
             ApplyShapeConstraints();
             // After clamping, regenerate the pattern from (shape, count).
             RegeneratePattern();
@@ -181,20 +225,47 @@ namespace TrueforceForAll.Plugin
             System.Windows.RoutedPropertyChangedEventArgs<double> e)
         {
             if (_suppress) return;
+            // Fires DURING InitializeComponent: the XAML parser's assignment
+            // of the slider's Minimum coerces Value before the later-declared
+            // controls exist (and before the constructor can set _suppress).
+            // Without this guard the NRE aborts window construction, which
+            // presents as "Create custom engine does nothing".
+            if (CountText == null || PatternTextBox == null) return;
             int v = (int)Math.Round(e.NewValue);
             CountText.Text = v.ToString();
             RegeneratePattern();
         }
 
-        // Rewrite the pattern textbox from (shape, count). Suppresses the
-        // textbox change events so manual edits the user has made on top of
-        // a generated pattern survive across unrelated UI interactions.
-        private void RegeneratePattern()
+        // Rebuild the pattern textbox from (shape, count). By default this
+        // refuses to clobber a hand-edited pattern: it only overwrites when the
+        // box still holds the exact string we last generated (or is blank). The
+        // user's expert edits survive a stray shape / count change and are only
+        // replaced when they explicitly click "Regenerate" (force: true).
+        private void RegeneratePattern(bool force = false)
         {
+            if (!force && PatternIsUserEdited()) return;
             string s = FiringPatternDb.BuildPatternString(SelectedShape(), (int)Math.Round(CountSlider.Value));
             _suppress = true;
             try { PatternTextBox.Text = s; }
             finally { _suppress = false; }
+            _lastGeneratedPattern = s;
+        }
+
+        // True when the pattern box differs from the last value we generated,
+        // i.e. the user has typed their own pattern. A blank box counts as
+        // not-edited so clearing it re-enables auto-generation.
+        private bool PatternIsUserEdited()
+        {
+            string cur = (PatternTextBox.Text ?? "").Trim();
+            if (cur.Length == 0) return false;
+            return !string.Equals(cur, (_lastGeneratedPattern ?? "").Trim(), StringComparison.Ordinal);
+        }
+
+        // Expert escape hatch: rebuild the pattern from the current shape and
+        // count even when the box was hand-edited.
+        private void RegeneratePattern_Click(object sender, RoutedEventArgs e)
+        {
+            RegeneratePattern(force: true);
         }
 
         private void Save_Click(object sender, RoutedEventArgs e)
@@ -202,38 +273,30 @@ namespace TrueforceForAll.Plugin
             string name = (NameTextBox.Text ?? "").Trim();
             if (string.IsNullOrEmpty(name))
             {
-                MessageBox.Show(this,
-                    "Please enter a name for this engine.",
-                    "Custom engine", MessageBoxButton.OK, MessageBoxImage.Information);
+                TrueforceDialog.Show(this, "Custom engine",
+                    "Please enter a name for this engine.", DialogKind.Info);
                 NameTextBox.Focus();
                 return;
             }
 
-            bool isElectric = ElectricCheck.IsChecked == true;
             string pattern = (PatternTextBox.Text ?? "").Trim();
-
-            // Validate combustion pattern parses. Don't gate on this for
-            // electric entries (the textbox is hidden / ignored in that mode).
-            if (!isElectric)
+            var parsed = FiringPatternDb.ParseCustom(pattern);
+            if (parsed == null || parsed.Pulses < 1)
             {
-                var parsed = FiringPatternDb.ParseCustom(pattern);
-                if (parsed == null || parsed.Pulses < 1)
-                {
-                    MessageBox.Show(this,
-                        "The firing pattern couldn't be parsed. Expected format: comma-separated numbers in [0, 1) "
-                        + "with optional ':amplitude' per entry (e.g. 0, 0.25:1.0, 0.5, 0.75:0.85).",
-                        "Custom engine", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    PatternTextBox.Focus();
-                    return;
-                }
+                TrueforceDialog.Show(this, "Custom engine",
+                    "The firing pattern couldn't be parsed. Expected format: comma-separated numbers in [0, 1) "
+                    + "with optional ':amplitude' per entry (e.g. 0, 0.25:1.0, 0.5, 0.75:0.85).",
+                    DialogKind.Warning);
+                PatternTextBox.Focus();
+                return;
             }
 
             _target.Name = name;
-            _target.IsElectric = isElectric;
-            _target.ElectricMode = ElectricBehaviorCombo.SelectedIndex == 1
-                ? ElectricCarMode.Silent
-                : ElectricCarMode.MutedHum;
-            _target.Pattern = isElectric ? "" : pattern;
+            // Electric authoring is retired: this editor always writes a
+            // combustion pattern (editing a legacy electric def converts it).
+            _target.IsElectric = false;
+            _target.ElectricMode = ElectricCarMode.MutedHum;
+            _target.Pattern = pattern;
             if (string.IsNullOrEmpty(_target.Id)) _target.Id = Guid.NewGuid().ToString("N");
 
             Saved = true;

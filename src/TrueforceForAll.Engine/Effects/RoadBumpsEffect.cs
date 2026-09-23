@@ -1,0 +1,268 @@
+// Road bumps + surface texture. Two synthesis paths sharing one settings
+// section but with their own oscillators so each can be tuned independently:
+//
+//  A. HEAVE channel (universal). Vertical-acceleration transients
+//     kerbs, jump landings, washboard bumps. Driven by
+//     GameData.NewData.AccelerationHeave or the AC physics page's accGY.
+//     One noise oscillator per RoadBumps instance, freq/waveform/LP user-
+//     tunable. Threshold + FullScale gate the envelope so smooth driving
+//     stays silent.
+//
+//  B. SURFACE channel (Forza-only today). Continuous tactile road feel.
+//     Driven by Forza's SurfaceRumble[4] (max-abs across all four tires)
+//     the same channel Turn 10's own Trueforce path consumes inside Forza
+//     Motorsport. Has its own oscillator so the user can pick a higher
+//     frequency / brighter waveform / different LP cutoff for surface
+//     texture without affecting the heave path's low-freq thump tuning.
+//     Kerb-entry percussion is KerbThumpEffect's job (RumbleStripStart
+//     edge); this channel only rides the sustained rumble.
+//
+// Both paths render into the SAME mixed output buffer (additively) so the
+// total output stays in scale with Gain. SurfaceRumble channel is silent
+// when the source doesn't supply it (AC, SimHub fallback), the heave
+// channel is what every game gets out of the box.
+
+using System;
+using TrueforceForAll.Core;
+
+namespace TrueforceForAll.Plugin.Effects
+{
+    public sealed class RoadBumpsEffect : TelemetryEffect
+    {
+        public override string Name => "Road bumps";
+
+        // ---- Heave channel (universal) ----
+
+        /// <summary>Heave magnitude (m/s² ish, game-dependent) at which the buzz begins.</summary>
+        public float Threshold { get; set; } = 0.5f;
+
+        /// <summary>Heave magnitude that produces full-output buzz.</summary>
+        public float FullScale { get; set; } = 5.0f;
+
+        /// <summary>Minimum speed (km/h) required for the effect to fire.</summary>
+        public float MinSpeedKmh { get; set; } = 5.0f;
+
+        public Waveform Waveform
+        {
+            get => _heave.Waveform;
+            set => _heave.Waveform = value;
+        }
+
+        public double Freq
+        {
+            get => _heave.Freq;
+            set => _heave.Freq = value;
+        }
+
+        // Phase 6 contract: road texture is Ambience (base class default);
+        // band spans the heave thump up through the surface channel's noise
+        // window, capped at the wheel-relevant 400 Hz.
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Math.Max(10.0, Freq * 0.7);
+            double hiSurface = SurfaceEnabled
+                ? Math.Max(SurfaceFreq * 1.4, SurfaceLowpassHz)
+                : Freq * 1.4;
+            hiHz = Math.Min(400.0, Math.Max(loHz + 10.0, hiSurface));
+        }
+
+        // ---- Surface channel (Forza) ----
+
+        /// <summary>Master toggle for the Forza-only surface-texture channel.
+        /// When false the heave channel still runs as before; flipping this
+        /// off is how non-Forza users keep RoadBumps unchanged.</summary>
+        public bool SurfaceEnabled { get; set; } = true;
+
+        /// <summary>Per-channel gain on the surface oscillator before the
+        /// effect's overall Gain kicks in. 1.0 = baseline.</summary>
+        public float SurfaceGain { get; set; } = 1.0f;
+
+        /// <summary>Multiplier applied to Forza's SurfaceRumble channel value
+        /// before driving the oscillator. Forza's SurfaceRumble lands ~0.05 on
+        /// asphalt and spikes 0.5-0.8 on dirt / grass; 1.0 = use as-is.
+        /// Tune up for a more aggressive road feel.</summary>
+        public float SurfaceRumbleScale { get; set; } = 1.0f;
+
+        public Waveform SurfaceWaveform
+        {
+            get => _surface.Waveform;
+            set => _surface.Waveform = value;
+        }
+
+        public double SurfaceFreq
+        {
+            get => _surface.Freq;
+            set => _surface.Freq = value;
+        }
+
+        public double SurfaceLowpassHz
+        {
+            get => _surface.NoiseLowpassHz;
+            set => _surface.NoiseLowpassHz = value;
+        }
+
+        public double SurfaceHighpassHz
+        {
+            get => _surface.NoiseHighpassHz;
+            set => _surface.NoiseHighpassHz = value;
+        }
+
+        // ---- Oscillators ----
+
+        private readonly OscillatorSource _heave = new OscillatorSource
+        {
+            Waveform   = Waveform.Noise,
+            Freq       = 60,
+            Amp        = 0,
+            Enabled    = true,
+            SampleRate = 4000.0,
+        };
+
+        private readonly OscillatorSource _surface = new OscillatorSource
+        {
+            Waveform        = Waveform.Noise,
+            Freq            = 120,
+            Amp             = 0,
+            Enabled         = true,
+            SampleRate      = 4000.0,
+            NoiseLowpassHz  = 800.0,
+            NoiseHighpassHz = 60.0,
+        };
+
+        public override bool IsActive =>
+            IsTesting || (Enabled && (_heave.IsActive || (SurfaceEnabled && _surface.IsActive)));
+
+        public override double ActivityLevel
+        {
+            // Both oscillators peak at ~0.30 × Gain at full intensity each;
+            // total max is the sum. Report whichever channel is louder
+            // relative to its own ceiling.
+            get
+            {
+                double maxAmp = 0.30 * Math.Max(0.01, Gain);
+                double a = _heave.Amp / maxAmp;
+                double b = _surface.Amp / (maxAmp * Math.Max(0.01, SurfaceGain));
+                return Math.Min(1.0, Math.Max(0.0, Math.Max(a, b)));
+            }
+        }
+
+        private float[] _duckScratch;
+
+        public override void RenderAdd(float[] buffer, int count)
+        {
+            if (!Enabled && !IsTesting) return;
+            float dm = DuckMultiplier;
+            // Fast path: not ducked, render straight into the buffer.
+            if (dm >= 0.999f)
+            {
+                _heave.RenderAdd(buffer, count);
+                if (SurfaceEnabled || IsTesting) _surface.RenderAdd(buffer, count);
+                return;
+            }
+            // Ducked (a higher-tier momentary effect is active): render the two
+            // oscillators into scratch, then add scaled so road feel drops out
+            // of the way. Scratch is tiny (one batch) and reused.
+            if (_duckScratch == null || _duckScratch.Length < count) _duckScratch = new float[count];
+            Array.Clear(_duckScratch, 0, count);
+            _heave.RenderAdd(_duckScratch, count);
+            if (SurfaceEnabled || IsTesting) _surface.RenderAdd(_duckScratch, count);
+            for (int i = 0; i < count; i++) buffer[i] += _duckScratch[i] * dm;
+        }
+
+        public override int TestPlay()
+        {
+            _heave.Amp   = 0;
+            _surface.Amp = 0;
+            StartTest(2000);
+            return 2000;
+        }
+
+        /// <summary>Test simulation: 4 quick heave-channel pulses simulating
+        /// kerb hits, with a surface-channel ramp-up underneath simulating
+        /// driving onto rougher pavement (so users can hear/feel both
+        /// channels behave during the test).</summary>
+        public override void TestUpdate(double phase01)
+        {
+            // Heave: 4 sharp pulses.
+            const int pulses = 4;
+            double heaveEnv = 0;
+            for (int i = 0; i < pulses; i++)
+            {
+                double pulseCenter = (i + 0.5) / pulses;
+                double dist = phase01 - pulseCenter;
+                if (dist >= 0 && dist < 0.08)
+                {
+                    double e = Math.Exp(-dist / 0.025);
+                    if (e > heaveEnv) heaveEnv = e;
+                }
+            }
+            _heave.Amp = heaveEnv * 0.30 * Gain;
+
+            // Surface: linear ramp 0 → 0.4 across the test, then back down.
+            double surfaceEnv = phase01 < 0.5 ? phase01 * 2.0 * 0.4 : (1.0 - phase01) * 2.0 * 0.4;
+            _surface.Amp = surfaceEnv * 0.30 * Gain * SurfaceGain;
+        }
+
+        public override void OnTelemetry(TelemetryFrame f)
+        {
+            if (IsTesting) return;
+            if (f.SpeedKmh < MinSpeedKmh)
+            {
+                _heave.Amp = 0;
+                _surface.Amp = 0;
+                return;
+            }
+
+            // ---- Heave channel ----
+            // Guard against a non-finite telemetry frame (source restart,
+            // shared-memory garbage, alt-tab). An Infinity here would sail
+            // past the Math.Min clamp below as full-scale and slam the wheel;
+            // a NaN would silently poison the oscillator. Treat either as
+            // "no bump this frame".
+            double heave = f.AccelerationHeave.GetValueOrDefault();
+            if (double.IsNaN(heave) || double.IsInfinity(heave)) heave = 0.0;
+            double mag   = Math.Abs(heave);
+            double heaveRange = Math.Max(0.01, FullScale - Threshold);
+            double heaveNorm = (mag > Threshold) ? Math.Min(1.0, (mag - Threshold) / heaveRange) : 0;
+            _heave.Amp = heaveNorm * 0.30 * Gain;
+
+            // ---- Surface channel ----
+            if (!SurfaceEnabled)
+            {
+                _surface.Amp = 0;
+            }
+            else
+            {
+                double surfaceNorm = 0;
+                if (f.SurfaceRumble is double sr
+                    && !double.IsNaN(sr) && !double.IsInfinity(sr))
+                    surfaceNorm = Math.Min(1.0, Math.Abs(sr) * SurfaceRumbleScale);
+
+                _surface.Amp = surfaceNorm * 0.30 * Gain * SurfaceGain;
+            }
+        }
+
+        // Telemetry stopped (game closed / crashed / froze) mid-drive: both
+        // oscillators hold their last amplitude with no self-decay, so the
+        // road/surface buzz would rumble forever (Forza's SurfaceRumble is
+        // non-zero whenever the car moves). Silence both channels; the next
+        // real frame's OnTelemetry sets them again.
+        public override void OnTelemetryStall()
+        {
+            _heave.Amp = 0;
+            _surface.Amp = 0;
+        }
+
+        public override void SeedNoise(int seed)
+        {
+            _heave.SeedNoise(seed);
+            _surface.SeedNoise(unchecked(seed * 31 + 7));   // decorrelated from _heave
+        }
+
+        public override void Reset()
+        {
+            _heave.Amp = 0;
+            _surface.Amp = 0;
+        }
+    }
+}

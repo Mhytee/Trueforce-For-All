@@ -1,0 +1,246 @@
+// ABS engagement haptic. Two modes:
+//   Pulse , continuous carrier modulated by an internal pulse rate (12 Hz
+//            default). The "rrr-rrr-rrr" feel that's stable regardless of
+//            how the game reports ABSActive.
+//   PerTick, fires a single short click envelope on each rising edge of
+//            ABSActive. If the game's ABSActive flag tracks the actual ABS
+//            valve cycle, this gives the most authentic feel, what you
+//            feel matches what the simulated pump is doing.
+
+using System;
+using System.Diagnostics;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using TrueforceForAll.Core;
+
+namespace TrueforceForAll.Plugin.Effects
+{
+    // Values pinned: these ordinals ride the anonymous preset-body payload as
+    // integers, so a member inserted in the middle would reinterpret stored rows.
+    // Append only.
+    public enum AbsMode
+    {
+        Pulse   = 0,  // continuous carrier × internal pulse modulator
+        PerTick = 1,  // one click envelope per ABSActive rising edge
+    }
+
+    public sealed class AbsClickEffect : TelemetryEffect
+    {
+        public override string Name => "ABS";
+
+        [JsonConverter(typeof(StringEnumConverter))]
+        public AbsMode Mode { get; set; } = AbsMode.Pulse;
+
+        /// <summary>Carrier tone freq within each pulse / tick (Hz).</summary>
+        public float Freq { get; set; } = 80.0f;
+
+        // Phase 6 contract: an alert tick around its carrier frequency.
+        public override EffectClass PriorityClass => EffectClass.Transient;
+        public override void GetCurrentBand(out double loHz, out double hiHz)
+        {
+            loHz = Freq * 0.7;
+            hiHz = Freq * 1.5;
+        }
+
+        /// <summary>Pulse rate (Hz), Pulse mode only. Real ABS valves cycle
+        /// at 10-15 Hz; default 12.</summary>
+        public float PulseFreq { get; set; } = 12.0f;
+
+        /// <summary>Fraction of each pulse period that's audible. Pulse mode only.</summary>
+        public float DutyCycle { get; set; } = 0.4f;
+
+        /// <summary>Length of each tick's envelope in ms. PerTick mode only.</summary>
+        public float TickDurationMs { get; set; } = 35.0f;
+
+        public Waveform Waveform { get; set; } = Waveform.Square;
+
+        /// <summary>Amplitude when engaged.</summary>
+        public float ActiveAmp { get; set; } = 0.25f;
+
+        private const double SampleRate = 4000.0;
+        private const int HoldMs = 120;   // Pulse-mode hold
+
+        // Standstill suppression threshold (km/h), the same one the pit limiter
+        // uses. Anti-lock braking does nothing at zero speed, so a set flag down
+        // there is never real. Two ways it gets set anyway:
+        //
+        // A held flag survives a game closing, and the enricher then paints it
+        // onto whatever runs next. That matters most on an arcade cabinet, which
+        // publishes force and no physics at all, so every frame reads as parked
+        // and there is nothing else to end the buzz. ABS and DRS were the only
+        // flag-driven effects without this gate.
+        private const float StandstillKmh = 1.0f;
+        private static readonly long HoldStopwatchTicks =
+            HoldMs * Stopwatch.Frequency / 1000;
+
+        // Pulse-mode state
+        private float  _amp;
+        private long   _lastActiveTicks;   // Stopwatch.GetTimestamp() units
+
+        // PerTick-mode state
+        private int    _tickEnvelopeRemaining;
+        private int    _tickEnvelopeTotal;
+        private int    _lastAbsValue;
+
+        // Shared
+        private double _carrierPhase;
+        private double _pulsePhase;
+
+        public override bool IsActive
+            => IsTesting
+               || (Enabled && (_amp > 0 || _tickEnvelopeRemaining > 0));
+
+        public override double ActivityLevel
+        {
+            get
+            {
+                if (Mode == AbsMode.PerTick)
+                {
+                    int total = _tickEnvelopeTotal;
+                    int rem = _tickEnvelopeRemaining;
+                    if (total <= 0 || rem <= 0) return 0;
+                    return (double)rem / total;
+                }
+                return _amp > 0 ? 1.0 : 0;
+            }
+        }
+
+        public override void RenderAdd(float[] buffer, int count)
+        {
+            if (!Enabled && !IsTesting) return;
+
+            double cStep = Math.Max(0.0, Freq) / SampleRate;
+            Waveform w = Waveform;
+
+            if (Mode == AbsMode.PerTick)
+            {
+                if (_tickEnvelopeRemaining <= 0) return;
+                int total = _tickEnvelopeTotal;
+                // DuckMultiplier is 1.0 unless the airborne ducker pulls it
+                // down (ABS sits above the sidechain tiers, so nothing else
+                // touches it).
+                float baseAmp = ActiveAmp * Gain * DuckMultiplier;
+                for (int i = 0; i < count && _tickEnvelopeRemaining > 0; i++)
+                {
+                    float env = (float)_tickEnvelopeRemaining / total;
+                    buffer[i] += WaveformMath.SampleAt(w, _carrierPhase) * env * baseAmp;
+                    _carrierPhase += cStep;
+                    if (_carrierPhase >= 1.0) _carrierPhase -= Math.Floor(_carrierPhase);
+                    _tickEnvelopeRemaining--;
+                }
+                return;
+            }
+
+            // Pulse mode
+            if (_amp <= 0) return;
+            double pStep = Math.Max(0.0, PulseFreq) / SampleRate;
+            float amp = _amp * DuckMultiplier;
+            double duty = Math.Min(1.0, Math.Max(0.0, (double)DutyCycle));
+
+            for (int i = 0; i < count; i++)
+            {
+                if (_pulsePhase < duty)
+                    buffer[i] += WaveformMath.SampleAt(w, _carrierPhase) * amp;
+                _carrierPhase += cStep;
+                if (_carrierPhase >= 1.0) _carrierPhase -= Math.Floor(_carrierPhase);
+                _pulsePhase   += pStep;
+                if (_pulsePhase   >= 1.0) _pulsePhase   -= Math.Floor(_pulsePhase);
+            }
+        }
+
+        public override int TestPlay()
+        {
+            if (Mode == AbsMode.PerTick)
+            {
+                // Fire a few ticks across the test duration so the user feels the
+                // shape of the click envelope. Trigger now; the test loop won't
+                // re-fire, that's fine, single tick demos the timbre.
+                TriggerTick();
+                StartTest(500);
+                return 500;
+            }
+            _amp = ActiveAmp * Gain;
+            StartTest(2000);
+            return 2000;
+        }
+
+        public override void TestUpdate(double phase01)
+        {
+            // PerTick mode test: fire ticks at PulseFreq across the test duration.
+            // Pulse mode test: nothing dynamic needed (carrier+modulator runs).
+            if (Mode == AbsMode.PerTick)
+            {
+                // Roughly fire one tick every (1/PulseFreq) seconds during test.
+                // For 500 ms duration at 12 Hz, that's 6 ticks.
+                double tickInterval = 1.0 / Math.Max(1.0, PulseFreq);
+                double testDurationSec = 0.5;
+                double tickPhaseProgress = phase01 / (tickInterval / testDurationSec);
+                int ticksDone = (int)Math.Floor(tickPhaseProgress);
+                if (ticksDone > _testTicksFiredCount)
+                {
+                    TriggerTick();
+                    _testTicksFiredCount = ticksDone;
+                }
+                if (phase01 < 0.05) _testTicksFiredCount = 0;  // reset at test start
+            }
+        }
+        private int _testTicksFiredCount;
+
+        public override void OnTelemetry(TelemetryFrame f)
+        {
+            if (IsTesting) return;
+
+            int absValue = f.AbsActive;
+            if (absValue > 0 && f.SpeedKmh < StandstillKmh) absValue = 0;
+
+            if (Mode == AbsMode.PerTick)
+            {
+                // Rising edge → fire one tick. Ignore the level itself; AC reports
+                // the ACTUAL pump cycle, so each rising edge is one valve-close.
+                if (absValue > 0 && _lastAbsValue == 0)
+                    TriggerTick();
+                _lastAbsValue = absValue;
+                _amp = 0;   // pulse-mode amp unused
+            }
+            else
+            {
+                // Pulse mode with hold (decouples our pulse rate from game flicker).
+                long now = Stopwatch.GetTimestamp();
+                if (absValue > 0) _lastActiveTicks = now;
+                bool stillEngaged = _lastActiveTicks != 0
+                    && (now - _lastActiveTicks) < HoldStopwatchTicks;
+                _amp = stillEngaged ? ActiveAmp * Gain : 0;
+                _lastAbsValue = absValue;
+            }
+        }
+
+        // Telemetry stopped mid-braking: Pulse mode's _amp is a hold that only
+        // OnTelemetry refreshes, so a stall while ABS was engaged would leave
+        // the pulse train buzzing forever. PerTick mode self-decays per sample
+        // and needs no help. Mirrors PitLimiterEffect.OnTelemetryStall.
+        public override void OnTelemetryStall()
+        {
+            _amp = 0;
+            _lastActiveTicks = 0;
+        }
+
+        public override void Reset()
+        {
+            _amp = 0;
+            _lastActiveTicks = 0;
+            _tickEnvelopeRemaining = 0;
+            _lastAbsValue = 0;
+            _carrierPhase = 0;
+            _pulsePhase = 0;
+        }
+
+        private void TriggerTick()
+        {
+            int samples = (int)(TickDurationMs * SampleRate / 1000.0);
+            if (samples < 1) samples = 1;
+            _tickEnvelopeTotal = samples;
+            _tickEnvelopeRemaining = samples;
+            _carrierPhase = 0;
+        }
+    }
+}

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Fixture prep CLI for the replay harness. Deliberately NOT in the
+       solution (same policy as Core.Tests) so it never perturbs the net48
+       plugin build. Run with:
+         dotnet run - -project tools/FixturePrep - - <command> ...
+       (see Program.cs for commands: info / trim / freeze / check) -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>FixturePrep</AssemblyName>
+    <RootNamespace>TrueforceForAll.Tools.FixturePrep</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TrueforceForAll.Engine\TrueforceForAll.Engine.csproj" />
+  </ItemGroup>
+
+</Project>

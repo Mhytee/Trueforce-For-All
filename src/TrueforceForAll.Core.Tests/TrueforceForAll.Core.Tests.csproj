@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Unit tests for the pure logic in TrueforceForAll.Core (telemetry
        parsing, synthesis math). Deliberately NOT added to TrueforceForAll.sln
@@ -16,10 +16,82 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- InstalledPacksStore (linked below) serializes with Newtonsoft. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- AudioOutputMeter (linked below) reaches Windows' per-endpoint peak
+         meter through NAudio.CoreAudioApi. Same version the plugin compiles
+         against; nothing here ships, so the never-overwrite-SimHub's-copy rule
+         that governs the plugin's reference does not apply. -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\TrueforceForAll.Core\TrueforceForAll.Core.csproj" />
+    <ProjectReference Include="..\TrueforceForAll.Engine\TrueforceForAll.Engine.csproj" />
+  </ItemGroup>
+
+  <!-- Link-compile the self-contained pack registry from the (net48, SimHub-
+       coupled) plugin so its pure merge/dedup logic can be unit-tested here
+       without referencing the whole plugin assembly. The file has no WPF /
+       SimHub dependencies, only Newtonsoft.Json. -->
+  <ItemGroup>
+    <Compile Include="..\TrueforceForAll.Plugin\InstalledPacksStore.cs">
+      <Link>Linked\InstalledPacksStore.cs</Link>
+    </Compile>
+    <!-- Shared untrusted-JSON guard the store references (SafeJson.Settings). -->
+    <Compile Include="..\TrueforceForAll.Plugin\SafeJson.cs">
+      <Link>Linked\SafeJson.cs</Link>
+    </Compile>
+    <!-- Lovely car-data parsing + the light math built on it. Same rationale as
+         InstalledPacksStore: no WPF / SimHub dependencies, only Newtonsoft, and
+         the logic is worth testing precisely because the slot-write path it
+         feeds cannot be exercised on hardware yet. -->
+    <Compile Include="..\TrueforceForAll.Plugin\LovelyCarData.cs">
+      <Link>Linked\LovelyCarData.cs</Link>
+    </Compile>
+    <Compile Include="..\TrueforceForAll.Plugin\LovelyLightMath.cs">
+      <Link>Linked\LovelyLightMath.cs</Link>
+    </Compile>
+    <Compile Include="..\TrueforceForAll.Plugin\LovelyCarDataStore.cs">
+      <Link>Linked\LovelyCarDataStore.cs</Link>
+    </Compile>
+    <!-- Per-channel LED colour trim. BCL only. Worth pinning because three
+         separate comparison sites depend on it being deterministic, and a
+         rounding change would make them re-upload slots forever. -->
+    <Compile Include="..\TrueforceForAll.Plugin\LedColorGain.cs">
+      <Link>Linked\LedColorGain.cs</Link>
+    </Compile>
+    <!-- Light layout library + slot backup: ordering, naming, cycling and the
+         backup round-trip are pure logic, and the backup guards a user's saved
+         wheel colours, so they are worth pinning. -->
+    <Compile Include="..\TrueforceForAll.Plugin\LightPatternLibrary.cs">
+      <Link>Linked\LightPatternLibrary.cs</Link>
+    </Compile>
+    <Compile Include="..\TrueforceForAll.Plugin\LightSlotBackup.cs">
+      <Link>Linked\LightSlotBackup.cs</Link>
+    </Compile>
+    <!-- The wheel button's running order and where in it we stand. Extracted
+         from TrueforcePlugin precisely so it could be tested: it produced four
+         user-visible bugs in one week while it was unreachable in there. -->
+    <Compile Include="..\TrueforceForAll.Plugin\LightCycle.cs">
+      <Link>Linked\LightCycle.cs</Link>
+    </Compile>
+    <!-- Rev-level decision. Links cleanly because the controller talks to
+         WheelLedChannel (Core) and nothing else, and an unopened channel is
+         inert, so the level maths can be exercised with no wheel present.
+         Worth pinning because the dash mirror reads LastLevel and the whole
+         point of computing it apart from the write is that it stays honest in
+         the frames where the write does not happen. -->
+    <Compile Include="..\TrueforceForAll.Plugin\RpmLedController.cs">
+      <Link>Linked\RpmLedController.cs</Link>
+    </Compile>
+    <!-- The audio level meter. Only its peak-to-bar mapping is testable
+         without a sound card, and that is the part worth pinning: get the
+         decibel window wrong and the strip either never lights or never moves,
+         with nothing in the log to say so. -->
+    <Compile Include="..\TrueforceForAll.Plugin\AudioOutputMeter.cs">
+      <Link>Linked\AudioOutputMeter.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>
