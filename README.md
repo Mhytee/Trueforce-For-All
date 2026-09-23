@@ -453,17 +453,21 @@ native Trueforce and set the plugin to Normal mode to take over, tuning the
 feel yourself rather than taking whatever the game hardcodes (and on
 Automobilista 2, adding Trueforce that was never really there).
 
-The catch: **a slider at 0 is not off.** Many games keep the Trueforce API
-live even at 0, so the plugin fights a channel the game is still driving and
-the wheel whines. Only a real on/off switch or a config-file setting fully
-releases the wheel.
+<details>
+<summary><b>Why a slider at 0 is not off</b></summary>
 
-The plugin catches this itself. The USB capture sees every Trueforce
-packet on the wheel, so when a game streams beside the plugin, the plugin
-drops to Lightsync only for that game session within a couple of seconds
-(the log and the status panel say why) instead of whining beside it. Set the
-plugin to Normal mode to try again once the game's Trueforce is off. Without
-USBPcap there is nothing to watch, and nothing changes.
+Many games keep the Trueforce API live even at 0, so the plugin fights a
+channel the game is still driving and the wheel whines. Only a real on/off
+switch or a config-file setting fully releases the wheel.
+
+The plugin catches this itself. The USB capture sees every Trueforce packet
+on the wheel, so when a game streams beside the plugin, the plugin drops to
+Lightsync only for that game session within a couple of seconds (the log and
+the status panel say why) instead of whining beside it. Set the plugin to
+Normal mode to try again once the game's Trueforce is off. Without USBPcap
+there is nothing to watch, and nothing changes.
+
+</details>
 
 Running MAIRA and the plugin at the same time is not supported: with MAIRA's
 RPM lights on, the plugin steps aside for it. Close MAIRA, then set the mode
@@ -499,13 +503,6 @@ click the game, Properties, General, Launch Options.)
 you find an off switch or config setting for one of the ones still marked
 "no", or get the plugin working on a native-Trueforce game that isn't listed
 here at all, please open an issue and let me know.
-
-## Auto-discovery
-
-On startup the plugin finds the wheel and its USB capture interface by
-itself and starts the FFB tap and the Trueforce stream. If the wheel isn't
-detected (G HUB still running, USBPcap not installed, wheel unplugged) it
-says so in its status and stands down.
 
 ## Known limitations
 
@@ -664,6 +661,9 @@ Manual export/import stays available to everyone.
 
 ## How it works
 
+<details>
+<summary><b>The detail</b></summary>
+
 The plugin opens the wheel, runs the Trueforce init sequence, and streams
 haptics to endpoint 3 at 1 kHz. The effects themselves are synthesized from
 telemetry or from the game's own audio, with per-game tuning on top.
@@ -682,16 +682,18 @@ games that send nothing usable, Farming Simulator among them, it is the only
 route. Where a sim publishes its own steering torque, that torque is
 reshaped rather than synthesized.
 
-Some games need no tap at all. Assetto Corsa and iRacing publish their own
-force values in telemetry, so the plugin reads them from there and leaves
-the wheel's HID++ pipe alone, which is what lets the rev lights and the
-screen run alongside the force.
+Some games need no tap at all. Assetto Corsa, iRacing, RaceRoom and Le Mans
+Ultimate publish their own force values, so the plugin reads them from there
+and leaves the wheel's HID++ pipe alone, which is what lets the rev lights
+and the screen run alongside the force.
 
 The rev lights and the wheel base's screen take a different path, the wheel's
 HID++ control pipe rather than the haptic stream: level and slot writes for
 the lights, frames for the screen. That pipe carries one writer at a time, so
 the plugin watches what else is writing to it and stands down while a game is
 driving the lights itself.
+
+</details>
 
 ## Privacy
 
