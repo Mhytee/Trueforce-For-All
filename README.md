@@ -3,10 +3,6 @@
 **Unlock everything your Logitech wheel can do, and more.**
 Trueforce haptics in any game, rev lights, the Dynamic OLED screen.
 
-> **This is the stable branch.** Builds from here are the releases marked
-> "Latest" on the [releases page][releases]. The beta channel runs ahead of
-> stable and is open to anyone: install the newest build marked
-> "Pre-release" and the in-app updater keeps you on that channel.
 > Something not working? Please [open an issue][issues] or say so in the
 > [Discord][discord].
 
@@ -51,8 +47,8 @@ three places:
   [Le Mans Ultimate](#le-mans-ultimate), and
   [Assetto Corsa](#assetto-corsa) with the TF4ALL CSP Bridge give the
   plugin their force feedback with no capture involved. Each takes a
-  switch or two in the game first, and one tick on the FFB tab; the in-app
-  setup guides walk through them.
+  switch or two in the game first, and one tick on the FFB tab; the
+  [setup guides](guides/README.md) walk through them.
 - **Built from telemetry.** In some games the plugin can fully replace the
   game's force feedback using telemetry
   ([Telemetry Based FFB](#telemetry-based-ffb)). Currently supported:
@@ -193,10 +189,11 @@ The easiest path is the bundled installer:
 5. Launch SimHub. The plugin auto-enables on first run.
 
 The **?** in the panel's header opens the guides: setup for the games that
-need it (iRacing, Assetto Corsa, Forza, Farming Simulator), what to do when
-something is wrong, and the questions people ask most. Search reads the
-guides themselves, so typing G HUB, app.ini or 5300 lands on the one that
-explains it.
+need it (iRacing, RaceRoom, Le Mans Ultimate, Assetto Corsa, Forza,
+Farming Simulator), what to do when something is wrong, and the questions
+people ask most. Search reads the guides themselves, so typing G HUB,
+app.ini or 5300 lands on the one that explains it. The same guides are in
+[guides/](guides/README.md) here, to read before you install anything.
 
 The installer is conservative on uninstall: it removes our files but leaves
 SimHub, USBPcap, and shared dependencies (HidSharp, NAudio) alone, so other
@@ -260,20 +257,18 @@ rev lights and the wheel's screen come with it.
   count, and a shipped table adds the crank layout, so a cross-plane V8
   pulses like one.
 
-Four steps, once, and a first-launch notice walks you through them: set
-`loadTrueForceAPI=0` in `app.ini` and turn iRacing's own force feedback off
-(off, not strength zero), then set the mode to Normal and tick "Take over
-force feedback for iRacing". Until then the plugin sits on Lightsync only
-in iRacing and leaves the sim alone. Running MAIRA alongside the plugin is
-not supported.
+It takes four switches, once, and a first-launch notice walks you through
+them; so does the [iRacing guide](guides/iracing-setup.md). Until they are
+done the plugin sits on Lightsync only in iRacing and leaves the sim alone.
+Running MAIRA alongside the plugin is not supported.
 
 ## Assetto Corsa
 
 Assetto Corsa can hand the plugin its force feedback directly through a
 small CSP script, the TF4ALL CSP Bridge. The plugin offers to install it
 the first time it sees the game, and the Game Mods section in Settings
-installs or removes it any time after. It needs Custom Shaders Patch, one
-restart of the game, and Content Manager closed while it installs.
+installs or removes it any time after. What it needs, and what it changes,
+is in the [CSP Bridge guide](guides/csp-bridge.md).
 
 - **The wheel feels exactly as you have tuned it.** The bridge hands over
   the game's finished force, after your in-game gain and every CSP FFB
@@ -301,8 +296,8 @@ top, and the rev lights and the wheel's screen come with it.
 - **Engine data for every car in the game.** A shipped table covers all 356
   with their real cylinder count and crank layout, so a V8 pulses like one.
 
-Turning it on is two switches, walked through by the in-app RaceRoom
-guide.
+Turning it on is two switches, walked through by the
+[RaceRoom guide](guides/raceroom-setup.md).
 
 ## Le Mans Ultimate
 
@@ -319,7 +314,8 @@ the wheel with the effects on top.
   cornering.
 
 The game's own Trueforce has to come off first, which is one setting; the
-in-app Le Mans Ultimate guide walks through that and the rest.
+[Le Mans Ultimate guide](guides/lmu-setup.md) walks through that and the
+rest.
 
 ## Farming Simulator
 
