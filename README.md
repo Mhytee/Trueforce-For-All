@@ -31,15 +31,11 @@ The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
 in real time. The steering force underneath the effects comes from one of
 three places:
 
-- **FFB pass-through (most games).** Driving the Trueforce motor would
-  otherwise silence the game's own force feedback, so the plugin taps that
-  signal off the USB bus and folds it back into the Trueforce stream. Your
-  real cornering load, weight transfer and curb forces keep coming through
-  underneath every effect, in any game whose force feedback uses standard
-  HID++ (effectively all of them on these wheels). The capture reads the
-  game's other effects as well, the springs, dampers, friction, inertia and
-  waveforms it sends, and renders those into the stream beside the steering
-  force rather than dropping them.
+- **FFB pass-through (most games).** The plugin taps the force feedback the
+  game sends down the wire, springs, dampers, friction and waveforms
+  included, and layers the Trueforce haptics on top. Your cornering load and
+  curb forces keep coming through underneath, in effectively any game on
+  these wheels.
 - **Handed over directly.** [iRacing](#iracing), [RaceRoom](#raceroom),
   [Le Mans Ultimate](#le-mans-ultimate), and
   [Assetto Corsa](#assetto-corsa) with the TF4ALL CSP Bridge give the
@@ -254,18 +250,18 @@ rev lights and the wheel's screen come with it.
   count, and a shipped table adds the crank layout, so a cross-plane V8
   pulses like one.
 
-It takes four switches, once, and a first-launch notice walks you through
-them; so does the [iRacing guide](guides/iracing-setup.md). Until they are
-done the plugin sits on Lightsync only in iRacing and leaves the sim alone.
-Running MAIRA alongside the plugin is not supported.
+Setup instructions show in the plugin on first launch, or
+[here](guides/iracing-setup.md).
 
 ## Assetto Corsa
 
 Assetto Corsa can hand the plugin its force feedback directly through a
 small CSP script, the TF4ALL CSP Bridge. The plugin offers to install it
 the first time it sees the game, and the Game Mods section in Settings
-installs or removes it any time after. What it needs, and what it changes,
-is in the [CSP Bridge guide](guides/csp-bridge.md).
+installs or removes it any time after.
+
+Setup instructions show in the plugin when it first sees the game, or
+[here](guides/csp-bridge.md).
 
 - **The wheel feels exactly as you have tuned it.** The bridge hands over
   the game's finished force, after your in-game gain and every CSP FFB
@@ -293,8 +289,8 @@ top, and the rev lights and the wheel's screen come with it.
 - **Engine data for every car in the game.** A shipped table covers all 356
   with their real cylinder count and crank layout, so a V8 pulses like one.
 
-Turning it on is two switches, walked through by the
-[RaceRoom guide](guides/raceroom-setup.md).
+Setup instructions show in the plugin when it first sees the game, or
+[here](guides/raceroom-setup.md).
 
 ## Le Mans Ultimate
 
@@ -310,9 +306,8 @@ the wheel with the effects on top.
   where the car's lock falls on it is measured over the first seconds of
   cornering.
 
-The game's own Trueforce has to come off first, which is one setting; the
-[Le Mans Ultimate guide](guides/lmu-setup.md) walks through that and the
-rest.
+Setup instructions show in the plugin when it first sees the game, or
+[here](guides/lmu-setup.md).
 
 ## Farming Simulator
 
