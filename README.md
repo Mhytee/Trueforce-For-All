@@ -7,9 +7,6 @@ Official Trueforce support keeps growing, but many major titles are still
 waiting and some will never get it. This plugin brings Trueforce to any
 game, building the haptics from telemetry or from the game's own audio.
 
-Original Windows code, built on protocols reverse-engineered by the community
-and me. No Logitech source, firmware or assets are used or redistributed.
-
 > Something not working? Please [open an issue][issues] or say so in the
 > [Discord][discord].
 
@@ -741,7 +738,9 @@ The wire protocol and init sequence are derived from the
   slider, which populated the "Games with native Trueforce" table above.
 
 Logitech, Trueforce, LIGHTSYNC, G PRO, RS50, and G923 are trademarks of Logitech.
-This project is not affiliated with, endorsed by, or sponsored by Logitech.
+This project is not affiliated with, endorsed by, or sponsored by Logitech. It is
+original Windows code built on protocols reverse-engineered by the community and
+me, and uses or redistributes no Logitech source, firmware or assets.
 
 [mescon]: https://github.com/mescon/logitech-trueforce-linux-driver
 [lovely]: https://github.com/Lovely-Sim-Racing/lovely-car-data
