@@ -329,6 +329,9 @@ adds a channel rather than replacing it.
 vehicles**, so the engine effects know what they are driving without
 being told. Vehicle names come from the game itself, through the mod.
 
+Setup instructions show in the plugin when it first sees the game, or
+[here](guides/farming-sim.md).
+
 ## FFB spike reduction
 
 Some games (Assetto Corsa being the worst offender we've seen) deliver
@@ -458,11 +461,10 @@ big step up in feel.
 
 ### Forza setup
 
-Forza needs its telemetry pointed at the plugin (Data Out to `127.0.0.1`,
-port `5300` by default), and the plugin can pass a copy on to SimHub so
-dashboards and bass shakers keep working. Both are walked through in the
-in-app guides (the **?** in the panel's header): Forza setup, and
-Forwarding to SimHub.
+Forza needs its telemetry pointed at the plugin, and the plugin can pass a
+copy on to SimHub so dashboards and bass shakers keep working. Setup
+instructions show in the plugin when it first sees the game, or
+[here](guides/forza-setup.md) and [here](guides/forza-forward.md).
 
 ## Games with native Trueforce
 
