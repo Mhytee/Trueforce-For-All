@@ -4008,16 +4008,16 @@
                                 <ComboBox x:Name="FxTestEffectBox" Width="110" Margin="8,0,0,0" SelectedIndex="0" VerticalAlignment="Center"
                                           SelectionChanged="FxTestEffect_Changed"
                                           ToolTip="The effect to compare. The gain below belongs to whichever effect is picked here, so each one tunes and saves separately.">
-                                    <ComboBoxItem Content="DAMPER"/>
-                                    <ComboBoxItem Content="SPRING"/>
-                                    <ComboBoxItem Content="FRICTION"/>
-                                    <ComboBoxItem Content="INERTIA"/>
-                                    <ComboBoxItem Content="SINE"/>
-                                    <ComboBoxItem Content="SQUARE"/>
-                                    <ComboBoxItem Content="TRIANGLE"/>
-                                    <ComboBoxItem Content="SAWUP"/>
-                                    <ComboBoxItem Content="SAWDOWN"/>
-                                    <ComboBoxItem Content="RAMP"/>
+                                    <ComboBoxItem Content="DAMPER" Tag="DAMPER"/>
+                                    <ComboBoxItem Content="SPRING" Tag="SPRING"/>
+                                    <ComboBoxItem Content="FRICTION" Tag="FRICTION"/>
+                                    <ComboBoxItem Content="INERTIA" Tag="INERTIA"/>
+                                    <ComboBoxItem Content="SINE" Tag="SINE"/>
+                                    <ComboBoxItem Content="SQUARE" Tag="SQUARE"/>
+                                    <ComboBoxItem Content="TRIANGLE" Tag="TRIANGLE"/>
+                                    <ComboBoxItem Content="SAWUP" Tag="SAWUP"/>
+                                    <ComboBoxItem Content="SAWDOWN" Tag="SAWDOWN"/>
+                                    <ComboBoxItem Content="RAMP" Tag="RAMP"/>
                                 </ComboBox>
                                 <TextBlock Text="Strength:" Style="{StaticResource LabelText}" Margin="14,0,0,0" VerticalAlignment="Center"/>
                                 <Slider x:Name="FxTestStrengthSlider" Width="110" Minimum="0" Maximum="100" Value="50"

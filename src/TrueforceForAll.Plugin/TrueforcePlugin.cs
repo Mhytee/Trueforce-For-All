@@ -4235,6 +4235,16 @@ namespace TrueforceForAll.Plugin
             // for us), the cleanest first-run signal ReadCommonSettings gives.
             bool wasFreshInstall = false;
             Settings = this.ReadCommonSettings("GeneralSettings", () => { wasFreshInstall = true; return new TrueforceSettings(); });
+            // Confirms on a real rig that SimHub pins the thread culture to en-US
+            // (docs/localization-plan.md, fact 1) and shows what the localizer will see.
+            try
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Culture: thread=" + System.Globalization.CultureInfo.CurrentUICulture.Name
+                    + " simhub='" + ReadSimHubCultureSetting() + "'"
+                    + " windows=" + (UsageLanguage.UiLang() ?? "-") + "/" + (UsageLanguage.FmtLang() ?? "-"));
+            }
+            catch { /* diagnostics only; Init never depends on it */ }
             // Kept for the whole session: wheel detection runs later (and again
             // on a replug) and needs to know this PC had no settings file, so
             // first-run-only defaults can never reach an existing setup.
@@ -25122,6 +25132,28 @@ namespace TrueforceForAll.Plugin
         internal static string CommunityNameLocaleSig()
         {
             return "lang=en";
+        }
+
+        // SimHub's own language choice: the "Culture" key of
+        // PluginsData\GlobalSimhubSettings.json, where "" means the system
+        // default. Read-only, on purpose. SimHub owns that file and the
+        // installer treats it as byte-sensitive, so it is never written back
+        // from here. Returns "?" when the file or the key cannot be read. Used
+        // by the Init culture log line only.
+        private static string ReadSimHubCultureSetting()
+        {
+            try
+            {
+                string path = Path.Combine(TfPaths.BaseDir, "PluginsData", "GlobalSimhubSettings.json");
+                if (!File.Exists(path)) return "?";
+                var culture = JObject.Parse(File.ReadAllText(path))["Culture"];
+                if (culture == null || culture.Type == JTokenType.Null) return "?";
+                return culture.ToString();
+            }
+            catch
+            {
+                return "?";
+            }
         }
 
         internal CarNameConsensus FetchCarNameConsensus(string game, string carId)

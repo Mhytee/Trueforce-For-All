@@ -30,6 +30,11 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush OkFg     = new SolidColorBrush(Color.FromRgb(0x66, 0xCC, 0x88));
         private static readonly Brush ErrFg    = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
 
+        // Row identifier for the fact line that FlipToSignedIn rebuilds.
+        // Code matches this Tag, never the label text, so the label can
+        // be translated later without breaking the lookup.
+        private const string SharingAsRowTag = "fact:sharing-as";
+
         public string UploadedPresetId { get; private set; }
 
         // Update-vs-Share-as-new routing. When IsUpdate=true the upload
@@ -210,7 +215,7 @@ namespace TrueforceForAll.Plugin
             string sharingAs = signedIn
                 ? (_plugin?.Settings?.SharingAuthor ?? "(your username)")
                 : "(sign in required)";
-            root.Children.Add(MakeFactLine("Sharing as", sharingAs));
+            root.Children.Add(MakeFactLine("Sharing as", sharingAs, SharingAsRowTag));
 
             root.Children.Add(new TextBlock {
                 Text = "Description (optional, what makes this preset feel good):",
@@ -548,15 +553,15 @@ namespace TrueforceForAll.Plugin
                 // StackPanel preserves order.
                 for (int i = 0; i < root.Children.Count; i++)
                 {
+                    // Matched on Tag because the label text will be translated later.
                     if (root.Children[i] is Grid g
-                        && g.Children.Count >= 1
-                        && g.Children[0] is TextBlock label
-                        && label.Text == "Sharing as")
+                        && (g.Tag as string) == SharingAsRowTag)
                     {
                         root.Children.RemoveAt(i);
                         root.Children.Insert(i, MakeFactLine(
                             "Sharing as",
-                            _plugin?.Settings?.SharingAuthor ?? "(your username)"));
+                            _plugin?.Settings?.SharingAuthor ?? "(your username)",
+                            SharingAsRowTag));
                         break;
                     }
                 }
@@ -782,9 +787,11 @@ namespace TrueforceForAll.Plugin
             return picked.ToArray();
         }
 
-        private FrameworkElement MakeFactLine(string label, string value)
+        private FrameworkElement MakeFactLine(string label, string value, string tag = null)
         {
             var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+            // Optional identifier for rows that code looks up again later.
+            if (tag != null) grid.Tag = tag;
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(82) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var lblBlock = new TextBlock {
