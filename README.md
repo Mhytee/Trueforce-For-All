@@ -37,9 +37,8 @@ some.
 
 ## FFB and Trueforce Effects
 
-The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
-in real time. The steering force underneath the effects comes from one of
-three places:
+The plugin drives the wheel's Trueforce motor in real time. The steering
+force underneath the effects comes from one of three places:
 
 - **FFB pass-through (most games).** The plugin taps the force feedback the
   game sends down the wire and layers the Trueforce haptics on top. Your
@@ -55,62 +54,48 @@ three places:
   Forza Horizon 4, 5 and 6, Forza Motorsport, and Farming Simulator 22
   and 25.
 
-All of it is configurable per-game, per-car, from the plugin's tabbed
-panel inside SimHub: master gain, individual effect tuning, precise typed
-values on every slider, sidechain ducking between continuous and transient
-effects, and a preset library with community sharing built in.
+All of it tunes per game and per car from the plugin's panel in SimHub,
+down to typed values on every slider, with a preset library and community
+sharing built in.
 
 ### Effects from telemetry
 
 Synthesized from live game data and played over the Trueforce protocol.
 
-- **Engine pulse**: rumble at the engine's firing pattern, derived from
-  RPM and cylinder count (auto-detected per car when possible). Idle gives
-  a gentle hum; higher RPM lifts both pitch and intensity.
+- **Engine pulse**: rumble at the engine's real firing pattern, from its
+  cylinder count and crank layout, so a cross-plane V8 does not feel like
+  an inline six.
 - **Gear shift**: a short low-frequency thud whenever the gear changes.
 - **ABS click**: configurable haptic when ABS engages.
 - **Pit limiter**: configurable pulsing buzz while the limiter is engaged.
 - **Redline buzz**: a hard buzz when you enter the redline. On by default.
-- **DRS**: short chirp on the rising edge when the wing opens, plus an
-  optional sustained flutter while DRS stays active. Silent on games that
-  don't expose the flag.
-- **Road bumps**: rough terrain rumbles through the wheel. On Forza, the
-  per-tire surface rumble is read directly for a richer, more accurate
-  road feel.
-- **Implement thud**: lower, raise or extend an implement, or work a
-  loader or crane arm yourself, and you feel the hydraulic hum while it
-  moves and the thump as it lands. (Farming Simulator.)
-- **Traction loss**: tire-screech haptics when grip breaks (wheelspin,
-  lockup, drift), sharpest in games that report per-wheel slip (AC and the
-  Forza titles). In Farming Simulator, Axle slip covers this instead.
-- **Axle slip**: understeer and oversteer as two distinct feelings instead
-  of one blur: a high scrub texture as the front washes wide, a deeper
-  pulse as the rear steps out. (Per-tire telemetry: the Forza titles,
-  Assetto Corsa and Farming Simulator.)
-- **Lockup judder**: when a wheel locks under braking, a coarse pulsing
-  judder kicks in, the feel of a flat-spotted tire skidding rather than
-  rolling, fading as the car slows. A locked wheel becomes something you
-  feel and can correct instead of a silent loss of grip. (Per-tire
-  telemetry: the Forza titles and Assetto Corsa.)
+- **DRS**: a chirp as the wing opens, and an optional flutter while it
+  stays open.
+- **Road bumps**: rough ground rumbles through the wheel, read per tire in
+  Forza for a sharper surface.
+- **Implement thud**: the hydraulic hum as an implement or loader arm
+  moves, and the thump as it lands. (Farming Simulator.)
+- **Traction loss**: tire screech when grip breaks, sharpest where the game
+  reports per-wheel slip.
+- **Axle slip**: understeer and oversteer as two feelings rather than one
+  blur, a high scrub as the front washes wide, a deeper pulse as the rear
+  steps out.
+- **Lockup judder**: the coarse judder of a flat-spotted tire skidding
+  under braking, fading as the car slows.
 - **Collision**: a thud on impact, scaled to the hit.
-- **Airborne ducking**: when the car leaves the ground, the chosen effects
-  cut out so jumps feel weightless, then return on landing. Detected from
-  wheel load / suspension (AC, the Forza titles and Farming Simulator). On
-  by default.
-- **Stationary spring**: centering force so a parked or crawling car has
-  some weight at the wheel instead of going limp, fading out as speed
-  builds (AC).
+- **Airborne ducking**: the effects you choose cut out while the car is in
+  the air, so jumps feel weightless. On by default.
+- **Stationary spring**: weight at the wheel when parked or crawling,
+  fading out as speed builds.
 
-The set is still growing, and which effects a game can drive depends on the
-telemetry it publishes, so the plugin shows you the ones your current game
-supports and hides the rest.
+Which effects a game can drive depends on the telemetry it publishes, so
+the plugin shows the ones your game supports and hides the rest.
 
 ### Effects from game audio
 
-WASAPI loopback captures the game's audio output (engine, tire, impact
-sounds) and feeds it into the wheel as low-latency haptics. Lets you feel
-things the telemetry doesn't expose, and works even in games that output no
-telemetry at all, since the capture targets the game process directly.
+The game's own audio, captured from its process and fed to the wheel as
+haptics. It catches what telemetry never exposes, and works in games that
+publish none at all.
 
 ## Telemetry Based FFB
 
