@@ -19,12 +19,36 @@
   </nav>
 </header>
 
-<main>
-  {{ content }}
+<div class="wrap">
+
+  {% comment %}
+    The index already lists everything, so the sidebar would only repeat it
+    there. On a phone it sits after the content instead, via flex order.
+    Groups and titles come from guides/_data/nav.yml, which the same script
+    that writes the index generates, so the two cannot drift apart.
+  {% endcomment %}
   {% unless page.url == '/' %}
-  <p class="back"><a href="{{ '/' | relative_url }}">All guides</a></p>
+  <aside class="sidebar">
+    {% for group in site.data.nav %}
+    <h2>{{ group.group }}</h2>
+    <ul>
+      {% for item in group.items %}
+      {% assign target = item.key | prepend: '/' | append: '.html' %}
+      <li{% if page.url == target %} class="here"{% endif %}><a href="{{ item.key | append: '.html' | relative_url }}">{{ item.title }}</a></li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </aside>
   {% endunless %}
-</main>
+
+  <main>
+    {{ content }}
+    {% unless page.url == '/' %}
+    <p class="back"><a href="{{ '/' | relative_url }}">All guides</a></p>
+    {% endunless %}
+  </main>
+
+</div>
 
 <footer>
   These are generated from the plugin's own copies, so they never drift from
