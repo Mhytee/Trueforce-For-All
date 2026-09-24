@@ -5587,7 +5587,7 @@
             <!-- Account tab. Relocated out of Settings so identity, supporter status,
                  cloud backup and Discord live in one place, with the Support card
                  (Patreon / Ko-fi + the Patreon-sourced supporters wall) on top. -->
-            <sh:SHTabItem x:Name="AccountTab" Header="Account">
+            <sh:SHTabItem x:Name="AccountTab" Header="{loc:T Account_AccountTab_Header}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
 
@@ -5600,11 +5600,11 @@
             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                 <TextBlock x:Name="AccountStatusLabel" VerticalAlignment="Center" FontSize="12"
                            Foreground="#FFE0E0E0" MaxWidth="360" TextWrapping="Wrap"
-                           Text="Not signed in. Sign in to use community features."/>
-                <Button x:Name="AccountAuthBtn" Content="Sign in"
+                           Text="{loc:T Account_AccountStatus}"/>
+                <Button x:Name="AccountAuthBtn" Content="{loc:T Account_AccountAuth}"
                         Margin="10,0,0,0" Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
                         Click="AccountAuth_Click"
-                        ToolTip="Sign in with email (one-time code, no password) to use community features."/>
+                        ToolTip="{loc:T Account_AccountAuth_Tip}"/>
             </StackPanel>
 
             <!-- Supporter badge. Shows the real entitlement.
@@ -5613,33 +5613,33 @@
                     HorizontalAlignment="Left" Background="#33E5C04A" BorderBrush="#FFE5C04A" BorderThickness="1"
                     Visibility="Collapsed">
                 <TextBlock x:Name="SupporterBadgeText" FontSize="11" FontWeight="SemiBold"
-                           Foreground="#FFE5C04A" Text="Supporter"/>
+                           Foreground="#FFE5C04A" Text="{loc:T Account_SupporterBadge}"/>
             </Border>
 
             <!-- Username (read-only; identity is your signed-in username OR anonymous). -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <TextBlock Text="Username:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
+                <TextBlock Text="{loc:T Account_Username}" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
                 <TextBlock x:Name="AccountUsernameDisplay" VerticalAlignment="Center" FontSize="13"
-                           Foreground="#FFE0E0E0" Text="(anonymous)" MinWidth="180"/>
-                <Button x:Name="AccountChangeUsernameBtn" Content="Change…"
+                           Foreground="#FFE0E0E0" Text="{loc:T Account_AccountUsernameDisplay}" MinWidth="180"/>
+                <Button x:Name="AccountChangeUsernameBtn" Content="{loc:T Account_AccountChangeUsername}"
                         Margin="10,0,0,0" Padding="8,2,8,2" Height="22" VerticalAlignment="Center"
                         Click="AccountChangeUsername_Click" Visibility="Collapsed"
-                        ToolTip="Pick a new username. Checked against the community for uniqueness."/>
+                        ToolTip="{loc:T Account_AccountChangeUsername_Tip}"/>
                 <TextBlock x:Name="AccountAuthorStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
                 <!-- Hidden TextBox keeps the existing TextBoxBinding pattern working; never shown. -->
                 <TextBox x:Name="AccountAuthorBox" Visibility="Collapsed" Width="0" Height="0"
                          LostFocus="AccountAuthor_Changed" KeyDown="AccountAuthor_KeyDown"/>
             </StackPanel>
             <TextBlock x:Name="AccountUsernameHelp" Style="{StaticResource HelpText}" Margin="100,2,0,12" FontSize="11"
-                       Text="Sign in to claim a username."/>
+                       Text="{loc:T Account_AccountUsername}"/>
             <!-- Change email button. Only meaningful while signed in. -->
             <StackPanel x:Name="AccountChangeEmailRow" Orientation="Horizontal" Margin="0,0,0,4" Visibility="Collapsed">
-                <TextBlock Text="Email:" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
+                <TextBlock Text="{loc:T Account_AccountChangeEmailRowEmail}" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
                 <TextBlock x:Name="AccountEmailValue" VerticalAlignment="Center" FontSize="12" Foreground="#FFE0E0E0" Text=""/>
-                <Button x:Name="AccountChangeEmailBtn" Content="Change…"
+                <Button x:Name="AccountChangeEmailBtn" Content="{loc:T Account_AccountChangeEmail}"
                         Margin="10,0,0,0" Padding="8,2,8,2" Height="22" VerticalAlignment="Center"
                         Click="AccountChangeEmail_Click"
-                        ToolTip="Send a confirmation link to a new address. The current address keeps working until you confirm the new one."/>
+                        ToolTip="{loc:T Account_AccountChangeEmail_Tip}"/>
             </StackPanel>
             <!-- Inline outcome for routine change-email feedback (validation / errors);
                  the "check your inbox" success stays a modal since it needs a deliberate
@@ -5650,45 +5650,45 @@
             <!-- Connections: external-account links (Discord, Patreon). One header so future
                  link types have a home. -->
             <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,12,0,8">
-                <TextBlock Text="Connections" Style="{StaticResource SectionHeaderText}"/>
+                <TextBlock Text="{loc:T Account_Connections}" Style="{StaticResource SectionHeaderText}"/>
             </Border>
             <StackPanel x:Name="DiscordLinkRow" Orientation="Horizontal" Margin="0,0,0,8">
-                <Button x:Name="LinkDiscordBtn" Content="Join Discord" Style="{StaticResource DiscordButton}"
+                <Button x:Name="LinkDiscordBtn" Content="{loc:T Account_LinkDiscord}" Style="{StaticResource DiscordButton}"
                         Height="26" VerticalAlignment="Center"
                         Click="LinkDiscord_Click"
-                        ToolTip="Opens Discord in your browser to link your account and add you to the Trueforce For All community server, where your contributions earn roles."/>
-                <Button x:Name="UnlinkDiscordBtn" Content="Unlink"
+                        ToolTip="{loc:T Account_LinkDiscord_Tip}"/>
+                <Button x:Name="UnlinkDiscordBtn" Content="{loc:T Account_UnlinkDiscord}"
                         Margin="8,0,0,0" Padding="8,2,8,2" Height="24" VerticalAlignment="Center"
                         Click="UnlinkDiscord_Click" Visibility="Collapsed"
-                        ToolTip="Remove the link between your TF4ALL account and your Discord account."/>
+                        ToolTip="{loc:T Account_UnlinkDiscord_Tip}"/>
                 <TextBlock x:Name="DiscordLinkStatusText" VerticalAlignment="Center" FontSize="12"
                            Foreground="#FFC0C0C0" MaxWidth="320" TextWrapping="Wrap" Margin="12,0,0,0"
-                           Text="Sign in to join Discord."/>
+                           Text="{loc:T Account_DiscordLinkStatus}"/>
             </StackPanel>
             <!-- Patreon link. An active pledge unlocks the supporter badge + cloud backup. If the
                  patron has Discord connected on Patreon AND is already in the community server, we
                  link Discord too; otherwise they use Join Discord above. -->
             <StackPanel x:Name="PatreonLinkRow" Orientation="Horizontal" Margin="0,0,0,12">
-                <Button x:Name="LinkPatreonBtn" Content="Link Patreon" Style="{StaticResource SupportButton}"
+                <Button x:Name="LinkPatreonBtn" Content="{loc:T Account_LinkPatreon}" Style="{StaticResource SupportButton}"
                         Background="#FFF96854" Height="26" VerticalAlignment="Center"
                         Click="LinkPatreon_Click"
-                        ToolTip="Unlock the supporter badge and cloud backup from your Patreon pledge. If your Patreon has Discord connected and you're already in the community server, it links Discord too."/>
-                <Button x:Name="UnlinkPatreonBtn" Content="Unlink"
+                        ToolTip="{loc:T Account_LinkPatreon_Tip}"/>
+                <Button x:Name="UnlinkPatreonBtn" Content="{loc:T Account_UnlinkPatreon}"
                         Margin="8,0,0,0" Padding="8,2,8,2" Height="24" VerticalAlignment="Center"
                         Click="UnlinkPatreon_Click" Visibility="Collapsed"
-                        ToolTip="Remove the link between your TF4ALL account and your Patreon account."/>
+                        ToolTip="{loc:T Account_UnlinkPatreon_Tip}"/>
                 <TextBlock x:Name="PatreonLinkStatusText" VerticalAlignment="Center" FontSize="12"
                            Foreground="#FFC0C0C0" MaxWidth="320" TextWrapping="Wrap" Margin="12,0,0,0"
-                           Text="Sign in to link Patreon."/>
+                           Text="{loc:T Account_PatreonLinkStatus}"/>
             </StackPanel>
 
             <!-- Account details: the rarely-needed bits (your stats, active sessions, data
                  export, delete), collapsed by default so they don't clutter the account view. -->
-            <Expander x:Name="AccountDetailsExpander" Header="Account Settings" IsExpanded="False" Margin="0,12,0,4"
+            <Expander x:Name="AccountDetailsExpander" Header="{loc:T Account_AccountDetails_Header}" IsExpanded="False" Margin="0,12,0,4"
                       Expanded="AccountDetails_Expanded">
                 <StackPanel Margin="0,8,0,0">
                     <!-- Your stats. Refreshed from get_account_stats when the Account tab is shown. -->
-                    <TextBlock Text="Your stats" Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4"/>
+                    <TextBlock Text="{loc:T Account_AccountDetailsYourStats}" Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4"/>
                     <Border x:Name="AccountStatsBox" Background="#22FFFFFF" CornerRadius="3"
                             Padding="10,6,10,6" Margin="0,0,0,12" Visibility="Collapsed">
                         <StackPanel>
@@ -5706,42 +5706,42 @@
                         <StackPanel>
                             <Grid Margin="0,0,0,4">
                                 <TextBlock Foreground="#FFE5C04A" FontWeight="SemiBold" FontSize="12"
-                                           Text="Active sessions" VerticalAlignment="Center"/>
-                                <Button x:Name="AccountSessionsRefreshBtn" Content="Refresh"
+                                           Text="{loc:T Account_AccountSessionsActiveSessions}" VerticalAlignment="Center"/>
+                                <Button x:Name="AccountSessionsRefreshBtn" Content="{loc:T Common_Refresh}"
                                         HorizontalAlignment="Right" Padding="8,1,8,1" Height="20" FontSize="10"
                                         Click="AccountSessionsRefresh_Click"
-                                        ToolTip="Re-check which devices are signed in to your account."/>
+                                        ToolTip="{loc:T Account_AccountSessionsRefresh_Tip}"/>
                             </Grid>
                             <TextBlock x:Name="AccountSessionsStatus" Foreground="#FFC0C0C0" FontSize="11"
                                        Margin="0,1,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
                             <StackPanel x:Name="AccountSessionsList"/>
-                            <Button x:Name="AccountSignOutOthersBtn" Content="Sign out everywhere else"
+                            <Button x:Name="AccountSignOutOthersBtn" Content="{loc:T Account_AccountSignOutOthers}"
                                     HorizontalAlignment="Left" Padding="10,3,10,3" Height="24" Margin="0,8,0,0"
                                     Visibility="Collapsed"
                                     Click="AccountSignOutOthers_Click"
-                                    ToolTip="Revoke every other device's session. This device stays signed in."/>
+                                    ToolTip="{loc:T Account_AccountSignOutOthers_Tip}"/>
                             <TextBlock Foreground="#FF808080" FontSize="10"
-                                       Text="Revoking signs the other device out within a few minutes while it's running. A device that's offline or asleep signs out the next time it comes online."
+                                       Text="{loc:T Account_AccountSessionsRevokingSignsTheOther}"
                                        Margin="0,4,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
 
                     <!-- Data export + account delete. Both auth-gated. -->
                     <StackPanel x:Name="AccountDangerZone" Orientation="Horizontal" Margin="0,0,0,4" Visibility="Collapsed">
-                        <Button x:Name="AccountExportBtn" Content="Export my data"
+                        <Button x:Name="AccountExportBtn" Content="{loc:T Account_AccountExport}"
                                 Padding="10,3,10,3" Height="24" Margin="0,0,8,0"
                                 Click="AccountExport_Click"
-                                ToolTip="Save a JSON file with the data your account holds: email, profile, uploads, votes, car-fact submissions, download history, sign-in sessions, linked accounts, supporter status, reports you have filed, and any moderation notices."/>
-                        <Button x:Name="AccountDeleteBtn" Content="Delete account"
+                                ToolTip="{loc:T Account_AccountExport_Tip}"/>
+                        <Button x:Name="AccountDeleteBtn" Content="{loc:T Account_AccountDelete}"
                                 Padding="10,3,10,3" Height="24"
                                 Background="#8B2E2E" BorderBrush="#8B2E2E"
                                 Click="AccountDelete_Click"
-                                ToolTip="Permanently remove your account. Presets you uploaded stay available for people who downloaded them but lose your name. Your cloud backup is deleted too."/>
+                                ToolTip="{loc:T Account_AccountDelete_Tip}"/>
                     </StackPanel>
                     <TextBlock x:Name="AccountExportStatus" FontSize="11" Foreground="#FFB0B0B0"
                                Margin="0,4,0,0" TextWrapping="Wrap" Text=""/>
                     <TextBlock FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
-                        <Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink><Run Text=": what's stored, why, and how to remove it."/>
+                        <Hyperlink Click="PrivacyPolicy_Click" ToolTip="{loc:T Account_AccountDetailsOpensPrivacyMdOn_Tip}"><Run Text="{loc:T Account_AccountDetailsPrivacyPolicy}"/></Hyperlink><Run Text="{loc:T Account_AccountDetailsWhatSStoredWhyAnd}"/>
                     </TextBlock>
                 </StackPanel>
             </Expander>

@@ -9826,36 +9826,53 @@ namespace TrueforceForAll.Plugin
         // signed-out / switched-user panel. Mirrors _accountStatsGen.
         private int _discordRowGen;
 
+        // What a link row last drew, kept so the language pass can redraw it
+        // from memory instead of asking the server again. Unknown means the
+        // row still shows its XAML bindings, which re-render on their own.
+        private enum LinkRowState { Unknown, SignedOut, Linked, NotLinked }
+        private LinkRowState _discordRowState;
+        // True while LinkDiscord_Click has turned the button into Cancel.
+        private bool _discordLinkBtnCancel;
+        // Renders the status line's current text in the active language, or
+        // null after a raw message (a link result the server or the OAuth
+        // client worded), which stays as written until the next refresh.
+        private Func<string> _discordStatusRender;
+
         private async void LinkDiscord_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
             // While a link is running, the same button cancels it.
             if (_discordLinkInProgress) { try { _discordLinkCts?.Cancel(); } catch { } return; }
-            if (!_plugin.AuthIsSignedIn) { SetDiscordStatus("Sign in first, then join Discord."); return; }
+            if (!_plugin.AuthIsSignedIn) { SetDiscordStatus(() => Loc.T("Account_DiscordLinkStatusSignInFirst")); return; }
 
             _discordLinkInProgress = true;
             _discordLinkCts?.Dispose();
             _discordLinkCts = new System.Threading.CancellationTokenSource();
-            SetDiscordStatus("Opening Discord in your browser…");
-            if (LinkDiscordBtn != null) LinkDiscordBtn.Content = "Cancel";
+            SetDiscordStatus(() => Loc.T("Account_DiscordLinkStatusOpening"));
+            _discordLinkBtnCancel = true;
+            if (LinkDiscordBtn != null) LinkDiscordBtn.Content = Loc.T("Common_Cancel");
             if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = false;
             try
             {
                 var res = await _plugin.LinkDiscordAsync(_discordLinkCts.Token);
-                SetDiscordStatus(res.Message);
+                SetDiscordStatusRaw(res.Message);
                 if (res.Ok)
                 {
                     _ = _plugin.SyncMyRolesAsync(System.Threading.CancellationToken.None);
                     _ = RefreshAchievementsAndNotifyAsync();
                 }
             }
-            catch (Exception ex) { SetDiscordStatus("Couldn't link Discord. Check your connection and try again."); TrueforceDialog.LogError("Discord link", ex); }
+            catch (Exception ex) { SetDiscordStatus(() => Loc.T("Account_DiscordLinkStatusLinkFailed")); TrueforceDialog.LogError("Discord link", ex); }
             finally
             {
                 _discordLinkInProgress = false;
                 try { _discordLinkCts?.Dispose(); } catch { }
                 _discordLinkCts = null;
-                if (LinkDiscordBtn != null) { LinkDiscordBtn.Content = "Join Discord"; LinkDiscordBtn.IsEnabled = true; }
+                _discordLinkBtnCancel = false;
+                // The state applier owns the button text from here (the row refresh
+                // below re-labels it within the second anyway), so a language change
+                // during that window still reaches it.
+                if (LinkDiscordBtn != null) { ApplyDiscordRowButton(); LinkDiscordBtn.IsEnabled = true; }
                 if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = true;
                 await RefreshDiscordRowAsync();
             }
@@ -9873,21 +9890,95 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var res = await _plugin.UnlinkDiscordAsync(System.Threading.CancellationToken.None);
-                SetDiscordStatus(res.Message);
+                SetDiscordStatusRaw(res.Message);
                 await RefreshDiscordRowAsync();
             }
-            catch (Exception ex) { SetDiscordStatus("Couldn't unlink Discord. Check your connection and try again."); TrueforceDialog.LogError("Discord unlink", ex); }
+            catch (Exception ex) { SetDiscordStatus(() => Loc.T("Account_DiscordLinkStatusUnlinkFailed")); TrueforceDialog.LogError("Discord unlink", ex); }
             finally { if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = true; }
         }
 
-        private void SetDiscordStatus(string msg)
+        // The status line's two sinks. Keyed text arrives as a renderer so the
+        // language pass can run it again; a raw message is shown as given and
+        // clears the renderer, so the pass leaves it alone.
+        private void SetDiscordStatus(Func<string> render)
         {
+            _discordStatusRender = render;
+            if (DiscordLinkStatusText != null) DiscordLinkStatusText.Text = render?.Invoke() ?? "";
+        }
+
+        private void SetDiscordStatusRaw(string msg)
+        {
+            _discordStatusRender = null;
             if (DiscordLinkStatusText != null) DiscordLinkStatusText.Text = msg ?? "";
+        }
+
+        // The button half of the Discord row, from the cached state: the text
+        // and tooltip RefreshDiscordRowAsync chose, or Cancel while a click's
+        // link is running. Enabled state and the Unlink button stay with the
+        // callers that know why they changed.
+        private void ApplyDiscordRowButton()
+        {
+            if (LinkDiscordBtn == null) return;
+            if (_discordLinkBtnCancel) LinkDiscordBtn.Content = Loc.T("Common_Cancel");
+            switch (_discordRowState)
+            {
+                case LinkRowState.SignedOut:
+                    if (!_discordLinkBtnCancel) LinkDiscordBtn.Content = Loc.T("Account_LinkDiscord");
+                    LinkDiscordBtn.ToolTip = Loc.T("Account_LinkDiscordSignedOut_Tip");
+                    break;
+                case LinkRowState.Linked:
+                    if (!_discordLinkBtnCancel) LinkDiscordBtn.Content = Loc.T("Account_LinkButtonLinked");
+                    LinkDiscordBtn.ToolTip = Loc.T("Account_LinkDiscordLinked_Tip");
+                    break;
+                case LinkRowState.NotLinked:
+                    if (!_discordLinkBtnCancel) LinkDiscordBtn.Content = Loc.T("Account_LinkDiscord");
+                    LinkDiscordBtn.ToolTip = Loc.T("Account_LinkDiscordNotLinked_Tip");
+                    break;
+                case LinkRowState.Unknown:
+                    // No status fetched yet (or every fetch failed): own the Content so a
+                    // language change still reaches it; the XAML tooltip binding stays.
+                    if (!_discordLinkBtnCancel) LinkDiscordBtn.Content = Loc.T("Account_LinkDiscord");
+                    break;
+            }
+        }
+
+        // The labeling part of RefreshDiscordRowAsync: status line plus button
+        // text and tooltip for one state, with the state remembered for the
+        // language pass. No fetch.
+        private void ApplyDiscordRowLabels(LinkRowState state, string username)
+        {
+            _discordRowState = state;
+            switch (state)
+            {
+                case LinkRowState.SignedOut:
+                    SetDiscordStatus(() => Loc.T("Account_DiscordLinkStatus"));
+                    break;
+                case LinkRowState.Linked:
+                    if (string.IsNullOrEmpty(username)) SetDiscordStatus(() => Loc.T("Account_DiscordLinkStatusJoined"));
+                    else SetDiscordStatus(() => Loc.F("Account_DiscordLinkStatusJoinedAs_Fmt", username));
+                    break;
+                case LinkRowState.NotLinked:
+                    SetDiscordStatus(() => Loc.T("Account_DiscordLinkStatusNotLinked"));
+                    break;
+            }
+            ApplyDiscordRowButton();
+        }
+
+        // Language pass over the Discord row: the status line through its
+        // renderer, the button through the cached state. Nothing fetched.
+        private void RelabelDiscordRow()
+        {
+            if (_discordStatusRender != null && DiscordLinkStatusText != null)
+                DiscordLinkStatusText.Text = _discordStatusRender() ?? "";
+            ApplyDiscordRowButton();
         }
 
         // ---- Supporter badge (Phase 2) ----
 
         private int _supporterBadgeGen;
+        // The tier text the badge shows ("" for the plain Supporter label), or
+        // null while the badge is hidden. The language pass redraws from it.
+        private string _supporterBadgeTier;
 
         // Show the supporter tier from the real entitlement (get_my_entitlement). Display-only:
         // this never gates backup (server-side RLS does). Hidden when not a supporter.
@@ -9896,6 +9987,7 @@ namespace TrueforceForAll.Plugin
             if (SupporterBadge == null) return;
             if (_plugin == null || !_plugin.AuthIsSignedIn)
             {
+                _supporterBadgeTier = null;
                 SupporterBadge.Visibility = System.Windows.Visibility.Collapsed;
                 return;
             }
@@ -9904,8 +9996,10 @@ namespace TrueforceForAll.Plugin
             {
                 var (isSupporter, tier, _) = await _plugin.GetSupporterTierAsync(System.Threading.CancellationToken.None);
                 if (gen != _supporterBadgeGen || _plugin == null || !_plugin.AuthIsSignedIn) return;
-                if (isSupporter) ShowSupporterBadge(string.IsNullOrEmpty(tier) ? "Supporter" : tier);
-                else SupporterBadge.Visibility = System.Windows.Visibility.Collapsed;
+                // An empty tier draws the plain Supporter label; ShowSupporterBadge
+                // owns that fallback so the language pass can redraw it.
+                if (isSupporter) ShowSupporterBadge(tier);
+                else { _supporterBadgeTier = null; SupporterBadge.Visibility = System.Windows.Visibility.Collapsed; }
             }
             catch { /* leave hidden */ }
         }
@@ -9913,6 +10007,7 @@ namespace TrueforceForAll.Plugin
         private void ShowSupporterBadge(string tier)
         {
             if (SupporterBadge == null || SupporterBadgeText == null) return;
+            _supporterBadgeTier = tier ?? "";
             string t = (tier ?? "").Trim().ToLowerInvariant();
             string accent = t.Contains("platinum") ? "#FFCDD3DE"
                           : t.Contains("gold")     ? "#FFE5C04A"
@@ -9926,7 +10021,7 @@ namespace TrueforceForAll.Plugin
                 SupporterBadgeText.Foreground = new System.Windows.Media.SolidColorBrush(col);
             }
             catch { /* keep XAML defaults */ }
-            SupporterBadgeText.Text = string.IsNullOrEmpty(tier) ? "Supporter" : tier;
+            SupporterBadgeText.Text = string.IsNullOrEmpty(tier) ? Loc.T("Account_SupporterBadge") : tier;
             SupporterBadge.Visibility = System.Windows.Visibility.Visible;
         }
 
@@ -10176,13 +10271,14 @@ namespace TrueforceForAll.Plugin
         }
 
         // The bound labels re-render on their own when the language table
-        // reloads; the supporters wall status is assigned in code by
-        // RefreshSupportersWallAsync, so it is re-run here, and only while the
-        // Support tab is showing: every entry to that tab refreshes it anyway,
-        // and the method's generation counter drops a fetch still in flight.
-        // LocStore raises the event on the UI thread (the folder watcher
-        // dispatches its reload, the access codes run from the panel), and the
-        // CheckAccess guard covers any other raiser.
+        // reloads. Labels assigned in code are re-run here: the Account tab's
+        // through RelabelAccountTab, from cached state and without a fetch;
+        // the supporters wall status through RefreshSupportersWallAsync, and
+        // only while the Support tab is showing: every entry to that tab
+        // refreshes it anyway, and the method's generation counter drops a
+        // fetch still in flight. LocStore raises the event on the UI thread
+        // (the folder watcher dispatches its reload, the access codes run from
+        // the panel), and the CheckAccess guard covers any other raiser.
         private void OnLanguageChanged(object sender, EventArgs e)
         {
             if (!Dispatcher.CheckAccess())
@@ -10190,6 +10286,10 @@ namespace TrueforceForAll.Plugin
                 Dispatcher.BeginInvoke(new Action(() => OnLanguageChanged(sender, e)));
                 return;
             }
+            // Each pass is guarded on its own, so a failure in one tab's relabel
+            // never skips another's, and the Warn names the pass that failed.
+            try { RelabelAccountTab(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Account tab language relabel failed: " + ex.Message); }
             try
             {
                 // IsLoaded: SimHub builds a new panel on every page open, and a
@@ -10202,6 +10302,32 @@ namespace TrueforceForAll.Plugin
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Supporters wall language refresh failed: " + ex.Message);
             }
+        }
+
+        // Language pass over the Account tab, from state already in hand: the
+        // sign-in row from the plugin's in-memory auth state, the two link rows
+        // and the badge from what their last refresh drew, the two busy buttons
+        // from their in-flight flags. Nothing here fetches, loads or reloads a
+        // store, or raises LanguageChanged, so the pass cannot loop. A raw
+        // link result on a status line stays as written until the row's next
+        // refresh; the stats, sessions and achievements text redraw on theirs.
+        private void RelabelAccountTab()
+        {
+            if (_plugin == null) return;
+            ApplyAccountRowLabels();
+            RelabelDiscordRow();
+            RelabelPatreonRow();
+            if (_supporterBadgeTier != null && SupporterBadge != null
+                && SupporterBadge.Visibility == System.Windows.Visibility.Visible)
+                ShowSupporterBadge(_supporterBadgeTier);
+            if (AccountSignOutOthersBtn != null)
+                AccountSignOutOthersBtn.Content = _signingOutOthers
+                    ? Loc.T("Account_AccountSignOutOthersBusy")
+                    : Loc.T("Account_AccountSignOutOthers");
+            if (AccountDeleteBtn != null)
+                AccountDeleteBtn.Content = _deletingAccount
+                    ? Loc.T("Account_AccountDeleteBusy")
+                    : Loc.T("Account_AccountDelete");
         }
 
         private int _supportersWallGen;
@@ -10665,7 +10791,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return false;
             if (_discordLinkInProgress) return false;
-            if (!_plugin.AuthIsSignedIn) { SetDiscordStatus("Sign in first, then join Discord."); return false; }
+            if (!_plugin.AuthIsSignedIn) { SetDiscordStatus(() => Loc.T("Account_DiscordLinkStatusSignInFirst")); return false; }
             _discordLinkInProgress = true;
             _discordLinkCts?.Dispose();
             _discordLinkCts = new System.Threading.CancellationTokenSource();
@@ -10673,7 +10799,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var res = await _plugin.LinkDiscordAsync(_discordLinkCts.Token);
-                SetDiscordStatus(res.Message);
+                SetDiscordStatusRaw(res.Message);
                 ok = res.Ok && _plugin.AuthIsSignedIn;
                 if (ok)
                 {
@@ -10681,7 +10807,7 @@ namespace TrueforceForAll.Plugin
                     _ = RefreshAchievementsAndNotifyAsync();
                 }
             }
-            catch (Exception ex) { SetDiscordStatus("Couldn't link Discord. Check your connection and try again."); TrueforceDialog.LogError("Discord link", ex); ok = false; }
+            catch (Exception ex) { SetDiscordStatus(() => Loc.T("Account_DiscordLinkStatusLinkFailed")); TrueforceDialog.LogError("Discord link", ex); ok = false; }
             finally
             {
                 _discordLinkInProgress = false;
@@ -10807,8 +10933,8 @@ namespace TrueforceForAll.Plugin
             int gen = unchecked(++_discordRowGen);
             if (!_plugin.AuthIsSignedIn)
             {
-                SetDiscordStatus("Sign in to join Discord.");
-                if (LinkDiscordBtn != null) { LinkDiscordBtn.IsEnabled = false; LinkDiscordBtn.Content = "Join Discord"; LinkDiscordBtn.ToolTip = "Sign in first, then you can join the community Discord."; }
+                ApplyDiscordRowLabels(LinkRowState.SignedOut, null);
+                if (LinkDiscordBtn != null) LinkDiscordBtn.IsEnabled = false;
                 if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.Visibility = System.Windows.Visibility.Collapsed;
                 return;
             }
@@ -10821,14 +10947,12 @@ namespace TrueforceForAll.Plugin
                 _discordLinked = linked;
                 if (linked)
                 {
-                    SetDiscordStatus(string.IsNullOrEmpty(username) ? "Joined the community Discord." : "Joined as " + username + ".");
-                    if (LinkDiscordBtn != null) { LinkDiscordBtn.Content = "Linked"; LinkDiscordBtn.ToolTip = "You're a member of the community Discord. Wooo!"; }
+                    ApplyDiscordRowLabels(LinkRowState.Linked, username);
                     if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.Visibility = System.Windows.Visibility.Visible;
                 }
                 else
                 {
-                    SetDiscordStatus("Joins you to the community Discord and links your account, so your contributions earn roles.");
-                    if (LinkDiscordBtn != null) { LinkDiscordBtn.Content = "Join Discord"; LinkDiscordBtn.ToolTip = "You're not a member of the community Discord yet. Click to join."; }
+                    ApplyDiscordRowLabels(LinkRowState.NotLinked, null);
                     if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.Visibility = System.Windows.Visibility.Collapsed;
                 }
             }
@@ -10839,24 +10963,29 @@ namespace TrueforceForAll.Plugin
         private bool _patreonLinkInProgress;
         private System.Threading.CancellationTokenSource _patreonLinkCts;
         private int _patreonRowGen;
+        // Same memory as the Discord row keeps, for the language pass.
+        private LinkRowState _patreonRowState;
+        private bool _patreonLinkBtnCancel;
+        private Func<string> _patreonStatusRender;
 
         private async void LinkPatreon_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
             // While a link is running, the same button cancels it.
             if (_patreonLinkInProgress) { try { _patreonLinkCts?.Cancel(); } catch { } return; }
-            if (!_plugin.AuthIsSignedIn) { SetPatreonStatus("Sign in first, then link Patreon."); return; }
+            if (!_plugin.AuthIsSignedIn) { SetPatreonStatus(() => Loc.T("Account_PatreonLinkStatusSignInFirst")); return; }
 
             _patreonLinkInProgress = true;
             _patreonLinkCts?.Dispose();
             _patreonLinkCts = new System.Threading.CancellationTokenSource();
-            SetPatreonStatus("Opening Patreon in your browser…");
-            if (LinkPatreonBtn != null) LinkPatreonBtn.Content = "Cancel";
+            SetPatreonStatus(() => Loc.T("Account_PatreonLinkStatusOpening"));
+            _patreonLinkBtnCancel = true;
+            if (LinkPatreonBtn != null) LinkPatreonBtn.Content = Loc.T("Common_Cancel");
             if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = false;
             try
             {
                 var res = await _plugin.LinkPatreonAsync(_patreonLinkCts.Token);
-                SetPatreonStatus(res.Message);
+                SetPatreonStatusRaw(res.Message);
                 if (res.Ok)
                 {
                     // A successful link may have flipped supporter status and/or auto-linked Discord.
@@ -10865,13 +10994,15 @@ namespace TrueforceForAll.Plugin
                     _ = RefreshDiscordRowAsync();
                 }
             }
-            catch (Exception ex) { SetPatreonStatus("Couldn't link Patreon. Check your connection and try again."); TrueforceDialog.LogError("Patreon link", ex); }
+            catch (Exception ex) { SetPatreonStatus(() => Loc.T("Account_PatreonLinkStatusLinkFailed")); TrueforceDialog.LogError("Patreon link", ex); }
             finally
             {
                 _patreonLinkInProgress = false;
                 try { _patreonLinkCts?.Dispose(); } catch { }
                 _patreonLinkCts = null;
-                if (LinkPatreonBtn != null) { LinkPatreonBtn.Content = "Link Patreon"; LinkPatreonBtn.IsEnabled = true; }
+                _patreonLinkBtnCancel = false;
+                // Same as the Discord row: the state applier owns the text.
+                if (LinkPatreonBtn != null) { ApplyPatreonRowButton(); LinkPatreonBtn.IsEnabled = true; }
                 if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = true;
                 await RefreshPatreonRowAsync();
             }
@@ -10889,16 +11020,73 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var res = await _plugin.UnlinkPatreonAsync(System.Threading.CancellationToken.None);
-                SetPatreonStatus(res.Message);
+                SetPatreonStatusRaw(res.Message);
                 await RefreshPatreonRowAsync();
             }
-            catch (Exception ex) { SetPatreonStatus("Couldn't unlink Patreon. Check your connection and try again."); TrueforceDialog.LogError("Patreon unlink", ex); }
+            catch (Exception ex) { SetPatreonStatus(() => Loc.T("Account_PatreonLinkStatusUnlinkFailed")); TrueforceDialog.LogError("Patreon unlink", ex); }
             finally { if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = true; }
         }
 
-        private void SetPatreonStatus(string msg)
+        // The Patreon status line's two sinks; see SetDiscordStatus.
+        private void SetPatreonStatus(Func<string> render)
         {
+            _patreonStatusRender = render;
+            if (PatreonLinkStatusText != null) PatreonLinkStatusText.Text = render?.Invoke() ?? "";
+        }
+
+        private void SetPatreonStatusRaw(string msg)
+        {
+            _patreonStatusRender = null;
             if (PatreonLinkStatusText != null) PatreonLinkStatusText.Text = msg ?? "";
+        }
+
+        // The button half of the Patreon row, from the cached state (no
+        // tooltip changes here; the XAML tooltip stays). Cancel wins while a
+        // click's link is running.
+        private void ApplyPatreonRowButton()
+        {
+            if (LinkPatreonBtn == null) return;
+            if (_patreonLinkBtnCancel) { LinkPatreonBtn.Content = Loc.T("Common_Cancel"); return; }
+            switch (_patreonRowState)
+            {
+                case LinkRowState.SignedOut:
+                case LinkRowState.NotLinked:
+                case LinkRowState.Unknown:
+                    LinkPatreonBtn.Content = Loc.T("Account_LinkPatreon");
+                    break;
+                case LinkRowState.Linked:
+                    LinkPatreonBtn.Content = Loc.T("Account_LinkButtonLinked");
+                    break;
+            }
+        }
+
+        // The labeling part of RefreshPatreonRowAsync, remembered for the
+        // language pass. No fetch.
+        private void ApplyPatreonRowLabels(LinkRowState state, string name)
+        {
+            _patreonRowState = state;
+            switch (state)
+            {
+                case LinkRowState.SignedOut:
+                    SetPatreonStatus(() => Loc.T("Account_PatreonLinkStatus"));
+                    break;
+                case LinkRowState.Linked:
+                    if (string.IsNullOrEmpty(name)) SetPatreonStatus(() => Loc.T("Account_PatreonLinkStatusLinked"));
+                    else SetPatreonStatus(() => Loc.F("Account_PatreonLinkStatusLinkedAs_Fmt", name));
+                    break;
+                case LinkRowState.NotLinked:
+                    SetPatreonStatus(() => Loc.T("Account_PatreonLinkStatusNotLinked"));
+                    break;
+            }
+            ApplyPatreonRowButton();
+        }
+
+        // Language pass over the Patreon row; see RelabelDiscordRow.
+        private void RelabelPatreonRow()
+        {
+            if (_patreonStatusRender != null && PatreonLinkStatusText != null)
+                PatreonLinkStatusText.Text = _patreonStatusRender() ?? "";
+            ApplyPatreonRowButton();
         }
 
         private async Task RefreshPatreonRowAsync()
@@ -10908,8 +11096,8 @@ namespace TrueforceForAll.Plugin
             int gen = unchecked(++_patreonRowGen);
             if (!_plugin.AuthIsSignedIn)
             {
-                SetPatreonStatus("Sign in to link Patreon.");
-                if (LinkPatreonBtn != null) { LinkPatreonBtn.IsEnabled = false; LinkPatreonBtn.Content = "Link Patreon"; }
+                ApplyPatreonRowLabels(LinkRowState.SignedOut, null);
+                if (LinkPatreonBtn != null) LinkPatreonBtn.IsEnabled = false;
                 if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.Visibility = System.Windows.Visibility.Collapsed;
                 return;
             }
@@ -10920,14 +11108,12 @@ namespace TrueforceForAll.Plugin
                 if (gen != _patreonRowGen || _plugin == null || _patreonLinkInProgress || !_plugin.AuthIsSignedIn) return;
                 if (linked)
                 {
-                    SetPatreonStatus(string.IsNullOrEmpty(name) ? "Linked." : "Linked as " + name + ".");
-                    if (LinkPatreonBtn != null) LinkPatreonBtn.Content = "Linked";
+                    ApplyPatreonRowLabels(LinkRowState.Linked, name);
                     if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.Visibility = System.Windows.Visibility.Visible;
                 }
                 else
                 {
-                    SetPatreonStatus("Link Patreon to unlock the supporter badge and cloud backup from your pledge.");
-                    if (LinkPatreonBtn != null) LinkPatreonBtn.Content = "Link Patreon";
+                    ApplyPatreonRowLabels(LinkRowState.NotLinked, null);
                     if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.Visibility = System.Windows.Visibility.Collapsed;
                 }
             }
@@ -10961,11 +11147,27 @@ namespace TrueforceForAll.Plugin
             // section controls aren't realized (RefreshCommunityGate self-guards).
             if (_plugin != null) _presetManager?.RefreshCommunityGate();
             if (AccountStatusLabel == null || _plugin == null) return;
+            ApplyAccountRowLabels();
+            if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "";
+            AccountAuthBtn.IsEnabled = true;
+            _ = RefreshDiscordRowAsync();
+            _ = RefreshPatreonRowAsync();
+            _ = RefreshSupporterBadgeAsync();
+            _ = RefreshCloudBackupGatingAsync();
+        }
+
+        // The labeling part of RefreshAccountRow: status line, Sign in/out
+        // button, email and username readouts and the rows they show or hide,
+        // all from the plugin's in-memory auth state. No fetch and no enabled
+        // state, so the language pass can run it while a sign-in is under way.
+        private void ApplyAccountRowLabels()
+        {
+            if (AccountStatusLabel == null || _plugin == null) return;
             if (_plugin.AuthIsSignedIn)
             {
-                string email = _plugin.AuthSignedInEmail ?? "(unknown email)";
-                AccountStatusLabel.Text = "Signed in as " + email + ".";
-                AccountAuthBtn.Content = "Sign out";
+                string email = _plugin.AuthSignedInEmail ?? Loc.T("Account_AccountStatusUnknownEmail");
+                AccountStatusLabel.Text = Loc.F("Account_AccountStatusSignedIn_Fmt", email);
+                AccountAuthBtn.Content = Loc.T("Account_AccountAuthSignOut");
                 if (AccountChangeEmailRow != null)
                 {
                     AccountChangeEmailRow.Visibility = System.Windows.Visibility.Visible;
@@ -10974,7 +11176,7 @@ namespace TrueforceForAll.Plugin
                 string uname = _plugin.Settings?.SharingAuthor ?? "";
                 if (AccountUsernameDisplay != null)
                     AccountUsernameDisplay.Text = string.IsNullOrEmpty(uname)
-                        ? "(not set yet)"
+                        ? Loc.T("Account_AccountUsernameDisplayNotSet")
                         : uname;
                 if (AccountChangeUsernameBtn != null)
                     AccountChangeUsernameBtn.Visibility = System.Windows.Visibility.Visible;
@@ -10982,22 +11184,16 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                AccountStatusLabel.Text = "Not signed in. Sign in to use community features.";
-                AccountAuthBtn.Content = "Sign in";
+                AccountStatusLabel.Text = Loc.T("Account_AccountStatus");
+                AccountAuthBtn.Content = Loc.T("Account_AccountAuth");
                 if (AccountChangeEmailRow != null)
                     AccountChangeEmailRow.Visibility = System.Windows.Visibility.Collapsed;
                 if (AccountUsernameDisplay != null)
-                    AccountUsernameDisplay.Text = "(anonymous)";
+                    AccountUsernameDisplay.Text = Loc.T("Account_AccountUsernameDisplay");
                 if (AccountChangeUsernameBtn != null)
                     AccountChangeUsernameBtn.Visibility = System.Windows.Visibility.Collapsed;
                 if (AccountUsernameHelp != null) AccountUsernameHelp.Visibility = System.Windows.Visibility.Visible;
             }
-            if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "";
-            AccountAuthBtn.IsEnabled = true;
-            _ = RefreshDiscordRowAsync();
-            _ = RefreshPatreonRowAsync();
-            _ = RefreshSupporterBadgeAsync();
-            _ = RefreshCloudBackupGatingAsync();
         }
 
         // Header-card account chip. Signed out -> "Sign in" (no icon/caret).
@@ -11653,7 +11849,7 @@ namespace TrueforceForAll.Plugin
                 }
                 if (AccountSignOutOthersBtn != null)
                 {
-                    AccountSignOutOthersBtn.Content = "Sign out everywhere else";
+                    AccountSignOutOthersBtn.Content = Loc.T("Account_AccountSignOutOthers");
                     AccountSignOutOthersBtn.IsEnabled = others > 0;
                     AccountSignOutOthersBtn.Visibility = others > 0 ? Visibility.Visible : Visibility.Collapsed;
                 }
@@ -11820,6 +12016,10 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // True between the confirm and the RPC's return, while the button
+        // reads Signing out; the language pass picks its text from this.
+        private bool _signingOutOthers;
+
         private async void AccountSignOutOthers_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -11831,22 +12031,25 @@ namespace TrueforceForAll.Plugin
                     DialogKind.Destructive, okLabel: "Sign out", cancelLabel: "Cancel");
                 if (confirm != true) return;
 
-                if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = false; AccountSignOutOthersBtn.Content = "Signing out..."; }
+                _signingOutOthers = true;
+                if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = false; AccountSignOutOthersBtn.Content = Loc.T("Account_AccountSignOutOthersBusy"); }
                 bool ok = await _plugin.AuthSignOutOtherSessionsAsync();
+                _signingOutOthers = false;
                 if (ok)
                 {
                     RefreshAccountSessions();
                 }
                 else
                 {
-                    if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = "Sign out everywhere else"; }
+                    if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = Loc.T("Account_AccountSignOutOthers"); }
                     SetSessionsStatus("Couldn't sign out the other devices. Check your connection and try again.");
                 }
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Sign-out-others failed: " + ex.Message);
-                if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = "Sign out everywhere else"; }
+                _signingOutOthers = false;
+                if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = Loc.T("Account_AccountSignOutOthers"); }
                 SetSessionsStatus("Couldn't sign out the other devices. Check your connection and try again.");
             }
         }
@@ -11897,6 +12100,10 @@ namespace TrueforceForAll.Plugin
         // Delete-account button. Two-step confirm because it's irreversible
         // for the account record (presets stay; vote/submission history
         // anonymizes). User must type DELETE to proceed.
+        // True while the delete RPC runs and the button reads Deleting; the
+        // language pass picks its text from this.
+        private bool _deletingAccount;
+
         private async void AccountDelete_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null || !_plugin.AuthIsSignedIn) return;
@@ -11932,10 +12139,11 @@ namespace TrueforceForAll.Plugin
             // In-flight guard: the backup delete + RPC can take tens of
             // seconds worst-case; keep the button from starting a second
             // concurrent deletion and show that something is happening.
+            _deletingAccount = true;
             if (AccountDeleteBtn != null)
             {
                 AccountDeleteBtn.IsEnabled = false;
-                AccountDeleteBtn.Content   = "Deleting…";
+                AccountDeleteBtn.Content   = Loc.T("Account_AccountDeleteBusy");
             }
             try
             {
@@ -11977,10 +12185,11 @@ namespace TrueforceForAll.Plugin
             {
                 // Restore is required on the failure paths; harmless on
                 // success since the account UI is rebuilt above.
+                _deletingAccount = false;
                 if (AccountDeleteBtn != null)
                 {
                     AccountDeleteBtn.IsEnabled = true;
-                    AccountDeleteBtn.Content   = "Delete account";
+                    AccountDeleteBtn.Content   = Loc.T("Account_AccountDelete");
                 }
             }
         }
