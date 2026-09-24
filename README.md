@@ -6,13 +6,13 @@ screen, a phone dash, and community presets.
 
 [![Latest release](https://img.shields.io/github/v/release/Mhytee/Trueforce-For-All?label=latest%20release&color=2ea043)][releases]
 [![Downloads](https://img.shields.io/github/downloads/Mhytee/Trueforce-For-All/total?label=downloads&color=2ea043)][releases]
-[![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?logo=windows&logoColor=white)](#requirements)
+[![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?logo=windows&logoColor=white)](#install)
 [![License](https://img.shields.io/badge/license-GPL--2.0--only-555)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)][discord]
 
 ### [Download the latest release][releases]
 
-Free and open source, for SimHub on Windows.
+Free and open source, for SimHub. Contributors welcome.
 
 Official Trueforce support keeps growing, but many major titles are still
 waiting and some will never get it. This plugin fills the gap, and then
@@ -327,37 +327,27 @@ wheel.
 
 ## TF4ALL Dash
 
-The plugin ships its own SimHub dashboard, made for a phone or tablet
-kept next to you or mounted on the rig: something to read while you
+The plugin ships its own SimHub dashboard, made for a phone or tablet kept
+next to you or mounted on the rig: what you need at a glance while you
 drive, and a way to change things mid-session without alt-tabbing out of
 the game.
 
-- Drive tab: a race-ready view. Gear, speed and revs in the middle with
-  pedals and steering around them, and the rest of the screen is boxes
-  you arrange yourself. Keep one layout for everything, or a different
-  one per game.
-- Set a car's name, redline start or engine type.
-- Turn individual effects on and off and set their gain.
-- Adjust master and audio capture gain.
-- Switch presets.
-- On-screen rev lights across the top of every screen, the dash's own
-  strip rather than the wheel's. Fill left to right or outside in, your
-  pick in Settings.
-- Visualizer: scrolling waveforms of the game's steering force and the
-  haptic layer, as sent to the wheel. Clipping turns the trace red, and
+- **The Drive tab:** a big gear and rev strip, plus four info boxes you can
+  set up how you like, from tire temps and wear, fuel, lap times, a
+  radar, and more. The dash remembers its layout per game.
+- **Tune from the seat:** effects on and off with their gains, master and
+  audio capture gain, presets, Telemetry Based FFB and its main knobs, and
+  a car's name, redline or engine type. Tap any value to type an exact
+  number.
+- **FFB Visualizer:** scrolling waveforms of the game's steering force and
+  the haptic layer, as sent to the wheel. Clipping turns the trace red, and
   a yellow SPIKE badge marks where spike reduction stepped in.
-- Telemetry Based FFB: turn it on or off for the game you are in, and
-  tune its main knobs from the rig. Tap any value to type an exact
-  number instead of stepping to it.
-- Idle mode: go idle or close the game and the dash becomes an ambient
-  card, your name and number over moving artwork, with the plugin
-  version and any waiting update along the foot. Ten backgrounds, and
-  you set how long it waits before dropping into idle.
-- Themes: eight palettes, applied to the running dash without a reload.
-  Colors that carry meaning, like a red warning or a green best lap, are
-  left alone.
-- Make it yours: hide the tabs you don't use and reorder the rest, in
-  Settings > TF4ALL Dash.
+- **An idle card:** close the game and the dash becomes your name and number
+  over moving artwork, with the plugin version and any waiting update along
+  the foot. Ten backgrounds, and you set the delay.
+- **Make it yours:** eight themes, the option to drop to two info boxes if
+  four crowd your screen, and the tabs you don't use can be hidden or
+  reordered.
 
 ![TF4ALL Dash](docs/images/tf4all-dash-tabs.gif)
 
@@ -373,44 +363,39 @@ account. Turn them off in Settings and the plugin works fully offline
 
 - **Community preset browser**, built into the Presets tab. Browse what
   other drivers have shared for any game or car, sorted by votes and
-  downloads, and download one to try it.
+  downloads.
 - **Share your own.** Game presets, car presets, custom engines, and
   multi-preset packs can all be shared, with a description attached.
-- **Car facts flow back automatically.** Correct a redline, fix a car's
-  name, or pick an engine layout, and the fact is shared anonymously.
-  The next driver loading the same car gets the correction applied
-  without ever opening a panel. Sharing follows your community
-  settings and can be turned off.
+- **Car facts flow back automatically**, and converge as more drivers
+  submit agreeing values. Sharing follows your community settings and can
+  be turned off.
 - **Downloaded presets stay current.** When a curator updates a preset
   you downloaded, an "updates available" chip surfaces it; apply updates
   manually or automatically.
-- **No account needed; sign-in adds extras.** Car facts work
-  anonymously; an optional sign-in (an emailed one-time code, no
-  password) unlocks preset sharing and the Account tab, where you can
-  set a display name, see how your shared presets are doing, export
+- **No account needed; sign-in is optional.** It takes an emailed one-time
+  code, no password, and unlocks preset sharing and the Account tab, where
+  you can set a display name, see how your shared presets are doing, export
   your data, or delete your account.
-
-No single bad submission wins out: presets are surfaced by votes, and
-car facts converge as more drivers submit agreeing values.
 
 There is also a **[Discord server][discord]**: a place to hang out, swap
 tunes, ask for help, and get involved. Link your Discord account in the
-plugin and the achievements you earn for contributing (sharing presets,
-getting downloads, submitting car facts other drivers end up using)
-grant matching roles in the server.
+plugin and the achievements you earn grant matching roles there.
 
 ## Install
 
-The easiest path is the bundled installer:
-
 1. Download `TrueforceForAll-Setup.exe` from the [latest release][releases].
 2. Close SimHub if it's running.
-3. Run the installer. It finds SimHub, copies the plugin files into its
-   install folder, and installs the bundled USBPcap if you don't already
-   have it. No SimHub yet? It points you at the download and waits, so you
-   can install SimHub and press Retry.
-4. Close Logitech G HUB (it claims the wheel's HID interface).
-5. Launch SimHub. The plugin auto-enables on first run.
+3. Run the installer. It finds [SimHub](https://www.simhubdash.com/),
+   copies the plugin files into its install folder, and installs
+   [USBPcap](https://github.com/desowin/usbpcap) if you don't
+   already have it. No SimHub yet? It points you at the download and waits,
+   so you can install SimHub and press Retry.
+4. Close Logitech G HUB, and keep it closed while you play: running it
+   alongside can cause issues.
+5. Turn on **Run as administrator** in SimHub's settings. Reading the
+   wheel's USB traffic needs it. Without it the force feedback pass-through
+   never starts.
+6. Launch SimHub.
 
 The **?** in the panel's header opens the guides: setup for the games that
 need it (iRacing, RaceRoom, Le Mans Ultimate, Assetto Corsa, Forza,
@@ -422,20 +407,6 @@ app.ini or 5300 lands on the one that explains it. The same guides are in
 The installer is conservative on uninstall: it removes our files but leaves
 SimHub, USBPcap, and shared dependencies (HidSharp, NAudio) alone, so other
 plugins that share those keep working.
-
-## Requirements
-
-- Windows 10 / 11
-- [SimHub](https://www.simhubdash.com/)
-- A supported Logitech wheel (table above)
-- [USBPcap](https://github.com/desowin/usbpcap), bundled with our installer
-  if you don't already have it. Used to mirror the game's existing FFB
-  signal into the Trueforce stream so the two coexist.
-- Logitech G HUB **closed** while playing (it claims the HID interface and
-  blocks us from talking to the wheel)
-- **SimHub running as administrator.** Reading the wheel's USB traffic needs
-  it, so without it the force feedback pass-through never starts. Turn on
-  Run as administrator in SimHub's own settings, then restart SimHub.
 
 ## Games with native Trueforce
 
@@ -499,10 +470,8 @@ here at all, please open an issue and let me know.
 
 ## Known limitations
 
-- **Logitech G HUB must stay closed** the entire time the plugin is in
-  use, not just at launch. G HUB claims the wheel's HID interface and
-  blocks us from talking to it. If G HUB is opened mid-session, close
-  it and reload the SimHub plugin to reattach.
+- **Logitech G HUB must stay closed** when the plugin is in use. Running it
+  alongside can cause issues.
 - **The Trueforce level dial on the wheel doesn't apply** while the
   plugin is driving Trueforce: the wheel's own intensity scaling stops
   responding to it. Use the plugin's Master Gain and per-effect Gain
@@ -597,8 +566,8 @@ need no capture at all.
 <details>
 <summary><b>Do I need Logitech G HUB?</b></summary>
 
-No, and it has to stay closed while you play: G HUB claims the wheel's HID
-interface, which stops the plugin talking to it.
+No, and it has to stay closed while you play: running it alongside can
+cause issues.
 
 </details>
 
