@@ -44,7 +44,7 @@ dotnet build src\TrueforceForAll.Plugin\TrueforceForAll.Plugin.csproj -c Release
 dotnet publish src\TrueforceForAll.LoopbackHelper\TrueforceForAll.LoopbackHelper.csproj -c Release -r win-x64
 ```
 
-The plugin csproj resolves SimHub assemblies via `$(SimHubPath)`, defaulting to `C:\Program Files (x86)\SimHub`. Override with `-p:SimHubPath="..."` if SimHub lives elsewhere. Deploying by hand means copying THREE DLLs into the SimHub install folder: `User.TrueforceForAll.dll`, `TrueforceForAll.Core.dll`, and `TrueforceForAll.Engine.dll`. All three matter: a missing `TrueforceForAll.Engine.dll` means the plugin silently fails to load, and a stale `TrueforceForAll.Core.dll` means a silently dead wheel. The full release build (with Inno Setup installer) is documented in [RELEASING.md](RELEASING.md), which is maintainer-facing.
+The plugin csproj resolves SimHub assemblies via `$(SimHubPath)`, defaulting to `C:\Program Files (x86)\SimHub`. Override with `-p:SimHubPath="..."` if SimHub lives elsewhere. Deploying by hand means copying THREE DLLs into the SimHub install folder: `User.TrueforceForAll.dll`, `TrueforceForAll.Core.dll`, and `TrueforceForAll.Engine.dll`. All three matter: a missing `TrueforceForAll.Engine.dll` means the plugin silently fails to load, and a stale `TrueforceForAll.Core.dll` means a silently dead wheel. The full release build (with Inno Setup installer) is documented in [RELEASING.md](../docs/RELEASING.md), which is maintainer-facing.
 
 Unit tests for the Core and Engine libraries (telemetry parsing, synthesis math, the effect and resampler suites, the golden-fixture replay parity gate) live in `src/TrueforceForAll.Core.Tests`. The test project is intentionally not in `TrueforceForAll.sln` (it targets net8.0 and would perturb the net48 plugin build); run it directly with `dotnet test src/TrueforceForAll.Core.Tests`. Please run it before submitting changes that touch `TrueforceForAll.Core` or `TrueforceForAll.Engine`.
 
@@ -86,7 +86,7 @@ need to mirror, it currently appears in roughly eight files. The steps:
    `EffectChangelog.KnownEffectIds`, that alone fires the per-section NEW badge
    on upgrade. Optionally mirror the release notes into a `ChangelogVersion`
    for the offline changelog, setting `EffectId` on the new-effect entry (see
-   [RELEASING.md](RELEASING.md) step 3).
+   [RELEASING.md](../docs/RELEASING.md) step 3).
 7. **Ducking (optional)**: if the airborne coordinator or sidechain should
    affect it, add a `DuckXxx` flag to `AirborneSettings` and honor it where the
    other voices are ducked.
