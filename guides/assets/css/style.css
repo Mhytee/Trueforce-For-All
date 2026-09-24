@@ -49,7 +49,53 @@ header.site .brand {
 
 header.site .brand span { color: var(--muted); font-weight: 400; }
 
-header.site nav { margin-left: auto; display: flex; gap: 18px; }
+/* ---------- search ---------- */
+
+.search { position: relative; margin-left: auto; }
+
+.search input {
+  width: 210px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  outline: none;
+}
+
+.search input::placeholder { color: var(--muted); }
+.search input:focus { border-color: var(--gold); }
+
+#results {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(460px, calc(100vw - 40px));
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 20;
+}
+
+#results a {
+  display: block;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+
+#results a:last-child { border-bottom: 0; }
+#results a:hover, #results a.on { background: var(--bg); text-decoration: none; }
+#results strong { display: block; color: var(--gold); font-size: 14px; }
+#results span { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; }
+#results .none { margin: 0; padding: 12px 14px; color: var(--muted); font-size: 14px; }
+
+header.site nav { display: flex; gap: 18px; }
 
 header.site nav a {
   color: var(--muted);
@@ -121,6 +167,12 @@ main {
   color: var(--gold);
   border-left-color: var(--gold);
   background: var(--surface);
+}
+
+@media (max-width: 620px) {
+  .search { order: 3; flex-basis: 100%; margin-left: 0; }
+  .search input { width: 100%; }
+  #results { width: 100%; }
 }
 
 /* Phones get the guide first and the full list underneath it. */
