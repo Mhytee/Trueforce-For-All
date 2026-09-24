@@ -26,9 +26,9 @@ some.
 
 | Wheel | Haptics + FFB | Rev lights | OLED screen |
 |---|---|---|---|
-| Logitech G PRO Racing Wheel (Xbox/PC and PS/PC) | Yes | Yes | Yes |
-| Logitech RS50 | Yes | Yes | Yes |
-| Logitech G923 (Xbox/PC and PS/PC) | Yes | Yes | None |
+| Logitech G PRO Racing Wheel (Xbox/PC and PS/PC) | ✅ | ✅ | ✅ |
+| Logitech RS50 | ✅ | ✅ | ✅ |
+| Logitech G923 (Xbox/PC and PS/PC) | ✅ | ✅ | None |
 
 > [!NOTE]
 > The plugin can add rev light support and control the Dynamic OLED screen
