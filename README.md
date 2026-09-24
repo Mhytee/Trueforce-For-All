@@ -245,20 +245,17 @@ big step up in feel.
 
 ## The wheel's lights
 
-A G PRO or RS50 stores lighting patterns for its rev strip, and until now
-the only way to choose between them was the wheelbase's own menu or G HUB.
-The LIGHTSYNC tab takes that over. The G923's strip has a fixed layout, so
-the tab stays hidden there.
+The LIGHTSYNC tab takes over the rev strip on a G PRO or RS50. The G923's
+strip has a fixed layout, so the tab stays hidden there.
 
-- **The pattern can match the car you are driving.** Tick "Match my wheel
-  to the car I'm driving" and the strip takes on each car's own colors and
-  fill direction as you get in, lighting where the real car lights. The
-  data comes from [Lovely Sim Racing][lovely] (CC BY-NC-SA 4.0); a car
-  they have not covered keeps whatever pattern you chose.
-- **Save as many patterns as you want.** The wheel itself stores five; the
-  plugin's library has no limit, and a bound button walks the whole library
-  without taking your hands off the wheel.
-- **A pattern maker.** Ten LEDs, click one and color it, with the wheel
+- **The pattern can match the car you are driving.** The strip takes on each
+  car's own colors and fill direction as you get in, lighting where the real
+  car lights. The data comes from [Lovely Sim Racing][lovely]
+  (CC BY-NC-SA 4.0); a car they have not covered keeps the pattern you chose.
+- **Save as many patterns as you want.** The wheel stores five; the plugin's
+  library has no limit, and a bound button walks it without taking your hands
+  off the wheel.
+- **A pattern maker.** Color the ten LEDs one at a time, with the wheel
   showing the whole pattern as you work. Thirteen hand-made patterns come
   built in, yours to copy and edit.
 - **Color trim, pre-tuned.** The three colors inside an LED are not equally
@@ -268,23 +265,20 @@ the tab stays hidden there.
 - **A car can remember its own.** One click on "Remember for this car" and
   the pattern comes back whenever that car loads.
 - **Idle modes.** With no game running, or the car sat still, the strip can
-  run a slow sweep up and back, or meter your computer's audio so the
-  lights move with whatever you are listening to. Colors come from the
-  pattern you chose, and your revs take the lights back the moment a game
-  reports them. Off by default.
+  run a slow sweep up and back, or meter your computer's audio so the lights
+  move with whatever you are listening to. Your revs take the lights back the
+  moment a game reports them. Off by default.
 - **The TF4ALL Dash's rev strip can match the wheel's**, colors, fill
   direction and switch-on points included.
 
 Picks apply immediately, in and out of game. In a game whose force feedback
 passes through the USB capture, changing the pattern interrupts that force
-for a moment, so it is best done parked; where the plugin carries the force
-itself, there is nothing to interrupt.
+for a moment, so it is best done parked.
 
-**Three modes, remembered per game.** The switch at the top of the panel
-is Normal (everything), Lightsync only (the plugin leaves the game's force
-feedback and Trueforce completely alone and only sets the wheel's light
-pattern for the car you are in) or Off. Games that bring their own
-Trueforce start on Lightsync only.
+**Three modes, remembered per game.** Normal (everything), Lightsync only
+(the plugin leaves the game's force feedback and Trueforce alone and only
+sets the light pattern for the car you are in), or Off. Games that bring
+their own Trueforce start on Lightsync only.
 
 ## The wheel's OLED screen
 
@@ -399,8 +393,7 @@ Some titles already ship Trueforce on PC, so the plugin starts on
 **Lightsync only** for them: their force feedback and Trueforce are left
 alone, and only the wheel's light pattern is set. Switch off the game's
 native Trueforce and set the plugin to Normal mode to take over, tuning the
-feel yourself rather than taking whatever the game hardcodes (and on
-Automobilista 2, adding Trueforce that was never really there).
+feel yourself rather than taking whatever the game hardcodes.
 
 <details>
 <summary><b>Why a slider at 0 is not off</b></summary>
@@ -432,21 +425,16 @@ to Normal.
 | Assetto Corsa Competizione | Slider only, no off switch found | No, stays live |
 | Assetto Corsa EVO | Slider only, no off switch found | No, stays live |
 | Assetto Corsa Rally | Slider only, no off switch found | No, stays live |
-| BeamNG.drive | Not tested | Not tested |
-| F1 22, 23, 24 and 25 | Not tested | Not tested |
-| EA Sports WRC (2023) | Not tested | Not tested |
-| WRC 10 | Not tested | Not tested |
-| WRC Generations | Not tested | Not tested |
-| Project CARS 3 | Not tested | Not tested |
-| Test Drive Unlimited Solar Crown | Not tested | Not tested |
 | Le Mans Ultimate | Settings > Controls > Force Feedback: Vendor Specific Force Feedback off | Yes, through the handover: tick "Take over force feedback for Le Mans Ultimate" on the FFB tab |
 
+Not tested yet: BeamNG.drive, F1 22 through 25, EA Sports WRC (2023),
+WRC 10, WRC Generations, Project CARS 3 and Test Drive Unlimited Solar
+Crown.
+
 **AMS2 is a special case:** per Reiza's devs it loads the Logitech SDK but
-never actually implements Trueforce, so it behaves like a non-Trueforce
-game with the channel left live. The `disableTF`
-launch option falls back to legacy mode and should let the plugin take
-over, but I haven't confirmed it on hardware. (Steam launch options: right-
-click the game, Properties, General, Launch Options.)
+never implements Trueforce, so the channel sits live with nothing on it. The
+`disableTF` launch option should let the plugin take over, but I haven't
+confirmed it on hardware.
 
 >I don't own some of these titles, so this table grows from user reports. If
 you find an off switch or config setting for one of the ones still marked
