@@ -405,9 +405,10 @@ The easiest path is the bundled installer:
 
 1. Download `TrueforceForAll-Setup.exe` from the [latest release][releases].
 2. Close SimHub if it's running.
-3. Run the installer. It detects SimHub, copies the plugin files into the
-   SimHub install folder, and (if USBPcap isn't already installed) runs
-   the bundled USBPcap setup automatically.
+3. Run the installer. It finds SimHub, copies the plugin files into its
+   install folder, and installs the bundled USBPcap if you don't already
+   have it. No SimHub yet? It points you at the download and waits, so you
+   can install SimHub and press Retry.
 4. Close Logitech G HUB (it claims the wheel's HID interface).
 5. Launch SimHub. The plugin auto-enables on first run.
 
