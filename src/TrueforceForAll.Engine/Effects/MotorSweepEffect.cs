@@ -33,6 +33,10 @@ namespace TrueforceForAll.Plugin.Effects
         private long _samplesRemaining;
         private long _samplesTotal = 1;
         private double _phase;
+        // Tone mode (the EQ editor's per-band audition): a fixed frequency
+        // instead of the sweep, same amplitude and fades. 0 = sweeping.
+        private double _toneHz;
+        private int _activeDurationMs = 15000;
 
         public override bool IsActive => IsTesting || _samplesRemaining > 0;
 
@@ -46,13 +50,15 @@ namespace TrueforceForAll.Plugin.Effects
 
             double lnRatio = Math.Log(Math.Max(EndHz, StartHz + 1f) / Math.Max(1f, StartHz));
             long total = _samplesTotal;
+            double toneHz = _toneHz;
+            double fadeScale = _activeDurationMs / 200.0;
 
             for (int i = 0; i < count && remaining > 0; i++)
             {
                 double t01 = 1.0 - (double)remaining / total;
-                double freq = StartHz * Math.Exp(lnRatio * t01);
+                double freq = toneHz > 0 ? toneHz : StartHz * Math.Exp(lnRatio * t01);
                 // 200 ms fade at both ends so start/stop never thump.
-                double edge = Math.Min(1.0, Math.Min(t01, 1.0 - t01) * (DurationMs / 200.0));
+                double edge = Math.Min(1.0, Math.Min(t01, 1.0 - t01) * fadeScale);
                 buffer[i] += (float)(Math.Sin(2.0 * Math.PI * _phase) * Amp * Gain * edge);
                 _phase += freq / SampleRateHz;
                 if (_phase >= 1.0) _phase -= 1.0;
@@ -63,6 +69,8 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override int TestPlay()
         {
+            _toneHz           = 0;
+            _activeDurationMs = DurationMs;
             _samplesTotal     = Math.Max(1, (long)(DurationMs * SampleRateHz / 1000.0));
             _samplesRemaining = _samplesTotal;
             _phase            = 0;
@@ -70,10 +78,27 @@ namespace TrueforceForAll.Plugin.Effects
             return DurationMs + 200;
         }
 
+        /// <summary>Play a fixed-frequency sine for <paramref name="durationMs"/>
+        /// (the EQ editor's audition). Returns the test duration to hold the
+        /// device active for, like TestPlay. Reset() ends it early.</summary>
+        public int PlayTone(float hz, int durationMs)
+        {
+            if (hz < 1f) hz = 1f;
+            if (durationMs < 100) durationMs = 100;
+            _toneHz           = hz;
+            _activeDurationMs = durationMs;
+            _samplesTotal     = Math.Max(1, (long)(durationMs * SampleRateHz / 1000.0));
+            _samplesRemaining = _samplesTotal;
+            _phase            = 0;
+            StartTest(durationMs + 200);
+            return durationMs + 200;
+        }
+
         public override void Reset()
         {
             _samplesRemaining = 0;
             _phase = 0;
+            _toneHz = 0;
         }
     }
 }

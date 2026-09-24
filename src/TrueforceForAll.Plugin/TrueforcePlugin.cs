@@ -55,6 +55,19 @@ namespace TrueforceForAll.Plugin
 
         private readonly Mixer _mixer = new Mixer();
 
+        // Trueforce EQ: runs on the summed mix inside the Mixer (PostMix),
+        // before master gain and the clamp. Global, a wheel/rig trait; the
+        // band list lives in Settings and is pushed by ApplyTrueforceEq.
+        private readonly ParametricEq _trueforceEq = new ParametricEq(ParametricEq.DefaultSampleRateHz);
+        public ParametricEq TrueforceEq => _trueforceEq;
+        // Spectrum taps either side of the EQ for the editor's live display
+        // (pre = where the energy is, post = what the wheel gets). Four float
+        // copies per tick each; the UI thread reads them on its own timer.
+        private readonly SpectrumTap _eqTapPre  = new SpectrumTap();
+        private readonly SpectrumTap _eqTapPost = new SpectrumTap();
+        public SpectrumTap EqSpectrumPre  => _eqTapPre;
+        public SpectrumTap EqSpectrumPost => _eqTapPost;
+
         // The ducker and render tick live in the Engine assembly so the replay
         // harness runs the exact production code; the plugin wires effect refs
         // at Init and forwards its per-tick loop into EngineLoop.RunOneTick.
@@ -1082,6 +1095,43 @@ namespace TrueforceForAll.Plugin
         // bound controller button via the Controls tab). An open SettingsControl
         // subscribes to keep its slider in step.
         public event Action MasterGainChangedExternally;
+
+        /// <summary>Push Settings.TrueforceEq* into the live EQ bank. Call after
+        /// any edit to the band list and after a wholesale settings replace
+        /// (import, restore). Bands are clamped in place as they are read.</summary>
+        public void ApplyTrueforceEq()
+        {
+            var s = Settings;
+            if (s == null) return;
+            if (s.TrueforceEqBands == null) s.TrueforceEqBands = new List<EqBand>();
+            _trueforceEq.SetBands(s.TrueforceEqBands);
+            _trueforceEq.Enabled = s.TrueforceEqEnabled;
+        }
+
+        /// <summary>One-time seed of the flat eight-band layout. The list must
+        /// default EMPTY in TrueforceSettings (SimHub's loader appends stored
+        /// arrays onto initialisers), so the factory content lives here behind
+        /// a latch, the DashTabOrder pattern. An empty list AFTER the latch is
+        /// the user's own choice and stays empty.</summary>
+        private void SeedTrueforceEqIfNeeded()
+        {
+            var s = Settings;
+            if (s == null || s.TrueforceEqSeededV1) return;
+            if (s.TrueforceEqBands == null) s.TrueforceEqBands = new List<EqBand>();
+            if (s.TrueforceEqBands.Count == 0) s.TrueforceEqBands.AddRange(ParametricEq.FactoryBands());
+            s.TrueforceEqSeededV1 = true;
+        }
+
+        /// <summary>EQ editor audition: a short sine at one frequency through
+        /// the normal mix, so the EQ shapes it and the user feels a cut land.
+        /// Rides the motor-sweep effect's tone mode (same amplitude as the
+        /// SWEEP characterisation).</summary>
+        public void AuditionEqTone(double hz, int durationMs = 1500)
+        {
+            var sweep = MotorSweep;
+            if (sweep == null) return;
+            RunEffectTest(sweep, () => sweep.PlayTone((float)hz, durationMs));
+        }
 
         // Master-gain min/max mirror the settings slider (Minimum=0, Maximum=2).
         private const float MasterGainMin = 0f;
@@ -3977,7 +4027,13 @@ namespace TrueforceForAll.Plugin
         /// running (no FFB tap data, so the stream would otherwise be keepalive).
         /// Drives effect.TestUpdate(phase) at ~60 Hz over the test window so
         /// effects can simulate dynamic behavior (RPM ramps, slip pulses, etc).</summary>
-        public void TestEffect(TelemetryEffect effect)
+        public void TestEffect(TelemetryEffect effect) => RunEffectTest(effect, null);
+
+        /// <summary>Shared test runner: <paramref name="start"/> arms the effect
+        /// and returns its duration (null = the effect's own TestPlay). Holds
+        /// the device active for the run, drives TestUpdate at ~60 Hz, and
+        /// resets the effect when it ends.</summary>
+        private void RunEffectTest(TelemetryEffect effect, Func<int> start)
         {
             if (effect == null)
             {
@@ -3989,7 +4045,7 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info($"[TF4ALL] TestEffect '{effect.Name}': device not initialized");
                 return;
             }
-            int durationMs = effect.TestPlay();
+            int durationMs = start != null ? start() : effect.TestPlay();
             SimHub.Logging.Current.Info($"[TF4ALL] TestEffect '{effect.Name}' duration={durationMs} ms");
             if (durationMs <= 0) return;
 
@@ -4813,6 +4869,9 @@ namespace TrueforceForAll.Plugin
             ImportFromUserImportsFolder();
 
             _mixer.MasterGain = Settings.MasterGain;
+            _mixer.PostMix = new ProcessorChain(_eqTapPre, _trueforceEq, _eqTapPost);
+            SeedTrueforceEqIfNeeded();
+            ApplyTrueforceEq();
 
             // Start the GitHub update poller BEFORE the wheel bring-up below,
             // so a user whose wheel is unplugged (or whose G HUB is holding
@@ -29765,6 +29824,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 if (_mixer != null) _mixer.MasterGain = Settings.MasterGain;
+                ApplyTrueforceEq();
                 if (_device != null)
                 {
                     _device.FfbScale                = Settings.FfbScale;
@@ -32028,6 +32088,7 @@ namespace TrueforceForAll.Plugin
 
             // Push live: master, FFB tap, audio, and effects (via car-override apply).
             _mixer.MasterGain = Settings.MasterGain;
+            ApplyTrueforceEq();
             if (_device != null)
             {
                 _device.FfbScale                = Settings.FfbScale;
@@ -34345,6 +34406,7 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         _mixer.MasterGain = Settings.MasterGain;
+                        ApplyTrueforceEq();
                         ApplyGlobalFfbToLive();
                         ApplyModeBFromSettings();
                         ApplyModeBFeel();
@@ -34826,6 +34888,7 @@ namespace TrueforceForAll.Plugin
             try { MountUserSlot(Settings.ActiveSlotKey ?? ""); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Settings import: slot remount failed: " + ex.GetType().Name); }
             _mixer.MasterGain = Settings.MasterGain;
+            ApplyTrueforceEq();
             ApplyGlobalFfbToLive();   // push restored FFB scalars (scale/invert/spike) to the live device, not just master gain
             if (_audio != null)
             {
