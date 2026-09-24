@@ -1,0 +1,78 @@
+name: Bug report
+description: Something in the plugin does not work
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **If SimHub starts, file this from the plugin instead.** Open the plugin's
+        Settings tab and press **Report an issue...**. It fills in your wheel, the
+        plugin and SimHub versions, the active game and car, and offers to attach
+        your logs, so nothing has to be asked for afterwards.
+
+        This form is for when you cannot get that far.
+
+  - type: dropdown
+    id: wheel
+    attributes:
+      label: Wheel
+      options:
+        - Logitech G PRO Racing Wheel (Xbox/PC)
+        - Logitech G PRO Racing Wheel (PS/PC)
+        - Logitech RS50
+        - Logitech G923 (Xbox/PC)
+        - Logitech G923 (PS/PC)
+        - Other, or not detected
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      placeholder: Forza Horizon 6, Assetto Corsa, Le Mans Ultimate, ...
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Plugin and SimHub versions
+      description: The plugin version is on its Settings tab. SimHub's is on its About screen.
+      placeholder: plugin 0.4.0, SimHub 9.4.3
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what the wheel did instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+
+  - type: checkboxes
+    id: setup
+    attributes:
+      label: Setup
+      description: These three explain most reports. Tick whichever are true.
+      options:
+        - label: Logitech G HUB was closed the whole time
+        - label: SimHub is set to run as administrator
+        - label: USBPcap is installed
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        The Export logs... button on the plugin's Settings tab writes a zip to your
+        Desktop. Drag it in here. It is redacted before it is written.
