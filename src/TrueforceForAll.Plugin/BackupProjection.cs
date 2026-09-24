@@ -148,6 +148,8 @@ namespace TrueforceForAll.Plugin
             "AcShmFfbEnabled", "CspBridgeFfbEnabled", "CspBridgeFfbField", "CspBridgeMaxNm",
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
+            // Trueforce EQ: a wheel/rig trait, global (not preset-scoped), travels.
+            "TrueforceEqEnabled", "TrueforceEqBands",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
             "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb", "FfbSpikeTransientThresholdLsb",
             // Condition-render tuning (FXTEST bench): describes the wheel's
@@ -306,6 +308,7 @@ namespace TrueforceForAll.Plugin
             "CarPresetOrdinalNamesMigratedV1", "CarPresetOrdinalNamesMigratedV2", "ForzaCarIdsNormalizedV1",
             "CommunityDefaultOnRepitchedV1", "EngineChoiceMovedToCarFactsV1", "EngineOnlyOverridesPrunedV1",
             "MasterModeMigratedV1", "FfbConditionInertiaSpecMigrated", "FfbConditionDefaultsGeneration",
+            "TrueforceEqSeededV1",
             // (Backend config and the two testing gates moved to MachineLocal: being
             // Excluded kept them out of the cloud envelope but let a file import adopt
             // them wholesale, which is the one path where it matters.)

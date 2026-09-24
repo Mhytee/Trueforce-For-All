@@ -493,6 +493,7 @@ namespace TrueforceForAll.Plugin
                 MasterGainText.Text    = MasterGainSlider.Value.ToString("F2");
                 MasterGainStepSlider.Value = _plugin.MasterGainStep;
                 MasterGainStepText.Text    = _plugin.MasterGainStep.ToString("F2");
+                RefreshTrueforceEq();
                 if (ShowFeedbackBoxCheck != null)
                     ShowFeedbackBoxCheck.IsChecked = _plugin.Settings?.ShowFeedbackBox == true;
                 if (ShowPerGearRedlineEditorCheck != null)
@@ -3126,6 +3127,7 @@ namespace TrueforceForAll.Plugin
                 case "KerbThump":    return KerbThumpNewBadge;
                 case "LockupJudder": return LockupJudderNewBadge;
                 case "ImplementThud": return ImplementThudNewBadge;
+                case "TrueforceEq":   return TrueforceEqNewBadge;
                 default:           return null;
             }
         }

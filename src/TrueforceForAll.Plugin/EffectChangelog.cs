@@ -56,7 +56,7 @@ namespace TrueforceForAll.Plugin
             "Audio", "Engine", "Bumps", "Traction", "Shift",
             "Abs", "PitLimiter", "Drs", "Collision", "RevLimiter",
             "Airborne", "AxleSlip", "KerbThump", "LockupJudder",
-            "ImplementThud",
+            "ImplementThud", "TrueforceEq",
         };
 
         // Ordered oldest -> newest. Append-only.
@@ -650,6 +650,19 @@ namespace TrueforceForAll.Plugin
                         EffectId = "ImplementThud",
                         Headline = "Implement thud",
                         Description = "A mechanical clunk in the wheel when your equipment drops into work or lifts back out, the linkage landing and releasing. Farming Simulator with the TF4ALL Enhanced Telemetry mod; on by default.",
+                    },
+                },
+            },
+            new ChangelogVersion {
+                Version = new Version(0, 4, 0),
+                Title = "Trueforce EQ",
+                Entries = new List<ChangelogEntry>
+                {
+                    new ChangelogEntry {
+                        Group = "New features",
+                        EffectId = "TrueforceEq",
+                        Headline = "Trueforce EQ",
+                        Description = "Cut the frequencies that make your wheel or rig rattle, or lift the ones it barely renders. Drag points on a curve, add bands, set their width, and audition a tone to check the cut. Applies in every game and preset; starts flat.",
                     },
                 },
             },

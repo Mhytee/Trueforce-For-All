@@ -2618,6 +2618,50 @@
 
             </StackPanel> <!-- /TelemetryEffectsPanel -->
 
+            <!-- Trueforce EQ. Sits after the Ducking coordinators, OUTSIDE
+                 TelemetryEffectsPanel: it shapes audio rumble too, so it must
+                 stay usable when a game sends no telemetry. GLOBAL like master
+                 gain (a trait of the wheel and rig, never preset-scoped):
+                 boosts or cuts the summed haptic stream at chosen frequencies,
+                 before master gain. The curve editor and the band rows are
+                 built in code (SettingsControl.TrueforceEq.cs / EqCurveEditor.cs). -->
+            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12"><TextBlock Text="Output" Style="{StaticResource SectionHeaderText}"/></Border>
+            <Expander x:Name="TrueforceEqExpander" IsExpanded="False" Margin="0,0,0,8" Expanded="EffectExpander_Expanded">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox x:Name="TrueforceEqEnabledCheck" Content="Trueforce EQ"
+                                  FontWeight="SemiBold" VerticalAlignment="Center"
+                                  ToolTip="Boost or cut the plugin's vibration at specific frequencies. Pull a band down where your wheel or rig rings or rattles."
+                                  Checked="TrueforceEqEnabledCheck_Changed" Unchecked="TrueforceEqEnabledCheck_Changed"/>
+                        <Border x:Name="TrueforceEqNewBadge" Style="{StaticResource NewEffectBadge}">
+                            <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                        </Border>
+                        <TextBlock x:Name="TrueforceEqSummaryText" Style="{StaticResource HelpText}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                        <!-- Undo wears the effects' revert style and, like them,
+                             only appears once there is something to step back. -->
+                        <Button x:Name="TrueforceEqUndoButton" Content="↶" Style="{StaticResource EffectRevertButton}" Margin="14,0,0,0" Click="TrueforceEqUndo_Click"
+                                ToolTip="Undo the last change to the curve. Ctrl+Z in the graph does the same."/>
+                    </StackPanel>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                               Text="Tames the frequencies that make your wheel or rig rattle, or lifts the ones it barely renders. Applies in every game and preset. Drag a point to move it, scroll on it for width, double-click to add a band, right-click to remove one."/>
+                    <Border x:Name="TrueforceEqCurveHost" Height="240" Margin="0,0,0,8"
+                            ToolTipService.InitialShowDelay="1500"
+                            ToolTip="Arrow keys nudge the selected point, Shift for bigger steps. Alt + drag changes a bell's width. Delete removes the point. Ctrl+Z undoes. The blue bars are the live spectrum of what the wheel gets; the pale line is before the EQ."/>
+                    <StackPanel x:Name="TrueforceEqBandRows"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button x:Name="TrueforceEqAddBandButton" Content="Add band" Style="{StaticResource EffectTestButton}" Width="80" Margin="0" Click="TrueforceEqAddBand_Click"
+                                ToolTip="Adds a flat bell at 100 Hz. Drag it where the rattle is."/>
+                        <Button x:Name="TrueforceEqAuditionButton" Content="Audition" Style="{StaticResource EffectTestButton}" Width="80" Margin="10,0,0,0" Click="TrueforceEqAudition_Click" IsEnabled="False"
+                                ToolTip="Plays a 1.5 s tone at the selected point's frequency through the EQ, so you can feel the resonance and whether the cut tames it. Click a point first."/>
+                        <Button x:Name="TrueforceEqResetButton" Content="Reset to flat" Style="{StaticResource EffectTestButton}" Width="100" Margin="10,0,0,0" Click="TrueforceEqReset_Click"
+                                ToolTip="Back to the six flat bands."/>
+                    </StackPanel>
+                </StackPanel>
+            </Expander>
+
+
             <!-- The donation block (Patreon / Ko-fi) and the full "Spread the
                  word" section moved to the dedicated "Support us" tab, to keep
                  the tuning flow non-salesy. This slot used to hold a slim

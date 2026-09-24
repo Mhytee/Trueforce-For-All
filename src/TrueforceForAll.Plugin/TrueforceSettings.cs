@@ -706,6 +706,19 @@ namespace TrueforceForAll.Plugin
         // the master-gain slider's small step (0.05).
         public float MasterGainStep { get; set; } = 0.05f;
 
+        // Trueforce EQ: boosts or cuts the summed haptic stream at chosen
+        // frequencies (rig resonance control). Global like master gain, never
+        // preset-scoped: a resonance is a trait of the wheel and rig, not of a
+        // car. Travels in cloud backup (BackupProjection Portable).
+        //
+        // TrueforceEqBands MUST default EMPTY: SimHub's settings loader appends
+        // a stored array onto a non-empty initializer (see DashTabOrder). The
+        // factory eight-band flat layout is seeded once by the plugin behind
+        // TrueforceEqSeededV1 (a latch, Excluded from backup).
+        public bool TrueforceEqEnabled { get; set; } = true;
+        public List<EqBand> TrueforceEqBands { get; set; } = new List<EqBand>();
+        public bool TrueforceEqSeededV1 { get; set; } = false;
+
         // Inject a Trueforce quick-gain box into SimHub's home-screen "Feedback"
         // section, next to Motors/Wind. That section is hardcoded in SimHubWPF
         // with no plugin extension point, so the box is added by a defensive
