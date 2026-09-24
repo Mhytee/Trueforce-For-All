@@ -476,16 +476,14 @@ here at all, please open an issue and let me know.
   plugin is driving Trueforce: the wheel's own intensity scaling stops
   responding to it. Use the plugin's Master Gain and per-effect Gain
   controls to set intensity instead.
-- **Rev lights and the screen depend on who carries the force.** The
-  wheel's lights and screen share a control channel with the game's force
-  feedback, and writing to them while the game's force passes through the
-  USB capture cuts that force. So the plugin only adds rev lights and
-  drives the screen where it carries the force itself: Telemetry Based
-  FFB, iRacing, RaceRoom, Le Mans Ultimate, and Assetto Corsa with the CSP
-  Bridge. For the same
-  reason, changing a LIGHTSYNC pattern in a pass-through game interrupts
-  the force for a moment, so it is best done parked. A custom driver that
-  lifts this is in development.
+- **Rev lights and the screen depend on who carries the force.** They share
+  a control channel with the game's force feedback, and writing to them
+  while the game's force passes through the USB capture cuts that force, so
+  the plugin drives them wherever it can (see
+  [Per-game enhancements](#per-game-enhancements)). For the same reason,
+  changing a LIGHTSYNC pattern in a pass-through game interrupts the force
+  for a moment, so it is best done parked. A custom driver that lifts this
+  is in development.
 - **The plugin cannot run alongside a game's own Trueforce.** The wheel's
   Trueforce stream has room for one sender, so in a native-Trueforce game
   the plugin stays on Lightsync only unless the game's Trueforce is
@@ -606,20 +604,17 @@ allow this and how.
 
 ## Supporting the project
 
-The plugin is free and stays that way. For anyone who wants to support
-it, there is a **[Patreon][patreon]**. It covers the real costs behind
-the project: hosting for the community backend, the code-signing
-certificate for the upcoming driver, and the time that goes into
-building all this. As a thank-you, supporters get cross-device backup
-and sync of their full setup (sign in on another PC and your tuning
-rides with you) and a spot on the supporters wall in the plugin.
-Manual export/import stays available to everyone.
+The plugin is free and stays that way. It is primarily built by one person,
+and a **[Patreon][patreon]** is there for anyone who wants to keep that
+going. Supporters get cross-device backup and sync of their full setup, and
+a spot on the supporters wall in the plugin. Manual export and import stay
+available to everyone.
 
 ## Community coverage
 
-- **Overtake.gg**, [Logitech's Trueforce Arrives Early in Forza Horizon 6 Thanks to Community-Made SimHub Plugin](https://www.overtake.gg/news/logitechs-trueforce-arrives-early-in-forza-horizon-6-thanks-to-community-made-simhub-plugin.4520/): Detailed news writeup of the plugin bringing Trueforce to Forza Horizon 6 at launch, ahead of any native support from the game.
-- **Armando Ramirez**, [Does Logitech TRUEFORCE Actually Matter in Forza Horizon 6?](https://www.youtube.com/watch?v=p5P_Ww14CNg): The first video walkthrough of the plugin in Forza Horizon 6, including custom presets the creator tuned.
-- **Revasio**, [French installation tutorial on TikTok](https://www.tiktok.com/@revasio/video/7641185174306180384): A walkthrough of installing and setting up the plugin, narrated in French.
+- **Overtake.gg**, [Logitech's Trueforce Arrives Early in Forza Horizon 6 Thanks to Community-Made SimHub Plugin](https://www.overtake.gg/news/logitechs-trueforce-arrives-early-in-forza-horizon-6-thanks-to-community-made-simhub-plugin.4520/)
+- **Armando Ramirez**, [Does Logitech TRUEFORCE Actually Matter in Forza Horizon 6?](https://www.youtube.com/watch?v=p5P_Ww14CNg)
+- **Revasio**, [a French installation tutorial on TikTok](https://www.tiktok.com/@revasio/video/7641185174306180384)
 
 ## How it works
 
