@@ -1,0 +1,29 @@
+name: Game or feature request
+description: Ask for a new game, a new effect, or a change to an existing one
+labels: ["enhancement"]
+body:
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: Leave this blank if the request is not about one game in particular.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What you want, and how it should feel
+      description: >
+        Describe the sensation you are after rather than how it might be built.
+        "The wheel should go light as the front washes wide" says more than
+        "read the front slip angle".
+    validations:
+      required: true
+
+  - type: textarea
+    id: data
+    attributes:
+      label: What the game exposes, if you know
+      description: >
+        Whether the game publishes telemetry, and how: shared memory, a UDP feed,
+        an SDK, or an existing SimHub plugin. Whether a game can be supported
+        usually comes down to this.

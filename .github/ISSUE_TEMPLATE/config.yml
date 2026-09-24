@@ -1,0 +1,17 @@
+# Blank issues stay ENABLED on purpose. Do not turn this off.
+#
+# The plugin's "Report an issue..." button opens
+# https://github.com/Mhytee/Trueforce-For-All/issues/new with the entire
+# auto-filled report in the URL, and every released version does this. With
+# blank issues disabled, GitHub redirects that link to the template chooser and
+# the prefilled body is thrown away, for builds already installed on people's
+# machines. There is no way to fix that from this end once a version ships.
+blank_issues_enabled: true
+
+contact_links:
+  - name: Setup help and questions
+    url: https://discord.gg/sfwsDqTsdn
+    about: Faster than an issue for setup, tuning, and "is this normal".
+  - name: Ideas and discussion
+    url: https://github.com/Mhytee/Trueforce-For-All/discussions
+    about: For open-ended conversation rather than one specific request.
