@@ -26,7 +26,7 @@ __*
 /src/UsbPcapTest/
 
 # Maintainer-only running changelog. Local dev notes, not a user-facing doc.
-# (RELEASING.md is tracked as the public release checklist.)
+# (docs/RELEASING.md is tracked as the public release checklist.)
 /CHANGELOG_UNRELEASED.md
 
 # Maintainer-only marketing copy + design drafts + private docs. Working

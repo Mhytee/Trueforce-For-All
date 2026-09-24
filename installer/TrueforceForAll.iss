@@ -76,7 +76,7 @@ RestartApplications=yes
 ; page (LicenseFile). The GPL-2.0 LICENSE is shown as an Information page at
 ; install (InfoBeforeFile) so users still read it, and is shipped into {app}
 ; (see [Files]).
-LicenseFile=..\EULA.txt
+LicenseFile=EULA.txt
 InfoBeforeFile=..\LICENSE
 SetupIconFile=
 
@@ -108,7 +108,7 @@ Source: "{#HelperPublish}\TrueforceForAll.LoopbackHelper.exe"; DestDir: "{app}";
 ; they travel with the install (the EULA is also the accept-to-install page;
 ; see LicenseFile above; EULA clause 8 points at PRIVACY.md).
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
-Source: "..\EULA.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "EULA.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\PRIVACY.md"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Factory preset data files -> {app}\PluginsData\Common\TrueforceForAll\factory.

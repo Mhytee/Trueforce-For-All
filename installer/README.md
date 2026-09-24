@@ -22,7 +22,7 @@ The user never picks an install path. It's locked to wherever SimHub lives.
 
 Releases are built **locally** by the maintainer. The full checklist
 (version bumps, changelog entries, tagging, draft-release upload) lives in
-[../RELEASING.md](../RELEASING.md). There is no CI build. The SimHub
+[../docs/RELEASING.md](../docs/RELEASING.md). There is no CI build. The SimHub
 plugin csproj references SimHub's redistributable DLLs by hint path, so
 a runner without SimHub installed can't compile the plugin.
 
