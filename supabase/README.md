@@ -8,7 +8,7 @@ and rate-limit. Direct table writes from the anon key are revoked.
 
 ## What's in here
 
-`migrations/` (90+, applied in filename order) grouped by subsystem:
+`migrations/` (133, applied in filename order) grouped by subsystem:
 
 - **CarFacts** (`0001`-`0004` + later refinements): community car data;
   submissions/votes/consensus with Wilson scoring, payload normalization,
@@ -29,6 +29,35 @@ linking and role sync, supporters sync, backup retention warn/GC).
 Run `ls migrations/` for the current set; migration filenames are
 descriptive. Always make new migrations idempotent (`if not exists`,
 `create or replace`, `drop ... if exists`) so re-runs are safe.
+
+`recovered/`: 28 migrations that are applied to production but existed in no
+branch as files, recovered verbatim from the ledger on 2026-09-24. They are a
+record of what ran, not a replay set. See its README before touching them.
+
+## Applying a change
+
+Commit the numbered file first, then apply it directly:
+
+```
+supabase db query --linked -f supabase/migrations/NNNN_name.sql
+```
+
+Then verify the objects it claimed to create really exist, by querying
+`pg_class` or `pg_proc` for them and checking their ACLs. A migration that
+silently did nothing looks exactly like one that worked.
+
+**Never run `supabase migration repair`, `db push`, `db pull` or `db reset`
+against this project.** Local files are numbered and the remote ledger is
+keyed by timestamp, so the two lists share nothing and the CLI reports all 133
+local files as pending and all 157 remote rows as missing. That is expected,
+not drift.
+
+`migration repair` is the dangerous one. The CLI offers it pre-filled with
+every version whenever it notices the mismatch, and it runs
+`DELETE FROM supabase_migrations.schema_migrations WHERE version = ANY($1)`.
+The `rollback` column is null on all 157 rows, so there is no undo, and that
+ledger was until recently the only copy of nine migrations' SQL. A full
+archive now lives outside the repo at `supabase-history-2026-09-24`.
 
 ## Security model
 
