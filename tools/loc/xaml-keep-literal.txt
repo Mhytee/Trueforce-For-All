@@ -1,0 +1,22 @@
+# Values allowed to stay as literal text in a CONVERTED XAML file (one per line,
+# verbatim). The no-literals test reads converted-files.txt and flags every
+# letter-bearing attribute value or text node in those files that is neither a
+# {loc:T Key} nor listed here. keys.ps1 also skips these values, so they never
+# get a key proposed. The FxTestEffectBox items are DirectInput protocol names
+# that the code reads back through Tag; they are not user-facing text.
+DAMPER
+SPRING
+FRICTION
+INERTIA
+SINE
+SQUARE
+TRIANGLE
+SAWUP
+SAWDOWN
+RAMP
+# Identifier values that read as English but are not translatable: the repo
+# address shown as a tooltip on two GitHub links, and the license tag of the
+# lovely-car-data credit line (a Run between two Hyperlinks; the value starts
+# with the comma and its trailing space is part of it).
+github.com/Mhytee/Trueforce-For-All
+, CC BY-NC-SA 4.0. 

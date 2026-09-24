@@ -16,6 +16,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -99,7 +100,13 @@ namespace TrueforceForAll.Plugin
             "OLEDTEST       Show sample wheel-screen frames on the OLED so you can check it works (no game running).\n" +
             "OLEDMS <ms>    How often the wheel's OLED may be redrawn, in milliseconds (20-1000; default 20 = 50 per second). Lower is smoother and uses more of the wheel's shared command channel. Type OLEDMS with no number to read the current value. Persists.\n" +
             "WARNEMAIL / WARN   Email yourself the backup-deletion warning, cycling 6mo -> 3mo -> 1mo -> 1wk -> 1day each use. Preview only; never changes your real data or timer.\n" +
-            "IRRAW          iRacing raw-data support probe: logs what the user's SimHub build exposes (whether SimHub's raw data object reaches us live per tick, whether SteeringWheelTorque carries force while iRacing's own force feedback is disabled, and whether the 360 Hz SteeringWheelTorque_ST array is reachable). One arming dump plus one '[TF4ALL] IRRAW' line every 5 s in SimHub.txt. Toggle.";
+            "IRRAW          iRacing raw-data support probe: logs what the user's SimHub build exposes (whether SimHub's raw data object reaches us live per tick, whether SteeringWheelTorque carries force while iRacing's own force feedback is disabled, and whether the 360 Hz SteeringWheelTorque_ST array is reachable). One arming dump plus one '[TF4ALL] IRRAW' line every 5 s in SimHub.txt. Toggle.\n" +
+            "LOCSTATUS      Language runtime status: the active language and where it came from (requested, parent or English), the English key count and how many keys the language lacks.\n" +
+            "LOCLANG <tag>  Switch the plugin's language for this session (LOCLANG es, LOCLANG de-DE); bound labels re-render live. Does not persist; a restart returns to the SimHub setting.\n" +
+            "LOCREPORT      Write missing-keys.<tag>.txt for the active language into PluginsData\\Common\\TrueforceForAll-Languages: every English key the language lacks, as JSON lines ready to paste into <tag>.json.\n" +
+            "LOCMARK        Bracket every string that fell back to English because the active language lacks it, in ⟦ ⟧, so untranslated text stands out on screen. Toggle.\n" +
+            "PSEUDO         Pseudo-localize the loaded panel's hard-coded and code-assigned text only: each such label is accented and made 30 percent longer, then every text is measured and each one that no longer fits is logged as '[TF4ALL] pseudo-clip' in SimHub.txt. Bound {loc:T} text is left alone; exercise it with tools\\loc\\pseudo.ps1 plus LOCLANG qps-ploc. Dev-only; reopen the panel for the real text.\n" +
+            "PSEUDOCJK      The same walk with a Hangul and Han fill of the same length, for font fallback and line height. Hard-coded and code-assigned text only, like PSEUDO; bound {loc:T} text is exercised with pseudo.ps1 plus LOCLANG qps-ploc.";
 
         private void CommitAccessCode()
         {
@@ -1670,10 +1677,137 @@ namespace TrueforceForAll.Plugin
                 return;
             }
 
+            // Language runtime (docs/localization-plan.md, Phase 1): what is
+            // active, what a language lacks, and whether the layout survives
+            // longer text. Session-only views; nothing here persists.
+            if (code.Equals("LOCSTATUS", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = LocStatusLine();
+                return;
+            }
+
+            if (code.StartsWith("LOCLANG", StringComparison.OrdinalIgnoreCase))
+            {
+                string tag = code.Substring("LOCLANG".Length).Trim();
+                AccessCodeBox.Text = string.Empty;
+                var locStore = Loc.Instance;
+                string locMsg;
+                if (locStore == null)
+                    locMsg = "Language runtime not initialized; see the Init lines in SimHub.txt.";
+                else if (tag.Length == 0)
+                    locMsg = "Usage: LOCLANG <tag>, e.g. LOCLANG es or LOCLANG de-DE. Session only.";
+                else
+                {
+                    try
+                    {
+                        locStore.Load(tag);
+                        locMsg = "Loaded " + tag + " for this session. " + LocStatusLine();
+                    }
+                    catch (Exception ex)
+                    {
+                        TrueforceDialog.LogError("LOCLANG", ex);
+                        locMsg = "Could not load " + tag + ": " + ex.Message;
+                    }
+                }
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = locMsg;
+                return;
+            }
+
+            if (code.Equals("LOCREPORT", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                var locStore = Loc.Instance;
+                string locMsg;
+                if (locStore == null)
+                    locMsg = "Language runtime not initialized; see the Init lines in SimHub.txt.";
+                else
+                {
+                    try
+                    {
+                        int missing = locStore.MissingKeys(locStore.ActiveTag).Count;
+                        string path = LocDiagnostics.WriteMissingReport(locStore.ActiveTag);
+                        locMsg = "Wrote " + path + ": " + missing + " of " + locStore.EnglishKeyCount
+                            + " English keys have no " + locStore.ActiveTag + " text.";
+                    }
+                    catch (Exception ex)
+                    {
+                        TrueforceDialog.LogError("LOCREPORT", ex);
+                        locMsg = "Could not write the missing-keys report: " + ex.Message;
+                    }
+                }
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = locMsg;
+                return;
+            }
+
+            if (code.Equals("LOCMARK", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                var locStore = Loc.Instance;
+                string locMsg;
+                if (locStore == null)
+                    locMsg = "Language runtime not initialized; see the Init lines in SimHub.txt.";
+                else
+                {
+                    locStore.MarkFallbacks = !locStore.MarkFallbacks;
+                    locMsg = locStore.MarkFallbacks
+                        ? "Fallback marking ON: text that falls back to English because " + locStore.ActiveTag
+                          + " lacks it is shown in ⟦ ⟧ brackets. Type LOCMARK again to turn it off."
+                        : "Fallback marking OFF.";
+                }
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = locMsg;
+                return;
+            }
+
+            if (code.Equals("PSEUDO", StringComparison.OrdinalIgnoreCase)
+                || code.Equals("PSEUDOCJK", StringComparison.OrdinalIgnoreCase))
+            {
+                bool cjk = code.Equals("PSEUDOCJK", StringComparison.OrdinalIgnoreCase);
+                AccessCodeBox.Text = string.Empty;
+                string locMsg;
+                try
+                {
+                    int rewritten = LocDiagnostics.PseudoWalk(this, cjk,
+                        msg => SimHub.Logging.Current.Info(msg),
+                        (clipped, measured) =>
+                        {
+                            if (AccessCodeStatus != null)
+                                AccessCodeStatus.Text = "Pseudo-localized the panel: " + clipped + " of " + measured
+                                    + " measured texts no longer fit; each is a '[TF4ALL] pseudo-clip' line in SimHub.txt. "
+                                    + "Reopen the plugin's panel to get the real text back.";
+                        });
+                    locMsg = "Pseudo-localized " + rewritten + " strings ("
+                        + (cjk ? "Hangul and Han fill, same length" : "accented, 30 percent longer")
+                        + "); measuring after layout...";
+                }
+                catch (Exception ex)
+                {
+                    TrueforceDialog.LogError(cjk ? "PSEUDOCJK" : "PSEUDO", ex);
+                    locMsg = "Pseudo-localization failed: " + ex.Message;
+                }
+                if (AccessCodeStatus != null) AccessCodeStatus.Text = locMsg;
+                return;
+            }
+
             // Give a visible result for a typed-but-unrecognized code instead
             // of swallowing it silently (blank input stays silent).
             if (!string.IsNullOrWhiteSpace(code) && AccessCodeStatus != null)
                 AccessCodeStatus.Text = "Code not recognized. Type HELP to list valid codes.";
+        }
+
+        // One line for LOCSTATUS and after LOCLANG: what the language runtime
+        // resolved and how complete it is.
+        private static string LocStatusLine()
+        {
+            var locStore = Loc.Instance;
+            if (locStore == null) return "Language runtime not initialized; see the Init lines in SimHub.txt.";
+            int missing;
+            try { missing = locStore.MissingKeys(locStore.ActiveTag).Count; }
+            catch { missing = -1; }
+            return "Language " + locStore.ActiveTag + " (source: " + locStore.ActiveSource
+                + ", requested " + locStore.RequestedTag + "), " + locStore.EnglishKeyCount + " English keys, "
+                + (missing < 0 ? "missing count unavailable" : missing + " missing")
+                + (locStore.MarkFallbacks ? ", fallback marking ON" : "") + ".";
         }
 
         // The OLED sample sequence used to be a button in the settings section.

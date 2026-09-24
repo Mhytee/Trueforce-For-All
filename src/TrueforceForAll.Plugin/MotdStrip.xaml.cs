@@ -20,6 +20,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Threading;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -82,6 +83,7 @@ namespace TrueforceForAll.Plugin
             // Re-evaluate the "more" button when the row width changes (window resize,
             // or a link/share button taking space), since fit depends on width.
             BodyText.SizeChanged += (s, e) => UpdateMoreButton();
+            SubscribeLanguageChanged();
         }
 
         public void Init(TrueforcePlugin plugin)
@@ -137,6 +139,10 @@ namespace TrueforceForAll.Plugin
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
+            // Unloaded drops the language handler; a host that re-attaches the
+            // strip gets it back here. The helper is idempotent, so the
+            // constructor's subscription and this one never stack.
+            SubscribeLanguageChanged();
             Rebuild();
             if (!_timer.IsEnabled) _timer.Start();
             // Panel load = activity, so the start-up MaybeRefresh below is allowed to fetch when the
@@ -164,7 +170,59 @@ namespace TrueforceForAll.Plugin
             });
         }
 
-        private void OnUnloaded(object sender, RoutedEventArgs e) => _timer.Stop();
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            _timer.Stop();
+            UnsubscribeLanguageChanged();
+        }
+
+        // The strip writes its button captions in code (RenderCurrent and
+        // UpdateMoreButton), so a language change re-renders the current
+        // message. The subscription is strong because, unlike the settings
+        // panel, this control pairs Loaded with Unloaded and can release the
+        // handler itself. _locStore remembers the instance subscribed to, so
+        // Unloaded always releases the same one. Loc.Instance is null only
+        // before Init, when there is no table to change yet.
+        private LocStore _locStore;
+
+        // Weak, like the other panels: the store lives for the whole process, so
+        // a strong delegate would root a discarded strip (and its parent panel)
+        // if Unloaded ever failed to fire. Remove before Add keeps ctor + Loaded
+        // from stacking two registrations.
+        private void SubscribeLanguageChanged()
+        {
+            var store = Loc.Instance;
+            if (store == null) return;
+            if (!ReferenceEquals(_locStore, store)) UnsubscribeLanguageChanged();
+            WeakEventManager<LocStore, EventArgs>.RemoveHandler(store, nameof(LocStore.LanguageChanged), OnLanguageChanged);
+            WeakEventManager<LocStore, EventArgs>.AddHandler(store, nameof(LocStore.LanguageChanged), OnLanguageChanged);
+            _locStore = store;
+        }
+
+        private void UnsubscribeLanguageChanged()
+        {
+            var store = _locStore;
+            if (store != null) WeakEventManager<LocStore, EventArgs>.RemoveHandler(store, nameof(LocStore.LanguageChanged), OnLanguageChanged);
+            _locStore = null;
+        }
+
+        // LocStore raises the event on the UI thread (the folder watcher
+        // dispatches its reload, the access codes run from the panel), and the
+        // CheckAccess guard covers any other raiser. RenderCurrent rewrites
+        // LinkButton and defers UpdateMoreButton, which rewrites MoreButton.
+        private void OnLanguageChanged(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => OnLanguageChanged(sender, e)));
+                return;
+            }
+            try { RenderCurrent(); }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[TF4ALL] MOTD strip language refresh failed: " + ex.Message);
+            }
+        }
 
         private void OnTick(object sender, EventArgs e)
         {
@@ -514,17 +572,17 @@ namespace TrueforceForAll.Plugin
             if (m.IsShareAction)
             {
                 LinkButton.Visibility = Visibility.Visible;
-                LinkButton.Content = string.IsNullOrWhiteSpace(m.LinkLabel) ? "Share" : m.LinkLabel;
+                LinkButton.Content = string.IsNullOrWhiteSpace(m.LinkLabel) ? Loc.T("Common_Share") : m.LinkLabel;
             }
             else if (m.IsLinkDiscordAction)
             {
                 LinkButton.Visibility = Visibility.Visible;
-                LinkButton.Content = string.IsNullOrWhiteSpace(m.LinkLabel) ? "Link Discord" : m.LinkLabel;
+                LinkButton.Content = string.IsNullOrWhiteSpace(m.LinkLabel) ? Loc.T("Motd_LinkDiscord") : m.LinkLabel;
             }
             else if (m.HasLink)
             {
                 LinkButton.Visibility = Visibility.Visible;
-                LinkButton.Content = string.IsNullOrWhiteSpace(m.LinkLabel) ? "Learn more" : m.LinkLabel;
+                LinkButton.Content = string.IsNullOrWhiteSpace(m.LinkLabel) ? Loc.T("Motd_Link") : m.LinkLabel;
             }
             else LinkButton.Visibility = Visibility.Collapsed;
 
@@ -574,11 +632,11 @@ namespace TrueforceForAll.Plugin
             if (_display.Count == 0) { MoreButton.Visibility = Visibility.Collapsed; return; }
             if (_expanded)
             {
-                MoreButton.Content = "less";
+                MoreButton.Content = Loc.T("Motd_Less");
                 MoreButton.Visibility = Visibility.Visible;
                 return;
             }
-            MoreButton.Content = "more";
+            MoreButton.Content = Loc.T("Motd_More");
             MoreButton.Visibility = IsBodyTextTrimmed() ? Visibility.Visible : Visibility.Collapsed;
         }
 

@@ -30,6 +30,7 @@ using GameReaderCommon;
 using SimHub.Plugins;
 using TrueforceForAll.Core;
 using TrueforceForAll.Plugin.Effects;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -187,6 +188,9 @@ namespace TrueforceForAll.Plugin
         // concurrent toggle-off can't NRE the provider. See FfbTrace.
         private volatile FfbTrace _ffbTrace;
         private FeedbackBoxInjector _feedbackInjector;
+        // Reloads the language table when a file in the TrueforceForAll-Languages
+        // folder changes (docs/localization-plan.md). Disposed in End.
+        private LocWatcher _locWatcher;
         // Reads the wheel's physical steering off its HID controller interface,
         // so the stationary spring has a position to work with even when the
         // game reports none (Forza pause / pre-race countdown). See
@@ -4245,6 +4249,30 @@ namespace TrueforceForAll.Plugin
                     + " windows=" + (UsageLanguage.UiLang() ?? "-") + "/" + (UsageLanguage.FmtLang() ?? "-"));
             }
             catch { /* diagnostics only; Init never depends on it */ }
+            // The language runtime (docs/localization-plan.md, Phase 1). English
+            // only in this phase: the table carries no keys until the XAML
+            // slices are converted, so nothing the user sees changes. Order:
+            // resolve the language first so the store exists, seed the
+            // reference copies, report, then watch the folder for edits.
+            try
+            {
+                string languagesRoot = Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-Languages");
+                string simhubCulture = ReadSimHubCultureSetting();
+                string requestedTag = !string.IsNullOrEmpty(simhubCulture) && simhubCulture != "?"
+                    ? simhubCulture
+                    : (UsageLanguage.UiLang() ?? "en");
+                var pluginAssembly = typeof(TrueforcePlugin).Assembly;
+                Action<string> warn = msg => SimHub.Logging.Current.Warn(msg);
+                Loc.Initialize(tag => LocSeed.ReadEmbeddedText(pluginAssembly, tag), languagesRoot, requestedTag, warn);
+                LocSeed.Run(pluginAssembly, languagesRoot, warn);
+                LocDiagnostics.StartupReport(msg => SimHub.Logging.Current.Info(msg), warn);
+                _locWatcher = new LocWatcher(languagesRoot, warn);
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[TF4ALL] Language runtime did not start: " + ex.Message
+                    + ". Labels fall back to their keys until the next start.");
+            }
             // Kept for the whole session: wheel detection runs later (and again
             // on a replug) and needs to know this PC had no settings file, so
             // first-run-only defaults can never reach an existing setup.
@@ -7014,6 +7042,11 @@ namespace TrueforceForAll.Plugin
             try { _sessionHeartbeatTimer?.Dispose(); } catch { }
             try { _usagePingTimer?.Dispose(); } catch { }
             _sessionHeartbeatTimer = null;
+
+            // Stop watching the language folder so a late edit cannot reload
+            // the table into a dead instance.
+            try { _locWatcher?.Dispose(); } catch { }
+            _locWatcher = null;
 
             // Flush a pending dash redline share (see DashScheduleRedlineShare)
             // so quitting inside the quiet window doesn't drop it, then stop

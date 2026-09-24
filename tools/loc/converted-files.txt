@@ -1,0 +1,3 @@
+src/TrueforceForAll.Plugin/SettingsControl.xaml|resources:SettingsControl.xaml,tab:SupportTab
+src/TrueforceForAll.Plugin/PresetManagerControl.xaml
+src/TrueforceForAll.Plugin/MotdStrip.xaml

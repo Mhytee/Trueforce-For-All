@@ -5,6 +5,7 @@
 <UserControl x:Class="TrueforceForAll.Plugin.PresetManagerControl"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:TrueforceForAll.Plugin.Localization"
         xmlns:sh="clr-namespace:SimHub.Plugins.Styles;assembly=SimHub.Plugins">
     <UserControl.Resources>
         <Style x:Key="HelpText" TargetType="TextBlock">
@@ -250,7 +251,7 @@
                     Background="#3A6BBE" CornerRadius="3">
                 <TextBlock Foreground="#FFFFFFFF" FontSize="11" FontWeight="SemiBold"
                            TextWrapping="Wrap"
-                           Text="Developer mode is active. Type DEV again in Settings to turn it off."/>
+                           Text="{loc:T PresetManager_DevModeBannerDeveloperModeIsActive}"/>
             </Border>
             <!-- Segmented selector in place of an inner tab strip. The one
                  refresh icon docked right is context-aware: in a Library
@@ -264,8 +265,8 @@
                         Width="28" Height="28" Padding="0"
                         Background="#3A3A3A" BorderBrush="#3A3A3A" Foreground="#CFCFCF"
                         Cursor="Hand" Click="RefreshLibrary_Click"
-                        AutomationProperties.Name="Refresh library"
-                        ToolTip="Refresh. In a Library view, reloads presets from disk (use after dropping JSON files into the library folders). When browsing Community or My uploads, re-fetches the latest list from the server.">
+                        AutomationProperties.Name="{loc:T PresetManager_RefreshLibrary_Name}"
+                        ToolTip="{loc:T PresetManager_RefreshLibrary_Tip}">
                     <TextBlock x:Name="RefreshGlyph" Text="&#x21BB;" FontSize="16" FontWeight="Bold"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                RenderTransformOrigin="0.5,0.5">
@@ -286,12 +287,12 @@
                         Foreground="#1E1E1E" FontWeight="Bold" FontSize="12"
                         Cursor="Hand" Click="UpdatesChip_Click"
                         Focusable="False" FocusVisualStyle="{x:Null}"
-                        ToolTip="One or more community presets you downloaded have a newer version. Click to review them."/>
+                        ToolTip="{loc:T PresetManager_UpdatesChip_Tip}"/>
                 <StackPanel Orientation="Horizontal">
-                    <RadioButton x:Name="SegGame"      Content="Game presets"      GroupName="PresetSeg" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="Segment_Checked"/>
-                    <RadioButton x:Name="SegCar"       Content="Car presets"       GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
-                    <RadioButton x:Name="SegCustom"    Content="Custom engines"    GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
-                    <RadioButton x:Name="SegPacks"     Content="Packs"             GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
+                    <RadioButton x:Name="SegGame"      Content="{loc:T PresetManager_SegGame}"      GroupName="PresetSeg" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="Segment_Checked"/>
+                    <RadioButton x:Name="SegCar"       Content="{loc:T PresetManager_SegCar}"       GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
+                    <RadioButton x:Name="SegCustom"    Content="{loc:T PresetManager_SegCustom}"    GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
+                    <RadioButton x:Name="SegPacks"     Content="{loc:T PresetManager_SegPacks}"             GroupName="PresetSeg" Style="{StaticResource SegmentButton}" Checked="Segment_Checked"/>
                     <!-- ONE global view-mode strip: Library | Community | My
                          uploads. It applies to whichever segment (kind) is
                          active and PERSISTS across segment switches, so picking
@@ -304,12 +305,12 @@
                             Margin="12,0,0,0" Padding="0"
                             BorderBrush="#3A3A3A" BorderThickness="1,0,0,0">
                         <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
-                            <RadioButton x:Name="ModeLibrary"   Content="Library"    GroupName="ManagerMode" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="Mode_Checked"
-                                         ToolTip="Presets saved on this machine (yours plus anything downloaded from the community)."/>
-                            <RadioButton x:Name="ModeCommunity" Content="Community"  GroupName="ManagerMode" Style="{StaticResource SegmentButton}" Checked="Mode_Checked"
-                                         ToolTip="Browse presets shared by other drivers."/>
-                            <RadioButton x:Name="ModeUploads"   Content="My uploads" GroupName="ManagerMode" Style="{StaticResource SegmentButton}" Checked="Mode_Checked"
-                                         ToolTip="Presets you've uploaded. Select a row to edit or delete your upload."/>
+                            <RadioButton x:Name="ModeLibrary"   Content="{loc:T PresetManager_ModeLibrary}"    GroupName="ManagerMode" Style="{StaticResource SegmentButton}" IsChecked="True" Checked="Mode_Checked"
+                                         ToolTip="{loc:T PresetManager_ModeLibrary_Tip}"/>
+                            <RadioButton x:Name="ModeCommunity" Content="{loc:T PresetManager_ModeCommunity}"  GroupName="ManagerMode" Style="{StaticResource SegmentButton}" Checked="Mode_Checked"
+                                         ToolTip="{loc:T PresetManager_ModeCommunity_Tip}"/>
+                            <RadioButton x:Name="ModeUploads"   Content="{loc:T PresetManager_ModeUploads}" GroupName="ManagerMode" Style="{StaticResource SegmentButton}" Checked="Mode_Checked"
+                                         ToolTip="{loc:T PresetManager_ModeUploads_Tip}"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -324,12 +325,12 @@
                  buttons, then details above them. LastChildFill: list. -->
             <DockPanel x:Name="GamePanel">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Select a preset to see what it contains. Built-ins can't be renamed or deleted; saving over one makes a copy."/>
+                               Text="{loc:T PresetManager_GameSelectAPresetToSee}"/>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
-                                   Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
+                                   Foreground="#FFB0B0B0" FontSize="11" Text="{loc:T Common_Filter}"/>
                         <TextBox x:Name="GameSearchBox" Height="26" Padding="6,2"
-                                 ToolTip="Type to narrow the list by preset name. Cleared automatically when the tab reloads."
+                                 ToolTip="{loc:T PresetManager_GameSearch_Tip}"
                                  TextChanged="GameSearchBox_TextChanged"/>
                     </DockPanel>
                     <!-- Bottom-docked buttons row. The selected-row details
@@ -341,18 +342,18 @@
                             <!-- Order mirrors the Car action bar: apply, edit,
                                  share, destructive last, DEV trailing. Wraps to a
                                  second row instead of clipping on a narrow panel. -->
-                            <Button x:Name="GameSetDefaultBtn" Content="Set default games…" Style="{StaticResource SharePrimaryButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
-                                    ToolTip="Check the games this preset should auto-load for. Uncheck to drop a game's binding."/>
-                            <Button x:Name="GameEditBtn"       Content="Edit"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
-                                    ToolTip="Open this preset for editing on the Effects tab, with an Editing banner. Edit and save the usual way; Done returns you to your previously-active preset (saving over a built-in makes a copy)."/>
-                            <Button x:Name="GameDuplicateBtn"  Content="Duplicate…"     Style="{StaticResource RowButton}" Click="GameDuplicate_Click"  IsEnabled="False"/>
-                            <Button x:Name="GameRenameBtn"     Content="Rename…"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
-                            <Button x:Name="GameShareBtn"      Content="Share"          Style="{StaticResource RowButton}" Click="GameShare_Click"      IsEnabled="False"
+                            <Button x:Name="GameSetDefaultBtn" Content="{loc:T PresetManager_GameSetDefault}" Style="{StaticResource SharePrimaryButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
+                                    ToolTip="{loc:T PresetManager_GameSetDefault_Tip}"/>
+                            <Button x:Name="GameEditBtn"       Content="{loc:T Common_Edit}"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
+                                    ToolTip="{loc:T PresetManager_GameEdit_Tip}"/>
+                            <Button x:Name="GameDuplicateBtn"  Content="{loc:T Common_DuplicateEllipsis}"     Style="{StaticResource RowButton}" Click="GameDuplicate_Click"  IsEnabled="False"/>
+                            <Button x:Name="GameRenameBtn"     Content="{loc:T Common_RenameEllipsis}"        Style="{StaticResource RowButton}" Click="GameRename_Click"     IsEnabled="False"/>
+                            <Button x:Name="GameShareBtn"      Content="{loc:T Common_Share}"          Style="{StaticResource RowButton}" Click="GameShare_Click"      IsEnabled="False"
                                     ToolTipService.ShowOnDisabled="True"
-                                    ToolTip="Upload this game preset to the community so other drivers can find it."/>
-                            <Button x:Name="GameDeleteBtn"     Content="Delete"         Style="{StaticResource DangerButton}" Click="GameDelete_Click"     IsEnabled="False"/>
-                            <Button x:Name="GamePromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
-                                    ToolTip="DEV: promote this preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
+                                    ToolTip="{loc:T PresetManager_GameShare_Tip}"/>
+                            <Button x:Name="GameDeleteBtn"     Content="{loc:T Common_Delete}"         Style="{StaticResource DangerButton}" Click="GameDelete_Click"     IsEnabled="False"/>
+                            <Button x:Name="GamePromoteBuiltinBtn" Content="{loc:T PresetManager_GamePromoteBuiltin}" Style="{StaticResource RowButton}" Width="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
+                                    ToolTip="{loc:T PresetManager_GamePromoteBuiltin_Tip}"/>
                         </WrapPanel>
                         <!-- Inline result line for rename / duplicate / delete /
                              set-default, mirroring the Community pane's status. -->
@@ -382,7 +383,7 @@
                                 <DataGridTemplateColumn.Header>
                                     <CheckBox x:Name="GameSelectAllCheck" IsThreeState="False"
                                               Click="GameSelectAll_Click" HorizontalAlignment="Left" Margin="-8,0,0,0"
-                                              ToolTip="Check / uncheck every visible game preset."/>
+                                              ToolTip="{loc:T PresetManager_GameSelectAll_Tip}"/>
                                 </DataGridTemplateColumn.Header>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -393,9 +394,9 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Default for"  Width="240" MinWidth="130" Binding="{Binding DefaultForLabel}"/>
-                            <DataGridTextColumn Header="Preset name"  Width="*"   MinWidth="130" Binding="{Binding Name}"/>
-                            <DataGridTextColumn Header="Source"       Width="120" MinWidth="100" Binding="{Binding Source}"/>
+                            <DataGridTextColumn Header="{loc:T PresetManager_GameListDefaultFor_Header}"  Width="240" MinWidth="130" Binding="{Binding DefaultForLabel}"/>
+                            <DataGridTextColumn Header="{loc:T Common_PresetName}"  Width="*"   MinWidth="130" Binding="{Binding Name}"/>
+                            <DataGridTextColumn Header="{loc:T Common_Source}"       Width="120" MinWidth="100" Binding="{Binding Source}"/>
                         </DataGrid.Columns>
                     </DataGrid>
                     <!-- Empty-state overlay: visible when the grid has
@@ -404,7 +405,7 @@
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="#FFB0B0B0" FontSize="12" TextWrapping="Wrap"
                                TextAlignment="Center" MaxWidth="420" Margin="0,40,0,0"
-                               Text="No game presets yet. Save your tuning as a preset from the Effects tab to start a library."/>
+                               Text="{loc:T PresetManager_GameListEmpty}"/>
                     </Grid>
             </DockPanel>
 
@@ -414,15 +415,15 @@
                  above them), list last (LastChildFill). -->
             <DockPanel x:Name="CarPanel" Visibility="Collapsed">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="A car can have several presets; the ★ in Default marks the one that loads for that car."/>
+                               Text="{loc:T PresetManager_CarACarCanHaveSeveral}"/>
                     <!-- Per-game filter chips. Rebuilt from the loaded rows on
                          every ReloadCars; click a chip to narrow to that game. -->
                     <WrapPanel DockPanel.Dock="Top" x:Name="CarGameChips" Margin="0,0,0,6"/>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
-                                   Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
+                                   Foreground="#FFB0B0B0" FontSize="11" Text="{loc:T Common_Filter}"/>
                         <TextBox x:Name="CarSearchBox" Height="26" Padding="6,2"
-                                 ToolTip="Type to narrow the list by car ID or preset name. Composes with the game chips above."
+                                 ToolTip="{loc:T PresetManager_CarSearch_Tip}"
                                  TextChanged="CarSearchBox_TextChanged"/>
                     </DockPanel>
                     <!-- Bottom-docked: buttons at the very bottom; details
@@ -439,21 +440,21 @@
                                  (vs the preset) lives in the Car facts panel's
                                  Name box on the active card, so there's no
                                  second "name" button here. -->
-                            <Button x:Name="CarSetActiveBtn" Content="Set as default" Style="{StaticResource SharePrimaryButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
-                                    ToolTip="Make this the preset that loads for this car by default. With multiple rows checked, sets each as its own car's default (one per car; it won't apply if two rows target the same car)."/>
-                            <Button x:Name="CarClearDefaultBtn" Content="Clear default" Style="{StaticResource RowButton}" Click="CarClearDefault_Click" IsEnabled="False"
-                                    ToolTip="Remove this car's default preset so it falls back to the game preset instead."/>
-                            <Button x:Name="CarEditBtn"      Content="Edit"         Style="{StaticResource RowButton}" Click="CarEdit_Click"      IsEnabled="False"
-                                    ToolTip="Open this car preset on the Effects tab to change its values. Saving over a built-in makes a copy."/>
-                            <Button x:Name="CarDuplicateBtn" Content="Duplicate…"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>
-                            <Button x:Name="CarRenameBtn"    Content="Rename…"      Style="{StaticResource RowButton}" Click="CarRename_Click"    IsEnabled="False"
-                                    ToolTip="Rename this preset (e.g. 'Wet setup' to 'Endurance'). To rename the CAR instead, use the Name box in Car facts on the active card."/>
-                            <Button x:Name="CarShareBtn"     Content="Share"        Style="{StaticResource RowButton}" Click="CarShare_Click"     IsEnabled="False"
+                            <Button x:Name="CarSetActiveBtn" Content="{loc:T PresetManager_CarSetActive}" Style="{StaticResource SharePrimaryButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
+                                    ToolTip="{loc:T PresetManager_CarSetActive_Tip}"/>
+                            <Button x:Name="CarClearDefaultBtn" Content="{loc:T PresetManager_CarClearDefault}" Style="{StaticResource RowButton}" Click="CarClearDefault_Click" IsEnabled="False"
+                                    ToolTip="{loc:T PresetManager_CarClearDefault_Tip}"/>
+                            <Button x:Name="CarEditBtn"      Content="{loc:T Common_Edit}"         Style="{StaticResource RowButton}" Click="CarEdit_Click"      IsEnabled="False"
+                                    ToolTip="{loc:T PresetManager_CarEdit_Tip}"/>
+                            <Button x:Name="CarDuplicateBtn" Content="{loc:T Common_DuplicateEllipsis}"   Style="{StaticResource RowButton}" Click="CarDuplicate_Click" IsEnabled="False"/>
+                            <Button x:Name="CarRenameBtn"    Content="{loc:T Common_RenameEllipsis}"      Style="{StaticResource RowButton}" Click="CarRename_Click"    IsEnabled="False"
+                                    ToolTip="{loc:T PresetManager_CarRename_Tip}"/>
+                            <Button x:Name="CarShareBtn"     Content="{loc:T Common_Share}"        Style="{StaticResource RowButton}" Click="CarShare_Click"     IsEnabled="False"
                                     ToolTipService.ShowOnDisabled="True"
-                                    ToolTip="Upload this car preset to the community so other drivers can find it."/>
-                            <Button x:Name="CarDeleteBtn"    Content="Delete"       Style="{StaticResource DangerButton}" Click="CarDelete_Click"    IsEnabled="False"/>
-                            <Button x:Name="CarPromoteBuiltinBtn" Content="Set as built-in" Style="{StaticResource RowButton}" Width="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
-                                    ToolTip="DEV: promote this car preset to a factory built-in. It gets the 'Built-in' badge and its file moves to the factory folder. Pick one row or check several to bulk-promote."/>
+                                    ToolTip="{loc:T PresetManager_CarShare_Tip}"/>
+                            <Button x:Name="CarDeleteBtn"    Content="{loc:T Common_Delete}"       Style="{StaticResource DangerButton}" Click="CarDelete_Click"    IsEnabled="False"/>
+                            <Button x:Name="CarPromoteBuiltinBtn" Content="{loc:T PresetManager_CarPromoteBuiltin}" Style="{StaticResource RowButton}" Width="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
+                                    ToolTip="{loc:T PresetManager_CarPromoteBuiltin_Tip}"/>
                         </WrapPanel>
                         <TextBlock x:Name="CarLibStatus" DockPanel.Dock="Left" VerticalAlignment="Center"
                                    Foreground="#7FC77F" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" Text=""/>
@@ -477,7 +478,7 @@
                                 <DataGridTemplateColumn.Header>
                                     <CheckBox x:Name="CarSelectAllCheck" IsThreeState="False"
                                               Click="CarSelectAll_Click" HorizontalAlignment="Left" Margin="-8,0,0,0"
-                                              ToolTip="Check / uncheck every visible car preset."/>
+                                              ToolTip="{loc:T PresetManager_CarSelectAll_Tip}"/>
                                 </DataGridTemplateColumn.Header>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -488,40 +489,40 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Default"     Width="60"  MinWidth="60"  Binding="{Binding ActiveLabel}"/>
-                            <DataGridTextColumn Header="Game"        Width="130" MinWidth="70"  Binding="{Binding GameLabel}"/>
-                            <DataGridTextColumn Header="Car name"    Width="*"   MinWidth="160" Binding="{Binding CarName}"/>
-                            <DataGridTextColumn Header="Preset name" Width="190" MinWidth="130" Binding="{Binding DisplayName}"/>
-                            <DataGridTextColumn Header="Car ID"      Width="170" MinWidth="120" Binding="{Binding CarId}"/>
-                            <DataGridTextColumn Header="Source"      Width="120" MinWidth="100" Binding="{Binding Source}"/>
+                            <DataGridTextColumn Header="{loc:T PresetManager_CarListDefault_Header}"     Width="60"  MinWidth="60"  Binding="{Binding ActiveLabel}"/>
+                            <DataGridTextColumn Header="{loc:T Common_Game}"        Width="130" MinWidth="70"  Binding="{Binding GameLabel}"/>
+                            <DataGridTextColumn Header="{loc:T PresetManager_CarListCarName_Header}"    Width="*"   MinWidth="160" Binding="{Binding CarName}"/>
+                            <DataGridTextColumn Header="{loc:T Common_PresetName}" Width="190" MinWidth="130" Binding="{Binding DisplayName}"/>
+                            <DataGridTextColumn Header="{loc:T Common_CarId}"      Width="170" MinWidth="120" Binding="{Binding CarId}"/>
+                            <DataGridTextColumn Header="{loc:T Common_Source}"      Width="120" MinWidth="100" Binding="{Binding Source}"/>
                         </DataGrid.Columns>
                     </DataGrid>
                     <TextBlock x:Name="CarListEmpty" Visibility="Collapsed"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="#FFB0B0B0" FontSize="12" TextWrapping="Wrap"
                                TextAlignment="Center" MaxWidth="420" Margin="0,40,0,0"
-                               Text="No car-specific presets yet. Load a car in a game, tune an effect section, and use Save for this car on the Effects tab."/>
+                               Text="{loc:T PresetManager_CarListEmpty}"/>
                     </Grid>
             </DockPanel>
 
             <!-- ===================== Custom engines ===================== -->
             <DockPanel x:Name="CustomPanel" Visibility="Collapsed">
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Engines you've created. Built-in layouts (V8, Rotary, etc.) aren't listed."/>
+                               Text="{loc:T PresetManager_CustomEnginesYouVeCreated}"/>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
-                                   Foreground="#FFB0B0B0" FontSize="11" Text="Filter:"/>
+                                   Foreground="#FFB0B0B0" FontSize="11" Text="{loc:T Common_Filter}"/>
                         <TextBox x:Name="CustomSearchBox" Height="26" Padding="6,2"
-                                 ToolTip="Type to narrow the list by engine name."
+                                 ToolTip="{loc:T PresetManager_CustomSearch_Tip}"
                                  TextChanged="CustomSearchBox_TextChanged"/>
                     </DockPanel>
                     <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <Button x:Name="CustomEditBtn"   Content="Edit…"   Style="{StaticResource RowButton}" Click="CustomEdit_Click"   IsEnabled="False"/>
-                            <Button x:Name="CustomShareBtn"  Content="Share"  Style="{StaticResource RowButton}" Click="CustomShare_Click"  IsEnabled="False"
+                            <Button x:Name="CustomEditBtn"   Content="{loc:T Common_EditEllipsis}"   Style="{StaticResource RowButton}" Click="CustomEdit_Click"   IsEnabled="False"/>
+                            <Button x:Name="CustomShareBtn"  Content="{loc:T Common_Share}"  Style="{StaticResource RowButton}" Click="CustomShare_Click"  IsEnabled="False"
                                     ToolTipService.ShowOnDisabled="True"
-                                    ToolTip="Upload this custom engine to the community so other drivers can find it."/>
-                            <Button x:Name="CustomDeleteBtn" Content="Delete"  Style="{StaticResource DangerButton}" Click="CustomDelete_Click" IsEnabled="False"/>
+                                    ToolTip="{loc:T PresetManager_CustomShare_Tip}"/>
+                            <Button x:Name="CustomDeleteBtn" Content="{loc:T Common_Delete}"  Style="{StaticResource DangerButton}" Click="CustomDelete_Click" IsEnabled="False"/>
                         </StackPanel>
                         <TextBlock x:Name="CustomCheckedLabel" VerticalAlignment="Center"
                                    Foreground="#FFD54F" FontSize="11" Margin="0,0,8,0" Text=""/>
@@ -543,7 +544,7 @@
                                 <DataGridTemplateColumn.Header>
                                     <CheckBox x:Name="CustomSelectAllCheck" IsThreeState="False"
                                               Click="CustomSelectAll_Click" HorizontalAlignment="Left" Margin="-8,0,0,0"
-                                              ToolTip="Check / uncheck every visible custom engine."/>
+                                              ToolTip="{loc:T PresetManager_CustomSelectAll_Tip}"/>
                                 </DataGridTemplateColumn.Header>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -554,16 +555,16 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Name"   Width="*"   MinWidth="150" Binding="{Binding Name}"/>
-                            <DataGridTextColumn Header="Type"   Width="130" MinWidth="80"  Binding="{Binding TypeLabel}"/>
-                            <DataGridTextColumn Header="Detail" Width="220" MinWidth="100" Binding="{Binding Detail}"/>
+                            <DataGridTextColumn Header="{loc:T Common_Name}"   Width="*"   MinWidth="150" Binding="{Binding Name}"/>
+                            <DataGridTextColumn Header="{loc:T PresetManager_CustomListType_Header}"   Width="130" MinWidth="80"  Binding="{Binding TypeLabel}"/>
+                            <DataGridTextColumn Header="{loc:T PresetManager_CustomListDetail_Header}" Width="220" MinWidth="100" Binding="{Binding Detail}"/>
                         </DataGrid.Columns>
                     </DataGrid>
                     <TextBlock x:Name="CustomListEmpty" Visibility="Collapsed"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="#FFB0B0B0" FontSize="12" TextWrapping="Wrap"
                                TextAlignment="Center" MaxWidth="420" Margin="0,40,0,0"
-                               Text="No custom engines yet. Create one from the Engine pulse section on the Effects tab (drop-down > New custom engine)."/>
+                               Text="{loc:T PresetManager_CustomListEmpty}"/>
                     </Grid>
             </DockPanel>
 
@@ -574,15 +575,15 @@
                  PackManagerWindow has, plus the new Create button. -->
             <DockPanel x:Name="PacksPanel" Visibility="Collapsed">
                 <TextBlock DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="A pack bundles several presets at once. Find shared packs in the Community view."/>
+                           Text="{loc:T PresetManager_PacksAPackBundlesSeveral}"/>
                 <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                        <Button x:Name="PacksCreateBtn"      Content="Create a pack…"   Style="{StaticResource RowButton}" Width="120" Click="CreatePack_Click"
-                                ToolTip="Bundle game presets, car presets, and custom engines from your library into a pack and upload it to the community."/>
-                        <Button x:Name="PacksSetDefaultsBtn" Content="Set as defaults"  Style="{StaticResource SharePrimaryButton}" Width="120" Click="PacksSetDefaults_Click" IsEnabled="False"
-                                ToolTip="Bind every preset this pack ships as the auto-load default for the games / cars it targets."/>
-                        <Button x:Name="PacksRemoveBtn"      Content="Remove pack"      Style="{StaticResource DangerButton}" Width="100" Click="PacksRemove_Click" IsEnabled="False"
-                                ToolTip="Delete every preset this pack installed that you haven't edited. User-edited entries are preserved."/>
+                        <Button x:Name="PacksCreateBtn"      Content="{loc:T PresetManager_PacksCreate}"   Style="{StaticResource RowButton}" Width="120" Click="CreatePack_Click"
+                                ToolTip="{loc:T PresetManager_PacksCreate_Tip}"/>
+                        <Button x:Name="PacksSetDefaultsBtn" Content="{loc:T PresetManager_PacksSetDefaults}"  Style="{StaticResource SharePrimaryButton}" Width="120" Click="PacksSetDefaults_Click" IsEnabled="False"
+                                ToolTip="{loc:T PresetManager_PacksSetDefaults_Tip}"/>
+                        <Button x:Name="PacksRemoveBtn"      Content="{loc:T PresetManager_PacksRemove}"      Style="{StaticResource DangerButton}" Width="100" Click="PacksRemove_Click" IsEnabled="False"
+                                ToolTip="{loc:T PresetManager_PacksRemove_Tip}"/>
                     </StackPanel>
                     <TextBlock x:Name="PacksStatusLabel" VerticalAlignment="Center"
                                Foreground="#FFB0B0B0" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" Text=""/>
@@ -598,11 +599,11 @@
                           SelectionChanged="PacksList_SelectionChanged"
                           MouseMove="List_MouseMove" MouseLeave="List_MouseLeave">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Pack name" Width="*"   MinWidth="160" Binding="{Binding Name}"/>
-                        <DataGridTextColumn Header="Shared by"    Width="140" MinWidth="80"  Binding="{Binding Author}"/>
-                        <DataGridTextColumn Header="Version"   Width="80"  MinWidth="60"  Binding="{Binding Version}"/>
-                        <DataGridTextColumn Header="Entries"   Width="70"  MinWidth="60"  Binding="{Binding EntryCount}"/>
-                        <DataGridTextColumn Header="Imported"  Width="120" MinWidth="100" Binding="{Binding ImportedLabel}"/>
+                        <DataGridTextColumn Header="{loc:T PresetManager_PacksListPackName_Header}" Width="*"   MinWidth="160" Binding="{Binding Name}"/>
+                        <DataGridTextColumn Header="{loc:T Common_SharedBy}"    Width="140" MinWidth="80"  Binding="{Binding Author}"/>
+                        <DataGridTextColumn Header="{loc:T PresetManager_PacksListVersion_Header}"   Width="80"  MinWidth="60"  Binding="{Binding Version}"/>
+                        <DataGridTextColumn Header="{loc:T PresetManager_PacksListEntries_Header}"   Width="70"  MinWidth="60"  Binding="{Binding EntryCount}"/>
+                        <DataGridTextColumn Header="{loc:T PresetManager_PacksListImported_Header}"  Width="120" MinWidth="100" Binding="{Binding ImportedLabel}"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>
@@ -613,7 +614,7 @@
                  the segment strip above, not by an in-panel switch. -->
             <DockPanel x:Name="CommunityPanel" Visibility="Collapsed">
                 <TextBlock x:Name="CommunityHelpText" DockPanel.Dock="Top" Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                           Text="Browse and download community presets for the car you're driving."/>
+                           Text="{loc:T PresetManager_CommunityHelp}"/>
                 <!-- Gated empty-state. Community presets need online features turned
                      on AND an account (browse is account-required). When either is
                      missing, ApplyCommunityGate shows this in place of the browser
@@ -630,23 +631,23 @@
                          "Enable community features" label clips. 220 fits both labels. -->
                     <Button x:Name="CommunityGateBtn" Style="{StaticResource SharePrimaryButton}"
                             HorizontalAlignment="Center" Width="220" Height="32"
-                            Click="CommunityGate_Click" Content="Enable community features"/>
+                            Click="CommunityGate_Click" Content="{loc:T PresetManager_CommunityGate}"/>
                 </StackPanel>
                 <!-- Search row. Typing broadens past the active-car default to
                      all cars across the selected games, matching preset name,
                      author, or car name. The ✕ clears back to the active car. -->
                 <DockPanel x:Name="CommunitySearchRow" DockPanel.Dock="Top" Margin="0,0,0,8">
                     <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
-                               Foreground="#FFB0B0B0" FontSize="11" Text="Search:"/>
+                               Foreground="#FFB0B0B0" FontSize="11" Text="{loc:T PresetManager_CommunitySearchRowSearch}"/>
                     <Button x:Name="CommunitySearchClearBtn" DockPanel.Dock="Right" Width="26" Height="26"
                             Margin="6,0,0,0" Content="&#x2715;"
                             Background="#3A3A3A" BorderBrush="#3A3A3A" Foreground="#CFCFCF"
                             Cursor="Hand" Click="CommunitySearchClear_Click"
                             Focusable="False" FocusVisualStyle="{x:Null}"
-                            ToolTip="Clear the search and go back to the car you're driving."/>
+                            ToolTip="{loc:T PresetManager_CommunitySearchClear_Tip}"/>
                     <TextBox x:Name="CommunitySearchBox" Height="26" Padding="6,2"
                              TextChanged="CommunitySearchBox_TextChanged"
-                             ToolTip="Find presets by name, author, or car name (e.g. type 'mx5') across the games selected below. Clear to go back to the car you're driving."/>
+                             ToolTip="{loc:T PresetManager_CommunitySearch_Tip}"/>
                 </DockPanel>
                 <!-- Multi-select game filter (built in code-behind). Lets the
                      user widen the browse to several games at once. Visible
@@ -654,29 +655,29 @@
                 <WrapPanel x:Name="CommunityGameChips" DockPanel.Dock="Top" Margin="0,0,0,8"/>
                 <DockPanel x:Name="CommunityScopeRow" DockPanel.Dock="Top" Margin="0,0,0,8">
                     <TextBlock x:Name="CommunityScopeLabel" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0"
-                               Foreground="#FFB0B0B0" FontSize="11" Text="Active car:"/>
+                               Foreground="#FFB0B0B0" FontSize="11" Text="{loc:T PresetManager_CommunityScope}"/>
                     <ComboBox x:Name="CommunitySortCombo" DockPanel.Dock="Right" Width="120" Height="26"
                               SelectionChanged="CommunitySort_Changed"
-                              ToolTip="How to order the list.">
-                        <ComboBoxItem Content="Top rated" IsSelected="True"/>
-                        <ComboBoxItem Content="Newest"/>
-                        <ComboBoxItem Content="Most downloaded"/>
+                              ToolTip="{loc:T PresetManager_CommunitySort_Tip}">
+                        <ComboBoxItem Content="{loc:T PresetManager_CommunitySortTopRated}" IsSelected="True"/>
+                        <ComboBoxItem Content="{loc:T PresetManager_CommunitySortNewest}"/>
+                        <ComboBoxItem Content="{loc:T PresetManager_CommunitySortMostDownloaded}"/>
                     </ComboBox>
                     <TextBlock x:Name="CommunityCarLabel" VerticalAlignment="Center"
-                               Foreground="#FFE0E0E0" FontSize="12" Text="(none)"/>
+                               Foreground="#FFE0E0E0" FontSize="12" Text="{loc:T PresetManager_CommunityCar}"/>
                 </DockPanel>
                 <DockPanel x:Name="CommunityActionsRow" DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                        <Button x:Name="CommunityFixAppealBtn" Content="Fix / appeal" Style="{StaticResource SharePrimaryButton}" Click="CommunityFixAppeal_Click" IsEnabled="False" Visibility="Collapsed"
-                                ToolTip="This upload was removed or suspended. Fix it and request a moderator review."/>
-                        <Button x:Name="CommunityReportBtn"   Content="Report"   Style="{StaticResource RowButton}" Click="CommunityReport_Click"   IsEnabled="False"
-                                ToolTip="Flag inappropriate content for moderator review."/>
-                        <Button x:Name="CommunityEditBtn"     Content="Edit…"    Style="{StaticResource RowButton}" Click="CommunityEdit_Click"     IsEnabled="False" Visibility="Collapsed"
-                                ToolTip="Edit one of your own uploads (name, description, body) without resetting its votes and downloads. Visible only on rows you uploaded while signed in."/>
-                        <Button x:Name="CommunityDeleteBtn"   Content="Delete"   Style="{StaticResource DangerButton}" Click="CommunityDelete_Click"   IsEnabled="False" Visibility="Collapsed"
-                                ToolTip="Soft-delete one of your own uploads. Visible only on rows you uploaded while signed in."/>
-                        <Button x:Name="CommunityDownloadBtn" Content="Download…" Style="{StaticResource SharePrimaryButton}" Click="CommunityDownload_Click" IsEnabled="False"
-                                ToolTip="Opens a preview of what's inside; pick which parts to import, then confirm."/>
+                        <Button x:Name="CommunityFixAppealBtn" Content="{loc:T PresetManager_CommunityFixAppeal}" Style="{StaticResource SharePrimaryButton}" Click="CommunityFixAppeal_Click" IsEnabled="False" Visibility="Collapsed"
+                                ToolTip="{loc:T PresetManager_CommunityFixAppeal_Tip}"/>
+                        <Button x:Name="CommunityReportBtn"   Content="{loc:T PresetManager_CommunityReport}"   Style="{StaticResource RowButton}" Click="CommunityReport_Click"   IsEnabled="False"
+                                ToolTip="{loc:T PresetManager_CommunityReport_Tip}"/>
+                        <Button x:Name="CommunityEditBtn"     Content="{loc:T Common_EditEllipsis}"    Style="{StaticResource RowButton}" Click="CommunityEdit_Click"     IsEnabled="False" Visibility="Collapsed"
+                                ToolTip="{loc:T PresetManager_CommunityEdit_Tip}"/>
+                        <Button x:Name="CommunityDeleteBtn"   Content="{loc:T Common_Delete}"   Style="{StaticResource DangerButton}" Click="CommunityDelete_Click"   IsEnabled="False" Visibility="Collapsed"
+                                ToolTip="{loc:T PresetManager_CommunityDelete_Tip}"/>
+                        <Button x:Name="CommunityDownloadBtn" Content="{loc:T PresetManager_CommunityDownload}" Style="{StaticResource SharePrimaryButton}" Click="CommunityDownload_Click" IsEnabled="False"
+                                ToolTip="{loc:T PresetManager_CommunityDownload_Tip}"/>
                     </StackPanel>
                     <TextBlock x:Name="CommunityStatusLabel" VerticalAlignment="Center"
                                Foreground="#FFB0B0B0" FontSize="11" Margin="0,0,8,0" Text=""/>
@@ -687,10 +688,10 @@
                 </DockPanel>
                 <!-- Paginate: pull the next page on demand instead of all at once.
                      Cached, so a return visit shows everything already loaded. -->
-                <Button x:Name="CommunityShowMoreBtn" DockPanel.Dock="Bottom" Content="Show more"
+                <Button x:Name="CommunityShowMoreBtn" DockPanel.Dock="Bottom" Content="{loc:T PresetManager_CommunityShowMore}"
                         Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,8,0,0"
                         Padding="16,4" Click="CommunityShowMore_Click"
-                        ToolTip="Load the next page of community results."/>
+                        ToolTip="{loc:T PresetManager_CommunityShowMore_Tip}"/>
                 <Grid>
                 <DataGrid x:Name="CommunityList"
                           AutoGenerateColumns="False" CanUserAddRows="False"
@@ -713,7 +714,7 @@
                         <!-- Reddit-style vote column: up + score + down. Click
                              on the same arrow you previously voted toggles it
                              off (retraction). Tag carries the row reference. -->
-                        <DataGridTemplateColumn Header="Vote" Width="64" MinWidth="64" CanUserResize="False" CanUserReorder="False">
+                        <DataGridTemplateColumn Header="{loc:T PresetManager_CommunityListVote_Header}" Width="64" MinWidth="64" CanUserResize="False" CanUserReorder="False">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -734,22 +735,22 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Name"      Width="*"   MinWidth="160" Binding="{Binding Name}"/>
+                        <DataGridTextColumn Header="{loc:T Common_Name}"      Width="*"   MinWidth="160" Binding="{Binding Name}"/>
                         <!-- Moderation state of your own uploads (Removed / Suspended / Under review).
                              Toggled visible only in "My uploads" mode; blank otherwise. -->
-                        <DataGridTextColumn x:Name="CommunityStateCol" Header="Status" Width="110" MinWidth="90" Binding="{Binding StateLabel}" Visibility="Collapsed"/>
-                        <DataGridTextColumn Header="Shared by"    Width="120" MinWidth="80"  Binding="{Binding Author}"/>
+                        <DataGridTextColumn x:Name="CommunityStateCol" Header="{loc:T PresetManager_CommunityStateCol_Header}" Width="110" MinWidth="90" Binding="{Binding StateLabel}" Visibility="Collapsed"/>
+                        <DataGridTextColumn Header="{loc:T Common_SharedBy}"    Width="120" MinWidth="80"  Binding="{Binding Author}"/>
                         <!-- Pack-only: how many items (presets + custom engines) the
                              bundle ships, so a small pack is distinguishable from a big
                              one without opening Preview. Toggled visible for the pack
                              kind in RelabelCommunityScopeRadio. -->
-                        <DataGridTextColumn x:Name="CommunityItemCountCol" Header="Items" Width="80" MinWidth="60" Binding="{Binding PackItemCount}"/>
-                        <DataGridTextColumn x:Name="CommunityGameCol" Header="Game"      Width="100" MinWidth="70"  Binding="{Binding Game}"/>
+                        <DataGridTextColumn x:Name="CommunityItemCountCol" Header="{loc:T PresetManager_CommunityItemCountCol_Header}" Width="80" MinWidth="60" Binding="{Binding PackItemCount}"/>
+                        <DataGridTextColumn x:Name="CommunityGameCol" Header="{loc:T Common_Game}"      Width="100" MinWidth="70"  Binding="{Binding Game}"/>
                         <!-- Game-preset only: per-row tier badge from target_games. Blank for car-preset rows. -->
-                        <DataGridTextColumn x:Name="CommunityScopeCol" Header="Scope"     Width="120" MinWidth="80"  Binding="{Binding TierBadge}"/>
-                        <DataGridTextColumn x:Name="CommunityCarIdCol" Header="Car ID"    Width="120" MinWidth="80"  Binding="{Binding CarId}"/>
-                        <DataGridTextColumn Header="Downloads" Width="80"  MinWidth="60"  Binding="{Binding Downloads}"/>
-                        <DataGridTextColumn x:Name="CommunitySectionsCol" Header="Sections"  Width="160" MinWidth="100" Binding="{Binding TagsLabel}"/>
+                        <DataGridTextColumn x:Name="CommunityScopeCol" Header="{loc:T PresetManager_CommunityScopeCol_Header}"     Width="120" MinWidth="80"  Binding="{Binding TierBadge}"/>
+                        <DataGridTextColumn x:Name="CommunityCarIdCol" Header="{loc:T Common_CarId}"    Width="120" MinWidth="80"  Binding="{Binding CarId}"/>
+                        <DataGridTextColumn Header="{loc:T PresetManager_CommunityListDownloads_Header}" Width="80"  MinWidth="60"  Binding="{Binding Downloads}"/>
+                        <DataGridTextColumn x:Name="CommunitySectionsCol" Header="{loc:T PresetManager_CommunitySectionsCol_Header}"  Width="160" MinWidth="100" Binding="{Binding TagsLabel}"/>
                     </DataGrid.Columns>
                 </DataGrid>
                 <!-- Empty-state share CTA: centered where results would be.
@@ -762,7 +763,7 @@
                     <TextBlock x:Name="CommunityEmptyText"
                                Foreground="#FFB0B0B0" FontSize="12" TextWrapping="Wrap"
                                TextAlignment="Center" Margin="0,0,0,10"
-                               Text="Nothing shared here yet."/>
+                               Text="{loc:T PresetManager_CommunityEmpty}"/>
                     <Button x:Name="EmptyShareCtaBtn"
                             Style="{StaticResource SharePrimaryButton}"
                             Width="Auto" MaxWidth="360" Padding="14,0"
@@ -770,7 +771,7 @@
                             Height="28"
                             FontSize="12"
                             Click="EmptyShareCta_Click"
-                            ToolTip="Share your local preset so other drivers can find it for this scope."/>
+                            ToolTip="{loc:T PresetManager_EmptyShareCta_Tip}"/>
                 </StackPanel>
                 </Grid>
             </DockPanel>
@@ -779,12 +780,12 @@
 
         <StackPanel Grid.Row="1" Margin="0,12,0,0">
             <StackPanel Orientation="Horizontal">
-                <Button Content="Export…" Width="100" Height="28" Margin="0,0,8,0" Click="DialogExport_Click"
-                        ToolTip="Pick which presets and car tunings to bundle into a shareable file. Same flow as the Export button on the main panel."/>
-                <Button Content="Import…" Width="100" Height="28" Margin="0,0,8,0" Click="DialogImport_Click"
-                        ToolTip="Import a preset, car preset, pack, or full settings backup. The file kind is auto-detected."/>
-                <Button Content="Installed packs…" Width="140" Height="28" Click="ManagePacks_Click"
-                        ToolTip="View installed community packs. Set a pack's contents as defaults in bulk, or remove a pack (deletes its presets; entries you have edited are kept)."/>
+                <Button Content="{loc:T PresetManager_Export}" Width="100" Height="28" Margin="0,0,8,0" Click="DialogExport_Click"
+                        ToolTip="{loc:T PresetManager_Export_Tip}"/>
+                <Button Content="{loc:T PresetManager_Import}" Width="100" Height="28" Margin="0,0,8,0" Click="DialogImport_Click"
+                        ToolTip="{loc:T PresetManager_Import_Tip}"/>
+                <Button Content="{loc:T PresetManager_InstalledPacks}" Width="140" Height="28" Click="ManagePacks_Click"
+                        ToolTip="{loc:T PresetManager_InstalledPacks_Tip}"/>
             </StackPanel>
 
             <TextBlock x:Name="IoStatusLabel" FontSize="11" Foreground="#FFB0B0B0"
@@ -795,15 +796,15 @@
             <Border x:Name="DevBar" Visibility="Collapsed" Margin="0,12,0,0" Padding="0,10,0,0"
                     BorderBrush="#3A3A3A" BorderThickness="0,1,0,0">
                 <StackPanel>
-                    <TextBlock Text="Developer: built-in preset folder" FontWeight="SemiBold" FontSize="12" Foreground="#CFCFCF"/>
+                    <TextBlock Text="{loc:T PresetManager_DevBarDeveloperBuiltInPreset}" FontWeight="SemiBold" FontSize="12" Foreground="#CFCFCF"/>
                     <TextBlock x:Name="DevFolderPathText" Margin="0,2,0,8" FontSize="11" Foreground="#FFB0B0B0" TextWrapping="Wrap"/>
                     <WrapPanel>
-                        <Button Content="Open folder"          Height="26" Width="110" Margin="0,0,8,8" Click="DevOpenFolder_Click"
-                                ToolTip="Open the built-in preset folder in Explorer."/>
-                        <Button Content="Validate"             Height="26" Width="90"  Margin="0,0,8,8" Click="DevValidate_Click"
-                                ToolTip="Parse every built-in and flag any that fail to load or are missing a newer effect section."/>
-                        <Button Content="Refresh library"      Height="26" Width="120" Margin="0,0,8,8" Click="DevRefreshLibrary_Click"
-                                ToolTip="Re-scan the factory + user folders and rebuild every runtime cache. Use after editing files in the folders outside the app (imports, manual edits)."/>
+                        <Button Content="{loc:T PresetManager_DevBarOpenFolder}"          Height="26" Width="110" Margin="0,0,8,8" Click="DevOpenFolder_Click"
+                                ToolTip="{loc:T PresetManager_DevBarOpenFolder_Tip}"/>
+                        <Button Content="{loc:T PresetManager_DevBarValidate}"             Height="26" Width="90"  Margin="0,0,8,8" Click="DevValidate_Click"
+                                ToolTip="{loc:T PresetManager_DevBarValidate_Tip}"/>
+                        <Button Content="{loc:T PresetManager_DevBarRefreshLibrary}"      Height="26" Width="120" Margin="0,0,8,8" Click="DevRefreshLibrary_Click"
+                                ToolTip="{loc:T PresetManager_DevBarRefreshLibrary_Tip}"/>
                     </WrapPanel>
                     <TextBlock x:Name="DevStatusText" Margin="0,2,0,0" FontSize="11" Foreground="#FFC8C8C8" TextWrapping="Wrap"/>
                 </StackPanel>

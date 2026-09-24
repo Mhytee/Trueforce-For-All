@@ -92,6 +92,14 @@
     <Compile Include="..\TrueforceForAll.Plugin\AudioOutputMeter.cs">
       <Link>Linked\AudioOutputMeter.cs</Link>
     </Compile>
+    <!-- The language table behind every localized string. Pure C# by contract
+         (no WPF, no SimHub types, Newtonsoft.Json.Linq only) so that layer
+         precedence, parent fallback, the missing-key path and the strict file
+         parse can be pinned here. The WPF half of the runtime (the markup
+         extension, the folder watcher, the diagnostics) is never linked. -->
+    <Compile Include="..\TrueforceForAll.Plugin\Localization\LocStore.cs">
+      <Link>Linked\LocStore.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

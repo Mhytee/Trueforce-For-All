@@ -24,6 +24,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -306,7 +307,9 @@ namespace TrueforceForAll.Plugin
         // its Binding.Path (e.g. "Name", "Source"). The checkbox
         // column has no Binding so it auto-skips. Base header text is
         // captured per column so the ▲/▼ indicator can be appended /
-        // stripped without losing the original label.
+        // stripped without losing the original label. A header declared as
+        // {loc:T Key} also keeps its Binding, so the label can be handed back
+        // to the column intact and read in the active language.
         private sealed class ListSortState
         {
             public DataGrid List;
@@ -316,6 +319,8 @@ namespace TrueforceForAll.Plugin
                 = new Dictionary<DataGridColumn, string>();
             public readonly Dictionary<DataGridColumn, string> BaseHeaders
                 = new Dictionary<DataGridColumn, string>();
+            public readonly Dictionary<DataGridColumn, BindingBase> HeaderBindings
+                = new Dictionary<DataGridColumn, BindingBase>();
         }
         private ListSortState _gameSort;
         private ListSortState _carSort;
@@ -348,6 +353,15 @@ namespace TrueforceForAll.Plugin
             _gameSort   = BuildSortState(GameList);
             _carSort    = BuildSortState(CarList);
             _customSort = BuildSortState(CustomList);
+            // Weak subscription: SimHub builds a new SettingsControl, and with
+            // it a new PresetManagerControl, every time the plugin's settings
+            // page opens, and this control has no Unloaded or Dispose hook to
+            // unsubscribe in, so a strong handler on the process-wide store
+            // would keep every discarded instance alive. Loc.Instance is null
+            // only before Init, when no header captured a Binding either.
+            var locStore = Loc.Instance;
+            if (locStore != null)
+                WeakEventManager<LocStore, EventArgs>.AddHandler(locStore, nameof(LocStore.LanguageChanged), OnLanguageChanged);
             GameList.AddHandler(DataGridColumnHeader.ClickEvent,   new RoutedEventHandler((s, e) => HandleHeaderClick(e, _gameSort)));
             CarList.AddHandler(DataGridColumnHeader.ClickEvent,    new RoutedEventHandler((s, e) => HandleHeaderClick(e, _carSort)));
             CustomList.AddHandler(DataGridColumnHeader.ClickEvent, new RoutedEventHandler((s, e) => HandleHeaderClick(e, _customSort)));
@@ -411,6 +425,11 @@ namespace TrueforceForAll.Plugin
                 if (string.IsNullOrEmpty(key) || !(col.Header is string str)) continue;
                 s.SortKeys[col]    = key;
                 s.BaseHeaders[col] = str;
+                // A {loc:T Key} header reads as its resolved string above but
+                // is a Binding underneath; keep it, or the first sort would
+                // freeze the label in whatever language was active.
+                var binding = BindingOperations.GetBindingBase(col, DataGridColumn.HeaderProperty);
+                if (binding != null) s.HeaderBindings[col] = binding;
             }
             return s;
         }
@@ -442,13 +461,117 @@ namespace TrueforceForAll.Plugin
                 view.SortDescriptions.Add(new SortDescription(sortKey,
                     descending ? ListSortDirection.Descending : ListSortDirection.Ascending));
 
+            ApplySortHeaders(s);
+        }
+
+        // Header text for the state's current (key, direction): the sorted
+        // column shows its label plus ▲/▼, every other column its bare label.
+        // A column whose header is a {loc:T} Binding gets that Binding back
+        // (a string written over a OneWay binding detaches it), and the
+        // sorted column's label is read through the freshly attached Binding
+        // so it follows the active language. A plain-string header keeps the
+        // text captured at construction.
+        private static void ApplySortHeaders(ListSortState s)
+        {
+            string sortKey = s.CurrentSortKey;
+            string arrow   = s.Descending ? " ▼" : " ▲";
             foreach (var kv in s.BaseHeaders)
             {
-                if (!s.SortKeys.TryGetValue(kv.Key, out var k)) continue;
-                kv.Key.Header = !string.IsNullOrEmpty(sortKey) && string.Equals(k, sortKey, StringComparison.Ordinal)
-                    ? kv.Value + (descending ? " ▼" : " ▲")
-                    : kv.Value;
+                var col = kv.Key;
+                if (!s.SortKeys.TryGetValue(col, out var k)) continue;
+                bool sorted = !string.IsNullOrEmpty(sortKey) && string.Equals(k, sortKey, StringComparison.Ordinal);
+                if (s.HeaderBindings.TryGetValue(col, out var binding))
+                {
+                    if (BindingOperations.GetBindingBase(col, DataGridColumn.HeaderProperty) == null)
+                        BindingOperations.SetBinding(col, DataGridColumn.HeaderProperty, binding);
+                    if (!sorted) continue;
+                    col.Header = (col.Header as string ?? kv.Value) + arrow;
+                    continue;
+                }
+                col.Header = sorted ? kv.Value + arrow : kv.Value;
             }
+        }
+
+        // The bound headers re-render on their own when the language table
+        // reloads. Every label this control writes from code does not: a
+        // local value written over a {loc:T} Binding detaches it, and a
+        // Loc.T result assigned to Content, Text or ToolTip is a snapshot of
+        // the language it was read in. So the writers re-run here, each from
+        // the state it already holds, and produce the same text they would
+        // for that state today:
+        //   ApplySortHeaders               the sorted column's label + arrow
+        //   RefreshGameButtons             GameShareBtn Content + ToolTip,
+        //                                  GameDeleteBtn, GamePromoteBuiltinBtn
+        //   RefreshCarButtons              CarShareBtn Content + ToolTip,
+        //                                  CarDeleteBtn, CarSetActiveBtn,
+        //                                  CarClearDefaultBtn, CarPromoteBuiltinBtn
+        //   RefreshCustomButtons           CustomShareBtn ToolTip, CustomDeleteBtn
+        //   RelabelCommunityPanel          CommunityGateBtn while the gate is up;
+        //                                  otherwise CommunityScopeLabel,
+        //                                  CommunityHelpText, CommunityCarLabel
+        //                                  and CommunityEmptyText (see there)
+        // Nothing here fetches: the community list keeps its cached rows and
+        // the empty-state CTA its payload. LocStore raises the event on the
+        // UI thread (the folder watcher dispatches its reload, the access
+        // codes run from the panel), and the CheckAccess guard covers any
+        // other raiser. A relabel failure must not take the panel down, so
+        // the whole pass is caught and logged.
+        private void OnLanguageChanged(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => OnLanguageChanged(sender, e)));
+                return;
+            }
+            try
+            {
+                ApplySortHeaders(_gameSort);
+                ApplySortHeaders(_carSort);
+                ApplySortHeaders(_customSort);
+                if (_plugin != null)
+                {
+                    RefreshGameButtons();
+                    RefreshCarButtons();
+                    RefreshCustomButtons();
+                }
+                RelabelCommunityPanel();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[TF4ALL] Preset manager relabel failed: " + ex.Message);
+            }
+        }
+
+        // Language-switch pass over the community panel, from cached state
+        // only. Skipped while the panel is hidden: EnterCommunity rewrites
+        // all of this on the next entry. Gate up: ApplyCommunityGate
+        // rewrites the gate through ShowCommunityGate from the same enabled
+        // and signed-in reads every other caller uses. Browser up: the scope
+        // label, the help text and the active-car label in the order
+        // EnterCommunity runs them (UpdateCommunityActiveCarLabel has the
+        // last word on the scope label outside mine mode, as there), then
+        // the empty-state text for the kind the visible CTA was built for.
+        // No fetch: rows, the trending flag and the CTA payload all stay.
+        private void RelabelCommunityPanel()
+        {
+            if (CommunityPanel == null || CommunityPanel.Visibility != Visibility.Visible) return;
+            if (CommunityGatePanel != null && CommunityGatePanel.Visibility == Visibility.Visible)
+            {
+                // Re-label the gate only while it still applies. If community was
+                // enabled and the user signed in since it was drawn, ApplyCommunityGate
+                // would drop the gate over an empty list without a fetch; that
+                // transition belongs to RefreshCommunityGate, which fetches.
+                bool open = _plugin?.Settings?.CommunityEnabled == true && _plugin?.AuthIsSignedIn == true;
+                if (!open) ApplyCommunityGate();
+                return;
+            }
+            ApplyCommunityScopeLabel();
+            RelabelCommunityScopeRadio();
+            UpdateCommunityActiveCarLabel();
+            if (CommunityEmptyState != null
+                && CommunityEmptyState.Visibility == Visibility.Visible
+                && EmptyShareCtaBtn?.Tag is EmptyShareCtaPayload payload)
+                ApplyCommunityEmptyText(payload.Kind);
         }
 
         // Write the sort state for one tab back into Settings + flush.
@@ -921,7 +1044,7 @@ namespace TrueforceForAll.Plugin
                 ShowCommunityGate(
                     "Community presets are off",
                     "Turn on community features to browse and download presets shared by other drivers.",
-                    "Enable community features");
+                    Loc.T("PresetManager_CommunityGate"));
                 return true;
             }
             if (!signedIn)
@@ -929,7 +1052,7 @@ namespace TrueforceForAll.Plugin
                 ShowCommunityGate(
                     "Sign in to browse community presets",
                     "Community presets need a free account. Sign in or create one to browse and download.",
-                    "Sign in / Sign up");
+                    Loc.T("PresetManager_CommunityGateSignIn"));
                 return true;
             }
             HideCommunityGate();
@@ -1045,10 +1168,7 @@ namespace TrueforceForAll.Plugin
             // the search row over the gate.
             if (ApplyCommunityGate()) return;
             ConfigureCommunityFilterVisibility();
-            if (CommunityScopeLabel != null)
-                CommunityScopeLabel.Text = mode == "mine"
-                    ? "Your uploads:"
-                    : (kind == "game" ? "Active game:" : "Active car:");
+            ApplyCommunityScopeLabel();
             RelabelCommunityScopeRadio();
             UpdateCommunityActiveCarLabel();
             // The displayed list may belong to a car/game the user has since
@@ -1065,6 +1185,20 @@ namespace TrueforceForAll.Plugin
             if (changed || scopeStale) _communityRows.Clear();
             if ((changed || scopeStale || _communityRows.Count == 0) && !_communityFetchInFlight)
                 _ = CommunityRefreshAsync();
+        }
+
+        // The leading scope label for the current (kind, mode): the "my
+        // uploads" wording in mine mode, else the game or car scope.
+        // UpdateCommunityActiveCarLabel overrides it outside mine mode (a
+        // broadened browse reads "Browsing"); mine mode keeps this value.
+        // Shared by EnterCommunity and the language-switch relabel so both
+        // write the same text for the same state.
+        private void ApplyCommunityScopeLabel()
+        {
+            if (CommunityScopeLabel == null) return;
+            CommunityScopeLabel.Text = _communityMode == "mine"
+                ? Loc.T("PresetManager_CommunityScopeMine")
+                : (_communityKind == "game" ? Loc.T("PresetManager_CommunityScopeGame") : Loc.T("PresetManager_CommunityScope"));
         }
 
         // True when the active-game filter is exactly the single live active
@@ -1511,28 +1645,25 @@ namespace TrueforceForAll.Plugin
                 // active segment's kind, so the copy stays kind-neutral.
                 if (_communityMode == "mine")
                 {
-                    CommunityHelpText.Text =
-                        "Your community uploads. Select a row to reveal Edit and Delete.";
+                    CommunityHelpText.Text = Loc.T("PresetManager_CommunityHelpMine");
                 }
                 else switch (_communityKind)
                 {
                     case "game":
                         CommunityHelpText.Text = unscoped
-                            ? "No game loaded, so showing every game preset the community has shared. Load a game and refresh to filter."
-                            : "Browse and download community game presets for the game you're playing.";
+                            ? Loc.T("PresetManager_CommunityHelpGameUnscoped")
+                            : Loc.T("PresetManager_CommunityHelpGame");
                         break;
                     case "engine":
-                        CommunityHelpText.Text =
-                            "Browse and download community custom engines (cylinder patterns + layout).";
+                        CommunityHelpText.Text = Loc.T("PresetManager_CommunityHelpEngine");
                         break;
                     case "pack":
-                        CommunityHelpText.Text =
-                            "Browse and download community packs (bundles of game presets, car presets, and custom engines).";
+                        CommunityHelpText.Text = Loc.T("PresetManager_CommunityHelpPack");
                         break;
                     default:
                         CommunityHelpText.Text = unscoped
-                            ? "No car loaded, so showing every car preset the community has shared. Load a car in your game and refresh to filter."
-                            : "Browse and download community presets for the car you're driving.";
+                            ? Loc.T("PresetManager_CommunityHelpCarUnscoped")
+                            : Loc.T("PresetManager_CommunityHelp");
                         break;
                 }
             }
@@ -2602,23 +2733,23 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _gameShareIsPackMode = gameBulkPackEligible;
                 if (gameBulkPackEligible)
                 {
-                    GameShareBtn.Content   = "Share pack";
+                    GameShareBtn.Content   = Loc.T("PresetManager_SharePack");
                     GameShareBtn.IsEnabled = true;
-                    GameShareBtn.ToolTip   = $"Bundle these {checkedCount} presets into a community pack.";
+                    GameShareBtn.ToolTip   = Loc.F("PresetManager_SharePack_Tip_Fmt", checkedCount);
                 }
                 else
                 {
-                    GameShareBtn.Content = "Share";
+                    GameShareBtn.Content = Loc.T("Common_Share");
                     GameShareBtn.IsEnabled = anySelected && checkedCount <= 1
                         && !sel.Builtin && !gShareMatchesUpload;
                     if (anySelected && sel.Builtin)
-                        GameShareBtn.ToolTip = "Built-in presets ship with the plugin. Duplicate it to make your own version, then share that.";
+                        GameShareBtn.ToolTip = Loc.T("PresetManager_ShareBuiltin_Tip");
                     else if (gShareMatchesUpload)
-                        GameShareBtn.ToolTip = $"This matches your last upload ({gShareSnap.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                        GameShareBtn.ToolTip = Loc.F("PresetManager_ShareMatchesUpload_Tip_Fmt", gShareSnap.CommunityUploadedVersion ?? "v1");
                     else if (gShareHasPriorUpload)
-                        GameShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                        GameShareBtn.ToolTip = Loc.T("PresetManager_ShareUpdateOrNew_Tip");
                     else
-                        GameShareBtn.ToolTip = "Upload this game preset to the community so other drivers can find it.";
+                        GameShareBtn.ToolTip = Loc.T("PresetManager_GameShare_Tip");
                 }
             }
             // Promote works on the checked set when there is one (bulk), else
@@ -2628,8 +2759,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 bool promotable = _devMode && (checkedCount > 0 || anySelected);
                 GamePromoteBuiltinBtn.IsEnabled = promotable;
                 GamePromoteBuiltinBtn.Content   = checkedCount > 1
-                    ? $"Set as built-in ({checkedCount})"
-                    : "Set as built-in";
+                    ? Loc.F("PresetManager_GamePromoteBuiltinCount_Fmt", checkedCount)
+                    : Loc.T("PresetManager_GamePromoteBuiltin");
             }
 
             GameCheckedLabel.Text = checkedCount > 0
@@ -2637,7 +2768,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 : "";
             // Bulk delete labels: clue the user that the action applies to
             // the checked set, not the highlighted row.
-            GameDeleteBtn.Content = checkedDeletable > 0 ? $"Delete ({checkedDeletable})" : "Delete";
+            GameDeleteBtn.Content = checkedDeletable > 0 ? Loc.F("PresetManager_DeleteCount_Fmt", checkedDeletable) : Loc.T("Common_Delete");
             if (!_bulkCheckInFlight)
                 UpdateSelectAllHeader(GameSelectAllCheck, GetVisible<GameRow>(_gameRows));
         }
@@ -2707,8 +2838,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 : (anySelected && sel.Active ? 1 : 0);
             CarClearDefaultBtn.IsEnabled = clearableCars > 0;
             CarClearDefaultBtn.Content   = clearableCars > 1
-                ? $"Clear default ({clearableCars})"
-                : "Clear default";
+                ? Loc.F("PresetManager_CarClearDefaultCount_Fmt", clearableCars)
+                : Loc.T("PresetManager_CarClearDefault");
             // Multi-checked + all eligible (not built-in) repurposes
             // Share into "Share pack" - the button feels like the
             // natural surface for "do something with this multi-select"
@@ -2721,25 +2852,25 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             _carShareIsPackMode = carBulkPackEligible;
             if (carBulkPackEligible)
             {
-                CarShareBtn.Content   = "Share pack";
+                CarShareBtn.Content   = Loc.T("PresetManager_SharePack");
                 CarShareBtn.IsEnabled = true;
-                CarShareBtn.ToolTip   = $"Bundle these {checkedCount} presets into a community pack.";
+                CarShareBtn.ToolTip   = Loc.F("PresetManager_SharePack_Tip_Fmt", checkedCount);
                 return;
             }
-            CarShareBtn.Content = "Share";
+            CarShareBtn.Content = Loc.T("Common_Share");
             CarShareBtn.IsEnabled = anySelected && checkedCount <= 1
                 && !isCommunitySourced && !isBuiltinSel
                 && !carShareMatchesUpload;
             if (isBuiltinSel)
-                CarShareBtn.ToolTip = "Built-in presets ship with the plugin. Duplicate it to make your own version, then share that.";
+                CarShareBtn.ToolTip = Loc.T("PresetManager_ShareBuiltin_Tip");
             else if (isCommunitySourced)
-                CarShareBtn.ToolTip = "Shared by another driver. Duplicate to make your own version and share that.";
+                CarShareBtn.ToolTip = Loc.T("PresetManager_ShareCommunitySourced_Tip");
             else if (carShareMatchesUpload)
-                CarShareBtn.ToolTip = $"This matches your last upload ({carShareOvr.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                CarShareBtn.ToolTip = Loc.F("PresetManager_ShareMatchesUpload_Tip_Fmt", carShareOvr.CommunityUploadedVersion ?? "v1");
             else if (carShareHasPriorUpload)
-                CarShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                CarShareBtn.ToolTip = Loc.T("PresetManager_ShareUpdateOrNew_Tip");
             else
-                CarShareBtn.ToolTip = "Upload this car preset to the community so other drivers can find it.";
+                CarShareBtn.ToolTip = Loc.T("PresetManager_CarShare_Tip");
             // DEV authoring can delete built-in car presets, so the deletable
             // count (label + enable) includes them in dev mode.
             int carCheckedDeletable = _devMode ? checkedCount : checkedNonBuiltin;
@@ -2752,20 +2883,20 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 : (anySelected && !sel.Active);
             CarSetActiveBtn.IsEnabled = setDefaultable;
             CarSetActiveBtn.Content   = checkedCount > 1
-                ? $"Set as default ({checkedCount})"
-                : "Set as default";
+                ? Loc.F("PresetManager_CarSetActiveCount_Fmt", checkedCount)
+                : Loc.T("PresetManager_CarSetActive");
             // Same bulk-or-single rule as the game button.
             if (CarPromoteBuiltinBtn != null)
             {
                 bool promotable = _devMode && (checkedCount > 0 || anySelected);
                 CarPromoteBuiltinBtn.IsEnabled = promotable;
                 CarPromoteBuiltinBtn.Content   = checkedCount > 1
-                    ? $"Set as built-in ({checkedCount})"
-                    : "Set as built-in";
+                    ? Loc.F("PresetManager_CarPromoteBuiltinCount_Fmt", checkedCount)
+                    : Loc.T("PresetManager_CarPromoteBuiltin");
             }
 
             CarCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
-            CarDeleteBtn.Content = carCheckedDeletable > 0 ? $"Delete ({carCheckedDeletable})" : "Delete";
+            CarDeleteBtn.Content = carCheckedDeletable > 0 ? Loc.F("PresetManager_DeleteCount_Fmt", carCheckedDeletable) : Loc.T("Common_Delete");
             if (!_bulkCheckInFlight)
                 UpdateSelectAllHeader(CarSelectAllCheck, GetVisible<CarRow>(_carRows));
         }
@@ -2795,16 +2926,16 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CustomShareBtn.IsEnabled = any && checkedCount <= 1
                     && !cuShareMatchesUpload;
                 if (cuShareMatchesUpload)
-                    CustomShareBtn.ToolTip = $"This matches your last upload ({cuShareDef.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                    CustomShareBtn.ToolTip = Loc.F("PresetManager_ShareMatchesUpload_Tip_Fmt", cuShareDef.CommunityUploadedVersion ?? "v1");
                 else if (cuShareHasPriorUpload)
-                    CustomShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                    CustomShareBtn.ToolTip = Loc.T("PresetManager_ShareUpdateOrNew_Tip");
                 else
-                    CustomShareBtn.ToolTip = "Upload this custom engine to the community.";
+                    CustomShareBtn.ToolTip = Loc.T("PresetManager_CustomShareNew_Tip");
             }
             CustomDeleteBtn.IsEnabled = checkedCount > 0 || any;
 
             CustomCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
-            CustomDeleteBtn.Content = checkedCount > 0 ? $"Delete ({checkedCount})" : "Delete";
+            CustomDeleteBtn.Content = checkedCount > 0 ? Loc.F("PresetManager_DeleteCount_Fmt", checkedCount) : Loc.T("Common_Delete");
             if (!_bulkCheckInFlight)
                 UpdateSelectAllHeader(CustomSelectAllCheck, GetVisible<CustomRow>(_customRows));
         }
@@ -3546,11 +3677,20 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             EmptyShareCtaBtn.Tag = payload;
             EmptyShareCtaBtn.Content = label;
-            if (CommunityEmptyText != null)
-                CommunityEmptyText.Text = kind == "car"
-                    ? "No presets shared for this car yet."
-                    : "No presets shared for this game yet.";
+            ApplyCommunityEmptyText(kind);
             CommunityEmptyState.Visibility = System.Windows.Visibility.Visible;
+        }
+
+        // Empty-state copy above the share CTA: the car or the game wording,
+        // by the kind the CTA payload was built for. Shared by
+        // UpdateEmptyShareCta and the language-switch relabel, which reads
+        // the kind back from EmptyShareCtaBtn.Tag instead of refetching.
+        private void ApplyCommunityEmptyText(string kind)
+        {
+            if (CommunityEmptyText == null) return;
+            CommunityEmptyText.Text = kind == "car"
+                ? Loc.T("PresetManager_CommunityEmptyCar")
+                : Loc.T("PresetManager_CommunityEmptyGame");
         }
 
         // Bound the preset name in the empty-state share CTA so a long name
@@ -4456,30 +4596,30 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // the list, so the label reflects what's actually being shown.
             if (_communityMode != "mine" && IsCommunityBroadened())
             {
-                if (CommunityScopeLabel != null) CommunityScopeLabel.Text = "Browsing:";
+                if (CommunityScopeLabel != null) CommunityScopeLabel.Text = Loc.T("PresetManager_CommunityScopeBrowsing");
                 var sel = SelectedGamesSorted();
-                string scope = sel.Count == 0 ? "all games" : string.Join(", ", sel);
+                string scope = sel.Count == 0 ? Loc.T("PresetManager_CommunityAllGames") : string.Join(", ", sel);
                 string term = (_communitySearch ?? "").Trim();
-                CommunityCarLabel.Text = term.Length > 0 ? $"\"{term}\" in {scope}" : scope;
+                CommunityCarLabel.Text = term.Length > 0 ? Loc.F("PresetManager_CommunitySearchInScope_Fmt", term, scope) : scope;
                 return;
             }
             // Swap the leading label too so the row reads cleanly in
             // both modes ("Active game:" vs "Active car:").
             if (CommunityScopeLabel != null && _communityMode != "mine")
-                CommunityScopeLabel.Text = isGameKind ? "Active game:" : "Active car:";
+                CommunityScopeLabel.Text = isGameKind ? Loc.T("PresetManager_CommunityScopeGame") : Loc.T("PresetManager_CommunityScope");
 
             if (isGameKind)
             {
                 string game = _plugin.ActiveGame;
                 CommunityCarLabel.Text = string.IsNullOrEmpty(game)
-                    ? "(none - load a game first)"
+                    ? Loc.T("PresetManager_CommunityCarNoneGame")
                     : game;
                 return;
             }
             string carId = _plugin.ActiveCarId;
             string display = _plugin.ActiveCarDisplayName;
             if (string.IsNullOrEmpty(carId))
-                CommunityCarLabel.Text = "(none - load a car in the game first)";
+                CommunityCarLabel.Text = Loc.T("PresetManager_CommunityCarNoneCar");
             else
                 CommunityCarLabel.Text = string.IsNullOrEmpty(display) || display == carId
                                          ? carId

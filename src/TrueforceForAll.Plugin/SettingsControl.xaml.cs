@@ -11,6 +11,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using TrueforceForAll.Core;
 using TrueforceForAll.Plugin.Effects;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -218,6 +219,13 @@ namespace TrueforceForAll.Plugin
             // gold button; style them identically so it reads as one action.
             if (FsModInstallButton != null)
                 ModalButtonTheme.Primary(FsModInstallButton);
+            // Weak subscription, same reasoning as PresetManagerControl: SimHub
+            // builds a new SettingsControl every time the plugin page opens, so
+            // a strong handler on the process-wide store would keep every
+            // discarded panel alive. Loc.Instance is null only before Init.
+            var locStore = Loc.Instance;
+            if (locStore != null)
+                WeakEventManager<LocStore, EventArgs>.AddHandler(locStore, nameof(LocStore.LanguageChanged), OnLanguageChanged);
         }
 
         public SettingsControl(TrueforcePlugin plugin) : this()
@@ -10167,6 +10175,35 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // The bound labels re-render on their own when the language table
+        // reloads; the supporters wall status is assigned in code by
+        // RefreshSupportersWallAsync, so it is re-run here, and only while the
+        // Support tab is showing: every entry to that tab refreshes it anyway,
+        // and the method's generation counter drops a fetch still in flight.
+        // LocStore raises the event on the UI thread (the folder watcher
+        // dispatches its reload, the access codes run from the panel), and the
+        // CheckAccess guard covers any other raiser.
+        private void OnLanguageChanged(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => OnLanguageChanged(sender, e)));
+                return;
+            }
+            try
+            {
+                // IsLoaded: SimHub builds a new panel on every page open, and a
+                // discarded instance the GC has not collected yet still hears the
+                // weak event. Only the attached panel may start a supporters fetch.
+                if (IsLoaded && MainTabs != null && SupportTab != null && ReferenceEquals(MainTabs.SelectedItem, SupportTab))
+                    _ = RefreshSupportersWallAsync();
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[TF4ALL] Supporters wall language refresh failed: " + ex.Message);
+            }
+        }
+
         private int _supportersWallGen;
 
         // Load + render the public supporters wall (first name + last initial, sourced
@@ -10188,7 +10225,7 @@ namespace TrueforceForAll.Plugin
                 if (SupportersWallStatus != null)
                 {
                     SupportersWallStatus.Visibility = System.Windows.Visibility.Visible;
-                    SupportersWallStatus.Text = "Turn on community features (Settings tab) to load the supporters wall.";
+                    SupportersWallStatus.Text = Loc.T("Support_SupportersWallGated");
                 }
                 return;
             }
@@ -10196,7 +10233,7 @@ namespace TrueforceForAll.Plugin
             if (SupportersWallStatus != null)
             {
                 SupportersWallStatus.Visibility = System.Windows.Visibility.Visible;
-                SupportersWallStatus.Text = "Loading supporters…";
+                SupportersWallStatus.Text = Loc.T("Support_SupportersWall");
             }
 
             System.Collections.Generic.List<SupportersClient.SupporterRow> rows;
@@ -10213,7 +10250,7 @@ namespace TrueforceForAll.Plugin
                 if (SupportersWallStatus != null)
                 {
                     SupportersWallStatus.Visibility = System.Windows.Visibility.Visible;
-                    SupportersWallStatus.Text = "Couldn't load supporters. Check your connection and try again.";
+                    SupportersWallStatus.Text = Loc.T("Support_SupportersWallError");
                 }
                 return;
             }
@@ -10222,7 +10259,7 @@ namespace TrueforceForAll.Plugin
                 if (SupportersWallStatus != null)
                 {
                     SupportersWallStatus.Visibility = System.Windows.Visibility.Visible;
-                    SupportersWallStatus.Text = "Be the first to support Trueforce For All.";
+                    SupportersWallStatus.Text = Loc.T("Support_SupportersWallEmpty");
                 }
                 return;
             }
