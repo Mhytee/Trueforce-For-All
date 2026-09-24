@@ -18,6 +18,7 @@ Official Trueforce support keeps growing, but many major titles are still
 waiting and some will never get it. This plugin fills the gap, and then
 some.
 
+> [!TIP]
 > Something not working? Please [open an issue][issues] or say so in the
 > [Discord][discord].
 
@@ -29,6 +30,7 @@ some.
 | Logitech RS50 | Yes | Yes | Yes |
 | Logitech G923 (Xbox/PC and PS/PC) | Yes | Yes | None |
 
+> [!NOTE]
 > The plugin can add rev light support and control the Dynamic OLED screen
 > in games with [Telemetry Based FFB](#telemetry-based-ffb), in iRacing,
 > RaceRoom and Le Mans Ultimate, and in Assetto Corsa with the CSP Bridge.
@@ -428,15 +430,18 @@ never implements Trueforce, so the channel sits live with nothing on it. The
 `disableTF` launch option should let the plugin take over, but I haven't
 confirmed it on hardware.
 
->I don't own some of these titles, so this table grows from user reports. If
-you find an off switch or config setting for one of the ones still marked
-"no", or get the plugin working on a native-Trueforce game that isn't listed
-here at all, please open an issue and let me know.
+> [!NOTE]
+> I don't own some of these titles, so this table grows from user reports. If
+> you find an off switch or config setting for one of the ones still marked
+> "no", or get the plugin working on a native-Trueforce game that isn't listed
+> here at all, please open an issue and let me know.
 
 ## Known limitations
 
-- **Logitech G HUB must stay closed** when the plugin is in use. Running it
-  alongside can cause issues.
+> [!IMPORTANT]
+> **Logitech G HUB must stay closed** when the plugin is in use. Running it
+> alongside can cause issues.
+
 - **The Trueforce level dial on the wheel doesn't apply** while the
   plugin is driving Trueforce: the wheel's own intensity scaling stops
   responding to it. Use the plugin's Master Gain and per-effect Gain
