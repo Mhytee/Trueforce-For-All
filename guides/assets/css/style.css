@@ -1,0 +1,166 @@
+/* Dark, to match the plugin's own panel. The golds are lifted straight from
+   the WPF UI (#E5C04A, #F2D165, #FFB300) so the site and the app agree. */
+
+:root {
+  --bg:      #16181b;
+  --surface: #1e2126;
+  --line:    #2c3037;
+  --text:    #e7e9ea;
+  --muted:   #9aa1a9;
+  --gold:    #e5c04a;
+  --gold-lt: #f2d165;
+  --amber:   #ffb300;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ---------- header ---------- */
+
+header.site {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+header.site .brand {
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.2px;
+  color: var(--gold);
+  text-decoration: none;
+}
+
+header.site .brand span { color: var(--muted); font-weight: 400; }
+
+header.site nav { margin-left: auto; display: flex; gap: 18px; }
+
+header.site nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+header.site nav a:hover { color: var(--text); }
+
+/* ---------- body ---------- */
+
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 20px 8px;
+}
+
+h1, h2, h3, h4 { line-height: 1.25; margin: 2em 0 0.6em; font-weight: 650; }
+h1 { font-size: 30px; margin-top: 0; color: var(--gold); }
+h2 { font-size: 22px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 18px; }
+
+p, ul, ol, table, pre, blockquote { margin: 0 0 1.1em; }
+
+a { color: var(--gold-lt); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+strong { color: #fff; font-weight: 650; }
+
+ul, ol { padding-left: 1.4em; }
+li { margin: 0.35em 0; }
+li::marker { color: var(--muted); }
+
+hr { border: 0; border-top: 1px solid var(--line); margin: 2.4em 0; }
+
+blockquote {
+  margin-left: 0;
+  padding: 2px 0 2px 16px;
+  border-left: 3px solid var(--amber);
+  color: var(--muted);
+}
+
+blockquote p:last-child { margin-bottom: 0; }
+
+/* ---------- code ---------- */
+
+code, pre, kbd {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas,
+               "Liberation Mono", monospace;
+  font-size: 14px;
+}
+
+code {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  color: var(--gold-lt);
+}
+
+pre {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+}
+
+pre code { background: none; border: 0; padding: 0; color: var(--text); }
+
+/* ---------- tables ---------- */
+
+table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+
+th, td {
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th { background: var(--surface); font-weight: 650; }
+
+img { max-width: 100%; height: auto; border-radius: 8px; }
+
+/* ---------- footer ---------- */
+
+.back { margin: 3em 0 0; }
+.back a { color: var(--muted); font-size: 14px; }
+
+footer {
+  max-width: 760px;
+  margin: 48px auto 0;
+  padding: 20px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ---------- light mode, for anyone who has asked for it ---------- */
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:      #ffffff;
+    --surface: #f6f7f8;
+    --line:    #d8dce1;
+    --text:    #1a1d21;
+    --muted:   #5b6470;
+    --gold:    #8a6d10;
+    --gold-lt: #8a6d10;
+    --amber:   #c98a00;
+  }
+  strong { color: #000; }
+}

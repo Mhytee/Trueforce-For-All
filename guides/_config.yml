@@ -1,7 +1,12 @@
 # Jekyll settings for the published guides site.
 #
 # Safe to keep here: scripts/gen_public_guides.py only prunes stale *.md files
-# from this folder, so a .yml survives regeneration. Do not rename it to .md.
+# from this folder, so this file, _layouts/ and assets/ all survive
+# regeneration. Do not rename it to .md.
+#
+# No `theme:` on purpose. _layouts/default.html is our own, which keeps the
+# page dark and drops the stock theme's "Improve this page" link (it pointed at
+# edit/main/<guide>.md, a path that does not exist, and these files are
+# generated anyway).
 title: TF4ALL guides
 description: Setup and tuning guides for Trueforce For All, the SimHub plugin.
-theme: jekyll-theme-primer
