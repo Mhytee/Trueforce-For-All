@@ -37,9 +37,8 @@ some.
 
 ## FFB and Trueforce Effects
 
-The plugin runs inside SimHub and drives the wheel's Trueforce haptic motor
-in real time. The steering force underneath the effects comes from one of
-three places:
+The plugin drives the wheel's Trueforce motor in real time. The steering
+force underneath the effects comes from one of three places:
 
 - **FFB pass-through (most games).** The plugin taps the force feedback the
   game sends down the wire and layers the Trueforce haptics on top. Your
@@ -55,62 +54,48 @@ three places:
   Forza Horizon 4, 5 and 6, Forza Motorsport, and Farming Simulator 22
   and 25.
 
-All of it is configurable per-game, per-car, from the plugin's tabbed
-panel inside SimHub: master gain, individual effect tuning, precise typed
-values on every slider, sidechain ducking between continuous and transient
-effects, and a preset library with community sharing built in.
+All of it tunes per game and per car from the plugin's panel in SimHub,
+down to typed values on every slider, with a preset library and community
+sharing built in.
 
 ### Effects from telemetry
 
 Synthesized from live game data and played over the Trueforce protocol.
 
-- **Engine pulse**: rumble at the engine's firing pattern, derived from
-  RPM and cylinder count (auto-detected per car when possible). Idle gives
-  a gentle hum; higher RPM lifts both pitch and intensity.
+- **Engine pulse**: rumble at the engine's real firing pattern, from its
+  cylinder count and crank layout, so a cross-plane V8 does not feel like
+  an inline six.
 - **Gear shift**: a short low-frequency thud whenever the gear changes.
 - **ABS click**: configurable haptic when ABS engages.
 - **Pit limiter**: configurable pulsing buzz while the limiter is engaged.
 - **Redline buzz**: a hard buzz when you enter the redline. On by default.
-- **DRS**: short chirp on the rising edge when the wing opens, plus an
-  optional sustained flutter while DRS stays active. Silent on games that
-  don't expose the flag.
-- **Road bumps**: rough terrain rumbles through the wheel. On Forza, the
-  per-tire surface rumble is read directly for a richer, more accurate
-  road feel.
-- **Implement thud**: lower, raise or extend an implement, or work a
-  loader or crane arm yourself, and you feel the hydraulic hum while it
-  moves and the thump as it lands. (Farming Simulator.)
-- **Traction loss**: tire-screech haptics when grip breaks (wheelspin,
-  lockup, drift), sharpest in games that report per-wheel slip (AC and the
-  Forza titles). In Farming Simulator, Axle slip covers this instead.
-- **Axle slip**: understeer and oversteer as two distinct feelings instead
-  of one blur: a high scrub texture as the front washes wide, a deeper
-  pulse as the rear steps out. (Per-tire telemetry: the Forza titles,
-  Assetto Corsa and Farming Simulator.)
-- **Lockup judder**: when a wheel locks under braking, a coarse pulsing
-  judder kicks in, the feel of a flat-spotted tire skidding rather than
-  rolling, fading as the car slows. A locked wheel becomes something you
-  feel and can correct instead of a silent loss of grip. (Per-tire
-  telemetry: the Forza titles and Assetto Corsa.)
+- **DRS**: a chirp as the wing opens, and an optional flutter while it
+  stays open.
+- **Road bumps**: rough ground rumbles through the wheel, read per tire in
+  Forza for a sharper surface.
+- **Implement thud**: the hydraulic hum as an implement or loader arm
+  moves, and the thump as it lands. (Farming Simulator.)
+- **Traction loss**: tire screech when grip breaks, sharpest where the game
+  reports per-wheel slip.
+- **Axle slip**: understeer and oversteer as two feelings rather than one
+  blur, a high scrub as the front washes wide, a deeper pulse as the rear
+  steps out.
+- **Lockup judder**: the coarse judder of a flat-spotted tire skidding
+  under braking, fading as the car slows.
 - **Collision**: a thud on impact, scaled to the hit.
-- **Airborne ducking**: when the car leaves the ground, the chosen effects
-  cut out so jumps feel weightless, then return on landing. Detected from
-  wheel load / suspension (AC, the Forza titles and Farming Simulator). On
-  by default.
-- **Stationary spring**: centering force so a parked or crawling car has
-  some weight at the wheel instead of going limp, fading out as speed
-  builds (AC).
+- **Airborne ducking**: the effects you choose cut out while the car is in
+  the air, so jumps feel weightless. On by default.
+- **Stationary spring**: weight at the wheel when parked or crawling,
+  fading out as speed builds.
 
-The set is still growing, and which effects a game can drive depends on the
-telemetry it publishes, so the plugin shows you the ones your current game
-supports and hides the rest.
+Which effects a game can drive depends on the telemetry it publishes, so
+the plugin shows the ones your game supports and hides the rest.
 
 ### Effects from game audio
 
-WASAPI loopback captures the game's audio output (engine, tire, impact
-sounds) and feeds it into the wheel as low-latency haptics. Lets you feel
-things the telemetry doesn't expose, and works even in games that output no
-telemetry at all, since the capture targets the game process directly.
+The game's own audio, captured from its process and fed to the wheel as
+haptics. It catches what telemetry never exposes, and works in games that
+publish none at all.
 
 ## Telemetry Based FFB
 
@@ -260,20 +245,17 @@ big step up in feel.
 
 ## The wheel's lights
 
-A G PRO or RS50 stores lighting patterns for its rev strip, and until now
-the only way to choose between them was the wheelbase's own menu or G HUB.
-The LIGHTSYNC tab takes that over. The G923's strip has a fixed layout, so
-the tab stays hidden there.
+The LIGHTSYNC tab takes over the rev strip on a G PRO or RS50. The G923's
+strip has a fixed layout, so the tab stays hidden there.
 
-- **The pattern can match the car you are driving.** Tick "Match my wheel
-  to the car I'm driving" and the strip takes on each car's own colors and
-  fill direction as you get in, lighting where the real car lights. The
-  data comes from [Lovely Sim Racing][lovely] (CC BY-NC-SA 4.0); a car
-  they have not covered keeps whatever pattern you chose.
-- **Save as many patterns as you want.** The wheel itself stores five; the
-  plugin's library has no limit, and a bound button walks the whole library
-  without taking your hands off the wheel.
-- **A pattern maker.** Ten LEDs, click one and color it, with the wheel
+- **The pattern can match the car you are driving.** The strip takes on each
+  car's own colors and fill direction as you get in, lighting where the real
+  car lights. The data comes from [Lovely Sim Racing][lovely]
+  (CC BY-NC-SA 4.0); a car they have not covered keeps the pattern you chose.
+- **Save as many patterns as you want.** The wheel stores five; the plugin's
+  library has no limit, and a bound button walks it without taking your hands
+  off the wheel.
+- **A pattern maker.** Color the ten LEDs one at a time, with the wheel
   showing the whole pattern as you work. Thirteen hand-made patterns come
   built in, yours to copy and edit.
 - **Color trim, pre-tuned.** The three colors inside an LED are not equally
@@ -283,23 +265,20 @@ the tab stays hidden there.
 - **A car can remember its own.** One click on "Remember for this car" and
   the pattern comes back whenever that car loads.
 - **Idle modes.** With no game running, or the car sat still, the strip can
-  run a slow sweep up and back, or meter your computer's audio so the
-  lights move with whatever you are listening to. Colors come from the
-  pattern you chose, and your revs take the lights back the moment a game
-  reports them. Off by default.
+  run a slow sweep up and back, or meter your computer's audio so the lights
+  move with whatever you are listening to. Your revs take the lights back the
+  moment a game reports them. Off by default.
 - **The TF4ALL Dash's rev strip can match the wheel's**, colors, fill
   direction and switch-on points included.
 
 Picks apply immediately, in and out of game. In a game whose force feedback
 passes through the USB capture, changing the pattern interrupts that force
-for a moment, so it is best done parked; where the plugin carries the force
-itself, there is nothing to interrupt.
+for a moment, so it is best done parked.
 
-**Three modes, remembered per game.** The switch at the top of the panel
-is Normal (everything), Lightsync only (the plugin leaves the game's force
-feedback and Trueforce completely alone and only sets the wheel's light
-pattern for the car you are in) or Off. Games that bring their own
-Trueforce start on Lightsync only.
+**Three modes, remembered per game.** Normal (everything), Lightsync only
+(the plugin leaves the game's force feedback and Trueforce alone and only
+sets the light pattern for the car you are in), or Off. Games that bring
+their own Trueforce start on Lightsync only.
 
 ## The wheel's OLED screen
 
@@ -414,8 +393,7 @@ Some titles already ship Trueforce on PC, so the plugin starts on
 **Lightsync only** for them: their force feedback and Trueforce are left
 alone, and only the wheel's light pattern is set. Switch off the game's
 native Trueforce and set the plugin to Normal mode to take over, tuning the
-feel yourself rather than taking whatever the game hardcodes (and on
-Automobilista 2, adding Trueforce that was never really there).
+feel yourself rather than taking whatever the game hardcodes.
 
 <details>
 <summary><b>Why a slider at 0 is not off</b></summary>
@@ -447,21 +425,16 @@ to Normal.
 | Assetto Corsa Competizione | Slider only, no off switch found | No, stays live |
 | Assetto Corsa EVO | Slider only, no off switch found | No, stays live |
 | Assetto Corsa Rally | Slider only, no off switch found | No, stays live |
-| BeamNG.drive | Not tested | Not tested |
-| F1 22, 23, 24 and 25 | Not tested | Not tested |
-| EA Sports WRC (2023) | Not tested | Not tested |
-| WRC 10 | Not tested | Not tested |
-| WRC Generations | Not tested | Not tested |
-| Project CARS 3 | Not tested | Not tested |
-| Test Drive Unlimited Solar Crown | Not tested | Not tested |
 | Le Mans Ultimate | Settings > Controls > Force Feedback: Vendor Specific Force Feedback off | Yes, through the handover: tick "Take over force feedback for Le Mans Ultimate" on the FFB tab |
 
+Not tested yet: BeamNG.drive, F1 22 through 25, EA Sports WRC (2023),
+WRC 10, WRC Generations, Project CARS 3 and Test Drive Unlimited Solar
+Crown.
+
 **AMS2 is a special case:** per Reiza's devs it loads the Logitech SDK but
-never actually implements Trueforce, so it behaves like a non-Trueforce
-game with the channel left live. The `disableTF`
-launch option falls back to legacy mode and should let the plugin take
-over, but I haven't confirmed it on hardware. (Steam launch options: right-
-click the game, Properties, General, Launch Options.)
+never implements Trueforce, so the channel sits live with nothing on it. The
+`disableTF` launch option should let the plugin take over, but I haven't
+confirmed it on hardware.
 
 >I don't own some of these titles, so this table grows from user reports. If
 you find an off switch or config setting for one of the ones still marked
