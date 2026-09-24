@@ -679,8 +679,13 @@
                     <TextBlock x:Name="UpdateAvailableButtonText" Text="Update available"/>
                 </Button>
             </StackPanel>
-            <TextBlock Text="Everything your Logitech wheel can do, in games that never supported it: Trueforce haptics, Telemetry Based FFB, rev lights and a customizable wheelbase OLED screen. Unofficial reverse-engineered implementation of Logitech's Trueforce and OLED protocols, not affiliated with Logitech. Supports G PRO, RS50 and G923; the screen is G PRO and RS50 only."
-                       FontSize="13" Opacity="0.7" Margin="0,0,0,12" TextWrapping="Wrap"/>
+            <TextBlock Text="The ultimate companion for a Trueforce-enabled Logitech wheel."
+                       FontSize="13" Opacity="0.7" Margin="0,0,0,2" TextWrapping="Wrap"/>
+            <!-- The only place the app says this. It is not in the EULA or the privacy
+                 policy, and the UI uses the Trueforce name throughout, so keep it
+                 somewhere visible even when the line above gets rewritten. -->
+            <TextBlock Text="Unofficial. Not affiliated with Logitech."
+                       FontSize="11" Opacity="0.45" Margin="0,0,0,12" TextWrapping="Wrap"/>
 
             <!-- "What's new" banner. Shown when the running build's version
                  is ahead of Settings.LastSeenVersion (i.e. the user just
