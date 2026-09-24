@@ -38,15 +38,14 @@ some.
 ## FFB and Trueforce Effects
 
 The plugin layers Trueforce haptics over the game's built-in FFB. In most
-games it reads the force off the wire and adds to it. Some games go further:
+games it reads the force off the wire and adds to it.
 
-- **The sim hands its force over.** iRacing, RaceRoom, Le Mans Ultimate, and
-  Assetto Corsa with the CSP Bridge. No USB capture involved.
-- **The plugin can build the force itself.** The Forza titles and Farming
-  Simulator, through [Telemetry Based FFB](#telemetry-based-ffb).
-
-In these games the wheel's rev lights and screen are unlocked too, and
-[Per-game enhancements](#per-game-enhancements) covers what each one gets.
+Some games go further. iRacing, RaceRoom, Le Mans Ultimate and Assetto Corsa
+hand their force straight to the plugin, with no USB capture involved. In the
+Forza titles and Farming Simulator, [Telemetry Based FFB](#telemetry-based-ffb)
+can build the whole force instead. In these games the wheel's rev lights and
+screen are unlocked too, and [Per-game enhancements](#per-game-enhancements)
+covers what each one gets.
 
 Save your tunings per game and per car, and use the preset browser to manage
 your presets and share with the community.
