@@ -88,10 +88,11 @@ namespace TrueforceForAll.Plugin
 
     /// <summary>Snapshot of the community consensus for the car_name fact,
     /// pulled per (game, carId). Engine-blind on purpose (a car's name is
-    /// chassis-level, so every engine swap for one carId shares it), but keyed
-    /// per LANGUAGE: car_name's variant_signature carries "lang=en" etc. so
-    /// each language has its own consensus and an English plurality can't bury
-    /// a correct non-English name.</summary>
+    /// chassis-level, so every engine swap for one carId shares it). Its
+    /// variant_signature carries the constant "lang=en", a legacy bucket key
+    /// from a per-language design that was retired; it never took effect,
+    /// because SimHub pins the UI culture to en-US. One global consensus per
+    /// car.</summary>
     public sealed class CarNameConsensus
     {
         public string Name { get; set; }
@@ -252,10 +253,11 @@ namespace TrueforceForAll.Plugin
             name = name.Trim();
             if (name.Length < 2 || name.Length > 96) return;
 
-            // variant_signature carries the submitter's LANGUAGE ("lang=en") so
-            // each language forms its own consensus row. Still chassis-level
-            // otherwise (no cyl/engine in the key): one name per language across
-            // every engine swap on the car.
+            // variant_signature carries the constant "lang=en", a legacy bucket
+            // key from a per-language design that was retired (it never took
+            // effect: SimHub pins the UI culture to en-US). Chassis-level
+            // otherwise (no cyl/engine in the key): one global name per car
+            // across every engine swap.
             var payload = new { name };
             FireAndForgetRpc(url, anonKey, SubmitRpcPath,
                 BuildSubmitBody(game, carId, "car_name", payload, variantSignature));
@@ -423,11 +425,13 @@ namespace TrueforceForAll.Plugin
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
 
-            // car_name is keyed per LANGUAGE in variant_signature ("lang=en").
-            // Pull every language's row for this car (a handful at most) and
-            // pick the user's own language if present, else the most-supported
-            // row of any language (English in practice; legacy unkeyed rows from
-            // before this split compete here on support too).
+            // car_name's variant_signature carries the constant "lang=en", a
+            // legacy bucket key from a per-language design that was retired (it
+            // never took effect: SimHub pins the UI culture to en-US), so there
+            // is one global consensus per car. Still pull every row for this car
+            // (a handful at most) and prefer the caller's signature ("lang=en")
+            // when present, else the most-supported row of any signature (legacy
+            // unkeyed rows from before the key existed compete here on support).
             string prefSig = preferredVariantSignature ?? "";
             string qs = "?game=eq."  + Uri.EscapeDataString(game)
                       + "&car_id=eq." + Uri.EscapeDataString(carId)

@@ -25109,18 +25109,19 @@ namespace TrueforceForAll.Plugin
         /// (game, carId). Public passthrough so SettingsControl can hit
         /// this without exposing CommunityClient. Mirrors <see
         /// cref="FetchEngineLayoutConsensus"/>.</summary>
-        // Language tag carried in car_name's variant_signature so each language
-        // forms its own consensus (an English plurality can't bury a correct
-        // name in another language). Derived from the OS UI language for now;
-        // when the plugin UI itself is localized this can switch to the chosen
-        // UI language. Two-letter ISO so en-US / en-GB share one "en" bucket.
+        // Language tag carried in car_name's variant_signature. This was meant
+        // to bucket car-name consensus per language, so an English plurality
+        // could not bury a correct name in another language. It never did:
+        // SimHub pins CultureInfo.CurrentUICulture to en-US process-wide before
+        // any plugin loads, so every submission and fetch has always carried
+        // "lang=en". The owner has since decided one global bucket is right
+        // (most people use cars' English names), so the value is now a constant.
+        // It must stay exactly "lang=en": variant_signature is part of the
+        // car_fact_consensus primary key, and changing it would orphan every
+        // existing row. Do not repoint this at a UI language.
         internal static string CommunityNameLocaleSig()
         {
-            string lang = null;
-            try { lang = System.Globalization.CultureInfo.CurrentUICulture?.TwoLetterISOLanguageName; }
-            catch { /* fall through to the default below */ }
-            if (string.IsNullOrEmpty(lang) || lang == "iv") lang = "en";
-            return "lang=" + lang.ToLowerInvariant();
+            return "lang=en";
         }
 
         internal CarNameConsensus FetchCarNameConsensus(string game, string carId)
@@ -25654,17 +25655,22 @@ namespace TrueforceForAll.Plugin
                 string commitHash  = sendSnapshot ? snapshotHash : null;
                 var    commitDays  = sentGameDays;
                 var    commitOwner = Settings;              // identity checked at commit
+                string uiLang = UsageLanguage.UiLang();
+                string fmtLang = UsageLanguage.FmtLang();
                 // One line per ping, so what was sent is answerable from a log alone.
                 // Without it the only telemetry lines are failures, and a ping that
                 // carried nothing looks exactly like a ping that never happened; that
-                // ambiguity already cost a live test. Counts only, never content.
+                // ambiguity already cost a live test. Counts and the two-letter
+                // language codes only, never content.
                 SimHub.Logging.Current.Info(string.Format(
-                    "[TF4ALL] Usage ping: game='{0}' snapshot={1} gameDays={2} presets={3}",
+                    "[TF4ALL] Usage ping: game='{0}' snapshot={1} gameDays={2} presets={3} lang={4}/{5}",
                     game ?? "(none)", sendSnapshot ? "yes" : "unchanged",
-                    commitDays?.Count ?? 0, stagedPresetHashes.Count));
+                    commitDays?.Count ?? 0, stagedPresetHashes.Count,
+                    uiLang ?? "-", fmtLang ?? "-"));
                 _telemetryClient.SendPing(anonId, CurrentVersionString(),
                     Settings.LastUsedWheel, game, sendSnapshot ? snapshot : null,
                     gamesJson, gamePresetsJson,
+                    uiLang, fmtLang,
                     receipt => CommitUsagePing(commitOwner, today, commitHash, commitDays,
                                                stagedPresetHashes, receipt));
             }

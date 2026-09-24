@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Trueforce For All** (the SimHub plugin). Effective 2026-08-27.
+**Trueforce For All** (the SimHub plugin). Effective 2026-09-24.
 
 ## The short version
 
@@ -184,14 +184,20 @@ completely, and off means nothing is sent.
 A report contains a random id minted by the plugin (not derived from your
 hardware, your identity, or the community car-data id, so reports cannot
 be tied to you or to your car-data submissions), the plugin version, your
-wheel model, the games you play, and your settings. It
-never contains your name, email, or account, or any free text you type
-such as an OLED greeting or a dash driver name, and your IP address is not
-stored on these records. A report is sent at most once a day.
+wheel model, the games you play, your settings, and two language codes:
+the language Windows is displayed in and the language of your Windows
+regional format setting, each as a two-letter code such as "en" or "de".
+They are there so we can see which languages a translated version of the
+plugin would reach. Neither code carries a region, so "de" covers Germany,
+Austria, and Switzerland alike. A report never contains your name, email,
+or account, or any free text you type such as an OLED greeting or a dash
+driver name, and your IP address is not stored on these records. A report
+is sent at most once a day.
 
-Why: to know how many people use the plugin and which features and
-settings matter, so development follows real use. The lawful basis for EU
-and UK users is legitimate interest, and you can turn it off at any time.
+Why: to know how many people use the plugin, which features and settings
+matter, and which languages to translate it into, so development follows
+real use. The lawful basis for EU and UK users is legitimate interest, and
+you can turn it off at any time.
 
 ## Who processes the data
 

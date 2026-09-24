@@ -461,6 +461,134 @@ Treat 75 percent as the line at which the blob needs trimming rather than
 another field. It grows every time a setting is classified Portable for
 backup, which happens for reasons that have nothing to do with telemetry.
 
+### 2.6 Language: two columns and the three ways to misread them
+
+Migration 0134 adds `ui_lang` and `fmt_lang` to `public.telemetry`. Both are
+lowercase two-letter ISO 639-1 codes or null, computed at the ping call site,
+sent with every daily ping and never persisted on the client. They exist to
+answer one question: which languages would a translated plugin reach.
+
+`ui_lang` is the language Windows is displayed in. It is a **floor**: the
+German who runs Windows in English counts as English here.
+
+`fmt_lang` is the language subtag of the Windows regional-format locale, the
+country this PC was configured for at setup, which decides date and number
+formats. It is **not a stated preference**. It catches the German on English
+Windows, but it also counts an English speaker living in Brazil as
+Portuguese. Treat it as a **ceiling**.
+
+The truth is between the two, and the gap is widest for languages whose
+speakers commonly run English Windows. A language whose speakers rarely do
+will show the two columns close together; one whose speakers often do will
+show a ui count well under its fmt count, and the difference is real demand
+that only fmt can see.
+
+The aggregate view is the only sanctioned read:
+
+```sql
+select * from public.v_install_language;
+```
+
+One row per (signal, lang), where signal is `ui` or `fmt`, over installs seen
+in the last 30 days, plus one `unknown` row per signal for the installs that
+never reported it. **Nothing here may be joined back to per-install rows**,
+and no query in this runbook should ever select `ui_lang` or `fmt_lang` from
+`public.telemetry` beside `anon_id`, `wheel` or a game. The view rolls any
+bucket under 5 installs into `other`. That minimum cohort is what makes the
+columns safe to have at all: a single Korean install beside wheel model and
+games played is a nameable person, and `other` names no language.
+
+Three misreads, in the order they will happen:
+
+**Coverage ramp.** For weeks after the build that sends the columns ships,
+the field exists only on installs running that build. Those are the fastest
+updaters, who are also the most English-comfortable. Read `coverage_pct`
+before anything else. At 20 percent coverage the language split describes
+early adopters, not the base. The `unknown` row is the update-adoption curve;
+it should fall week over week, and until it is small every other row is a
+preview.
+
+**Survivorship.** Everyone counted already cleared an English-only installer,
+an English GitHub page and 28 English guides. That filter is not a constant
+multiplier you can divide out. It suppresses exactly the languages where
+translation has the most headroom, because the people who bounced off the
+English guide are the ones who most needed a translated one. Every
+non-English share is a floor, and the floors are not equally deep.
+
+**Tiny buckets.** At n=200 covered installs, a 5 percent bucket is 10
+installs, with a 95 percent interval of roughly 3 to 9 percent, six points
+wide. Positions three through six in the ranking are noise indefinitely at
+this fleet size and will swap places week to week with nothing behind it.
+The view carries `ci_lo` and `ci_hi` so you can see that two rows overlap
+before you say one leads.
+
+The rankable rule: a row is `rankable` when its bucket holds at least 30
+installs and at least 150 installs are covered for that signal. Below that a
+row says only that the language exists in the base. **Do not compare two
+non-rankable rows** against each other, and do not order them.
+
+Dated note, 2026-09-24: SimHub itself ships de-DE, fr-FR, it, ko-KR, ru-RU and
+zh-Hans-CN translations. A zero for one of those languages is not absence of
+demand: a user who wanted their language found it in SimHub and had no reason
+to look further. A presence for one of them says a volunteer translator has
+already existed in that community once, which is a different fact from
+demand and a more useful one.
+
+#### Applying 0134
+
+In this order, and not out of it:
+
+1. Pre-flight. Run the pg_proc query and record what is live. Expect one
+   seven-argument `telemetry_ping` row, or a five- and a seven-argument row
+   if 0128's drop never ran.
+
+   ```sql
+   select pg_get_function_arguments(p.oid),
+          pg_get_function_result(p.oid), p.proacl
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'telemetry_ping';
+   ```
+
+2. Apply, outside 04:20-04:40 UTC. The rollup runs at 04:25 and holds
+   `public.telemetry`, and the migration's `alter table` needs an exclusive
+   lock on it.
+
+   ```
+   supabase db query --linked -f supabase/migrations/0134_telemetry_language.sql
+   ```
+
+3. Post-flight. Run the same pg_proc query. Expect exactly one row with nine
+   arguments, result `jsonb`, and anon and authenticated in the ACL.
+
+4. The two curl smoke tests from the migration's trailing comment: the exact
+   v0.4.0 seven-key body with `p_anon_id` `smoke-test-7` and the other six
+   keys as JSON null, then the nine-key body with `p_ui_lang` and `p_fmt_lang`
+   set to `de`. Both must return `{"ok":true,...}`. This proves PostgREST's
+   schema cache reloaded, which the pg_proc query cannot. A 404 with code
+   PGRST202 on the nine-key body is exactly the failure this order exists to
+   prevent.
+
+5. Delete the smoke rows:
+
+   ```sql
+   delete from public.telemetry         where anon_id like 'smoke-test-%';
+   delete from public.telemetry_devices where anon_id like 'smoke-test-%';
+   ```
+
+   The second line matters only if the 04:25 UTC rollup ran between the
+   smoke tests and this cleanup; it would have copied the two fake installs
+   into `telemetry_devices`, where nothing else removes them for a year.
+
+6. Then, and only then, ship the plugin build that sends the new keys. A
+   build shipped first fails its WHOLE ping with PGRST202, settings and
+   game-days included, until the migration lands, and heals only on the
+   6-hour retry after it does.
+
+What the field tells you is whether English dominates and which single
+non-English language leads. Nothing finer. One MOTD asking "would you use
+this in your language, and would you translate it" answers the volunteer
+question faster than any column will.
+
 ---
 
 ## 3. Useful queries

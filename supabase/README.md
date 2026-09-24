@@ -8,7 +8,7 @@ and rate-limit. Direct table writes from the anon key are revoked.
 
 ## What's in here
 
-`migrations/` (133, applied in filename order) grouped by subsystem:
+`migrations/` (134, applied in filename order) grouped by subsystem:
 
 - **CarFacts** (`0001`-`0004` + later refinements): community car data;
   submissions/votes/consensus with Wilson scoring, payload normalization,
@@ -48,7 +48,7 @@ silently did nothing looks exactly like one that worked.
 
 **Never run `supabase migration repair`, `db push`, `db pull` or `db reset`
 against this project.** Local files are numbered and the remote ledger is
-keyed by timestamp, so the two lists share nothing and the CLI reports all 133
+keyed by timestamp, so the two lists share nothing and the CLI reports all 134
 local files as pending and all 157 remote rows as missing. That is expected,
 not drift.
 

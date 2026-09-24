@@ -65,9 +65,12 @@ namespace TrueforceForAll.Plugin
         /// than before; a failed send then simply retries on the next tick. It is
         /// handed the server's receipt (migration 0131) naming exactly what was
         /// stored, or null if the response carried none, so the caller can commit
-        /// per item instead of trusting the status code.</summary>
+        /// per item instead of trusting the status code. The two language codes
+        /// (<paramref name="uiLang"/>, <paramref name="fmtLang"/>) are stateless
+        /// and resent on every ping, so they have no receipt key.</summary>
         public void SendPing(string anonId, string pluginVersion, string wheel,
             string game, string settingsJson, string gamesJson = null, string gamePresetsJson = null,
+            string uiLang = null, string fmtLang = null,
             Action<TelemetryReceipt> onSent = null)
         {
             if (string.IsNullOrWhiteSpace(anonId)) return;
@@ -85,6 +88,8 @@ namespace TrueforceForAll.Plugin
                     ["p_settings"]       = ParseOrNull(settingsJson),
                     ["p_games"]          = ParseOrNull(gamesJson),        // [{g,d}] games played since the last ping
                     ["p_game_presets"]   = ParseOrNull(gamePresetsJson),  // [{g,p}] per-game preset bodies, only when changed
+                    ["p_ui_lang"]        = NullIfEmpty(uiLang),           // two-letter Windows display language, or null
+                    ["p_fmt_lang"]       = NullIfEmpty(fmtLang),          // two-letter regional-format language, or null
                 }.ToString(Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)

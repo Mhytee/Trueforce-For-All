@@ -5238,15 +5238,17 @@
                         <!-- Anonymous usage statistics. Opt-out (default on). The
                              plugin's once-a-day telemetry ping: a random id (not
                              tied to the user or hardware), plugin version, wheel,
-                             current game, and a scalar settings snapshot. Sits with
-                             the other "for support" reporting controls. Handler
+                             current game, a scalar settings snapshot, games played,
+                             per-game presets, and two language codes (two letters
+                             each). Sits with the other "for support" reporting
+                             controls. Handler
                              flips Settings.ShareUsageStats + persists; the ping
                              self-gates on it. -->
                         <CheckBox x:Name="ShareUsageStatsCheck"
                                   Content="Share anonymous usage statistics"
                                   Margin="0,16,0,0"
                                   Checked="ShareUsageStats_Changed" Unchecked="ShareUsageStats_Changed"
-                                  ToolTip="Sends an anonymous once-a-day report (a random id not tied to you or your hardware, the plugin version, your wheel model, the games you play, and your settings) so development can follow real use. Never sends your name, account, anything you type, or your IP. Turn off to send nothing."/>
+                                  ToolTip="Sends an anonymous once-a-day report (a random id not tied to you or your hardware, the plugin version, your wheel model, the games you play, your settings, and two-letter codes for your Windows display and regional-format languages) so development can follow real use. Never sends your name, account, or anything you type; your IP address is not stored. Turn off to send nothing."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,2,0,0" FontSize="12" TextWrapping="Wrap">
                             <Run Text="Helps decide what to build next. Anonymous. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
                         </TextBlock>
