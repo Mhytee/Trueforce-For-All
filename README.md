@@ -378,9 +378,9 @@ plugin and the achievements you earn grant matching roles there.
 The **?** in the panel's header opens the guides: setup for the games that
 need it (iRacing, RaceRoom, Le Mans Ultimate, Assetto Corsa, Forza,
 Farming Simulator), what to do when something is wrong, and the questions
-people ask most. Search reads the guides themselves, so typing G HUB,
-app.ini or 5300 lands on the one that explains it. The same guides are in
-[guides/](guides/README.md) here, to read before you install anything.
+people ask most. The same guides are at
+[mhytee.github.io/Trueforce-For-All](https://mhytee.github.io/Trueforce-For-All/),
+to read before you install anything.
 
 The installer is conservative on uninstall: it removes our files but leaves
 SimHub, USBPcap, and shared dependencies (HidSharp, NAudio) alone, so other
