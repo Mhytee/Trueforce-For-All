@@ -1,12 +1,24 @@
 ---
 layout: null
 ---
+{%- comment -%}
+  The search index. Titles come from _data/nav.yml rather than the page object:
+  a page's own title is only set while that page renders, so read from here it
+  falls back to the file name and the results list reads "lmu-setup.md".
+{%- endcomment -%}
 {%- assign docs = site.pages | where_exp: "p", "p.url contains '.html'" -%}
 [
 {%- for p in docs %}
+  {%- assign key = p.url | remove_first: '/' | remove: '.html' -%}
+  {%- assign label = p.name | remove: '.md' -%}
+  {%- for group in site.data.nav -%}
+    {%- for item in group.items -%}
+      {%- if item.key == key %}{% assign label = item.title %}{% endif -%}
+    {%- endfor -%}
+  {%- endfor %}
   {
     "url": {{ p.url | relative_url | jsonify }},
-    "title": {{ p.title | default: p.name | jsonify }},
+    "title": {{ label | jsonify }},
     "text": {{ p.content | strip_html | normalize_whitespace | jsonify }}
   }{% unless forloop.last %},{% endunless %}
 {%- endfor %}
