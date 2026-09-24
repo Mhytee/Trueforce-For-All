@@ -1,0 +1,13 @@
+---
+layout: null
+---
+{%- assign docs = site.pages | where_exp: "p", "p.url contains '.html'" -%}
+[
+{%- for p in docs %}
+  {
+    "url": {{ p.url | relative_url | jsonify }},
+    "title": {{ p.title | default: p.name | jsonify }},
+    "text": {{ p.content | strip_html | normalize_whitespace | jsonify }}
+  }{% unless forloop.last %},{% endunless %}
+{%- endfor %}
+]

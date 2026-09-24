@@ -654,7 +654,8 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
-                Version = new Version(0, 4, 0),
+                // 0.4.0 shipped 2026-09-23; the EQ rides the next release.
+                Version = new Version(0, 4, 1),
                 Title = "Trueforce EQ",
                 Entries = new List<ChangelogEntry>
                 {
