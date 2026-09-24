@@ -37,10 +37,8 @@ some.
 
 ## FFB and Trueforce Effects
 
-The plugin drives the wheel's Trueforce motor in real time, layered over the
-steering force you already feel. In most games it reads that force off the
-wire and adds to it, so your cornering load and curb forces keep coming
-through underneath. Some games go further:
+The plugin layers Trueforce haptics over the game's built-in FFB. In most
+games it reads the force off the wire and adds to it. Some games go further:
 
 - **The sim hands its force over.** iRacing, RaceRoom, Le Mans Ultimate, and
   Assetto Corsa with the CSP Bridge. No USB capture involved.

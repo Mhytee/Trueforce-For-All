@@ -26031,6 +26031,30 @@ namespace TrueforceForAll.Plugin
                     : string.Format("[TF4ALL] Usage ping stored: settings={0} gameDays={1} presets={2}",
                         receipt.SettingsStored ? "yes" : "no",
                         receipt.Games.Count, receipt.Presets.Count));
+                // The line above prints settings=no in two completely different
+                // situations: the ordinary one, where we sent no snapshot at all
+                // because its hash had not changed, and the one that matters, where
+                // we did send one and the server threw it away. Those look identical
+                // in a log, and the second is the only warning anyone gets.
+                //
+                // telemetry_ping nulls the WHOLE settings blob when it exceeds 8192
+                // bytes and still answers ok, so nothing fails, nothing retries, and
+                // the settings half of usage statistics simply stops arriving. The
+                // blob is every scalar in BackupProjection.Portable, so it grows each
+                // time a setting is classified Portable for backup: measured 4932
+                // bytes over 161 keys on 2026-09-24, about 60 percent of the limit.
+                // That makes this a GLOBAL cliff rather than a per-install one. When
+                // it is crossed it is crossed by every install on that build at once,
+                // which is exactly the kind of failure that goes unnoticed for months.
+                // Warn, not Info: it means a feature has silently stopped working.
+                if (!string.IsNullOrEmpty(snapshotHash) && receipt != null && !receipt.SettingsStored)
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] Usage ping: the settings snapshot was sent but the server did not "
+                        + "store it, which means it is over the 8 KB payload limit. Settings "
+                        + "statistics are no longer being recorded from this install; the rest of "
+                        + "the ping (wheel, version, games played) was unaffected. The snapshot is "
+                        + "left unstamped so it retries, but it will keep being refused until the "
+                        + "payload gets smaller.");
                 // Every write below goes through `owner`, never a fresh read of the
                 // Settings property: the guard has already proven owner is the live
                 // graph, and re-reading a plain auto-property would let an import
