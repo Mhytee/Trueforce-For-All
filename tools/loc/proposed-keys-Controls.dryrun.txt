@@ -1,0 +1,37 @@
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4448  Header="Controls"  ->  {loc:T Controls_ControlsTab_Header}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4451  Text="Controller bindings"  ->  {loc:T Controls_ControlsTabHostControllerBindings}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4453  Text="Bind wheel or button-box controls to adjust things while you drive, without opening this panel. Click a field below, then press the button you want to use. Master gain stays between 0 and 2."  ->  {loc:T Controls_ControlsTabHostBindWheelOrButton}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4458  Text="Step per press"  ->  {loc:T Controls_ControlsTabHostStepPerPress}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4459  ToolTip="How far master gain moves on each press of the bound buttons below."  ->  {loc:T Controls_ControlsTabHostStepPerPress_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4469  Text="Master gain up"  ->  {loc:T Controls_ControlsTabHostMasterGainUp}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4471  FriendlyName="TF4ALL: master gain up"  ->  {loc:T Controls_ControlsTabHostTf4allMasterGainUp_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4475  Text="Master gain down"  ->  {loc:T Controls_ControlsTabHostMasterGainDown}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4477  FriendlyName="TF4ALL: master gain down"  ->  {loc:T Controls_ControlsTabHostTf4allMasterGainDown_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4481  Text="Telemetry FFB up"  ->  {loc:T Controls_ControlsTabHostTelemetryFfbUp}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4483  FriendlyName="TF4ALL: telemetry FFB strength up"  ->  {loc:T Controls_ControlsTabHostTf4allTelemetryFfbStrengthUp_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4487  Text="Telemetry FFB down"  ->  {loc:T Controls_ControlsTabHostTelemetryFfbDown}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4489  FriendlyName="TF4ALL: telemetry FFB strength down"  ->  {loc:T Controls_ControlsTabHostTf4allTelemetryFfbStrengthDown_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4493  Text="Wheel OLED next"  ->  {loc:T Controls_ControlsTabHostWheelOledNext}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4495  FriendlyName="TF4ALL: wheel OLED next"  ->  {loc:T Controls_ControlsTabHostTf4allWheelOledNext_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4499  Text="Wheel OLED back"  ->  {loc:T Controls_ControlsTabHostWheelOledBack}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4501  FriendlyName="TF4ALL: wheel OLED back"  ->  {loc:T Controls_ControlsTabHostTf4allWheelOledBack_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4505  Text="Rev pattern next"  ->  {loc:T Controls_ControlsTabHostRevPatternNext}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4507  FriendlyName="TF4ALL: rev-light pattern next"  ->  {loc:T Controls_ControlsTabHostTf4allRevLightPatternNext_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4511  Text="Rev pattern back"  ->  {loc:T Controls_ControlsTabHostRevPatternBack}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4513  FriendlyName="TF4ALL: rev-light pattern back"  ->  {loc:T Controls_ControlsTabHostTf4allRevLightPatternBack_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4517  Text="Dash tab next"  ->  {loc:T Controls_ControlsTabHostDashTabNext}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4519  FriendlyName="TF4ALL: dash tab next"  ->  {loc:T Controls_ControlsTabHostTf4allDashTabNext_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4523  Text="Dash tab back"  ->  {loc:T Controls_ControlsTabHostDashTabBack}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4525  FriendlyName="TF4ALL: dash tab back"  ->  {loc:T Controls_ControlsTabHostTf4allDashTabBack_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4529  Text="Peak force up"  ->  {loc:T Controls_ControlsTabHostPeakForceUp}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4531  FriendlyName="TF4ALL: max force up (iRacing)"  ->  {loc:T Controls_ControlsTabHostTf4allMaxForceUp_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4535  Text="Peak force down"  ->  {loc:T Controls_ControlsTabHostPeakForceDown}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4537  FriendlyName="TF4ALL: max force down (iRacing)"  ->  {loc:T Controls_ControlsTabHostTf4allMaxForceDown_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4545  Text="Auto force"  ->  {loc:T Controls_ControlsTabHostAutoForce}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4546  ToolTip="Runs the current game's auto force calibration: iRacing sets the max force from the learned peak, Forza re-levels the auto strength."  ->  {loc:T Controls_ControlsTabHostAutoForce_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4548  FriendlyName="TF4ALL: auto force (calibrate this car)"  ->  {loc:T Controls_ControlsTabHostTf4allAutoForceCalibrate_FriendlyName}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:4552  Text="These actions also appear in SimHub's Controls and events list. Bindings are stored by SimHub, not in your TF4ALL preset."  ->  {loc:T Controls_ControlsTabHostTheseActionsAlsoAppear}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:scopes  tab:ControlsTab
+
+33 replacements in 1 file(s); en.json: +33 new key(s), 0 already present -> src/TrueforceForAll.Plugin/Languages/en.json
+Dry run: nothing written.

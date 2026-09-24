@@ -4445,18 +4445,18 @@
             </sh:SHTabItem>
 
             <!-- ============================ CONTROLS ============================ -->
-            <sh:SHTabItem x:Name="ControlsTab" Header="Controls">
+            <sh:SHTabItem x:Name="ControlsTab" Header="{loc:T Controls_ControlsTab_Header}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="ControlsTabHost" Margin="14,12,14,14">
-                        <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="Controller bindings" Style="{StaticResource SectionHeaderText}"/></Border>
+                        <Border Style="{StaticResource SectionHeaderBorder}"><TextBlock Text="{loc:T Controls_ControlsTabHostControllerBindings}" Style="{StaticResource SectionHeaderText}"/></Border>
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,12" FontSize="12"
-                            Text="Bind wheel or button-box controls to adjust things while you drive, without opening this panel. Click a field below, then press the button you want to use. Master gain stays between 0 and 2."/>
+                            Text="{loc:T Controls_ControlsTabHostBindWheelOrButton}"/>
 
                         <!-- How much each press of a bound button moves master gain. -->
                         <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Step per press" Style="{StaticResource LabelText}"
-                                       ToolTip="How far master gain moves on each press of the bound buttons below."/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostStepPerPress}" Style="{StaticResource LabelText}"
+                                       ToolTip="{loc:T Controls_ControlsTabHostStepPerPress_Tip}"/>
                             <Slider Grid.Column="1" x:Name="MasterGainStepSlider"
                                     Minimum="0.01" Maximum="0.5" SmallChange="0.01" LargeChange="0.05"
                                     TickFrequency="0.05" IsSnapToTickEnabled="False"
@@ -4466,75 +4466,75 @@
 
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Master gain up" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostMasterGainUp}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.MasterGainUp"
-                                                 FriendlyName="TF4ALL: master gain up"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allMasterGainUp_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Master gain down" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostMasterGainDown}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.MasterGainDown"
-                                                 FriendlyName="TF4ALL: master gain down"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allMasterGainDown_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Telemetry FFB up" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostTelemetryFfbUp}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.ModeBStrengthUp"
-                                                 FriendlyName="TF4ALL: telemetry FFB strength up"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allTelemetryFfbStrengthUp_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Telemetry FFB down" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostTelemetryFfbDown}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.ModeBStrengthDown"
-                                                 FriendlyName="TF4ALL: telemetry FFB strength down"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allTelemetryFfbStrengthDown_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Wheel OLED next" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostWheelOledNext}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.OledScreenNext"
-                                                 FriendlyName="TF4ALL: wheel OLED next"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allWheelOledNext_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Wheel OLED back" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostWheelOledBack}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.OledScreenPrev"
-                                                 FriendlyName="TF4ALL: wheel OLED back"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allWheelOledBack_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Rev pattern next" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostRevPatternNext}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.RevLightPatternNext"
-                                                 FriendlyName="TF4ALL: rev-light pattern next"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allRevLightPatternNext_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Rev pattern back" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostRevPatternBack}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.RevLightPatternPrev"
-                                                 FriendlyName="TF4ALL: rev-light pattern back"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allRevLightPatternBack_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Dash tab next" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostDashTabNext}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.DashTabNext"
-                                                 FriendlyName="TF4ALL: dash tab next"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allDashTabNext_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Dash tab back" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostDashTabBack}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.DashTabPrev"
-                                                 FriendlyName="TF4ALL: dash tab back"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allDashTabBack_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Peak force up" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostPeakForceUp}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.IRacingMaxForceUp"
-                                                 FriendlyName="TF4ALL: max force up (iRacing)"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allMaxForceUp_FriendlyName}"/>
                         </Grid>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Peak force down" Style="{StaticResource LabelText}"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostPeakForceDown}" Style="{StaticResource LabelText}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.IRacingMaxForceDown"
-                                                 FriendlyName="TF4ALL: max force down (iRacing)"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allMaxForceDown_FriendlyName}"/>
                         </Grid>
                         <!-- One press runs the active game's auto force calibration
                              (iRacing adopts the learned max force, Forza re-levels the
@@ -4542,14 +4542,14 @@
                              row, so it was only reachable from SimHub's own list. -->
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Auto force" Style="{StaticResource LabelText}"
-                                       ToolTip="Runs the current game's auto force calibration: iRacing sets the max force from the learned peak, Forza re-levels the auto strength."/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostAutoForce}" Style="{StaticResource LabelText}"
+                                       ToolTip="{loc:T Controls_ControlsTabHostAutoForce_Tip}"/>
                             <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.AutoForce"
-                                                 FriendlyName="TF4ALL: auto force (calibrate this car)"/>
+                                                 FriendlyName="{loc:T Controls_ControlsTabHostTf4allAutoForceCalibrate_FriendlyName}"/>
                         </Grid>
 
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,8,0,0" FontSize="11"
-                            Text="These actions also appear in SimHub's Controls and events list. Bindings are stored by SimHub, not in your TF4ALL preset."/>
+                            Text="{loc:T Controls_ControlsTabHostTheseActionsAlsoAppear}"/>
                     </StackPanel>
                 </ScrollViewer>
             </sh:SHTabItem>

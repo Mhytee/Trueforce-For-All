@@ -14098,7 +14098,9 @@ namespace TrueforceForAll.Plugin
                         var ed = new SimHub.Plugins.UI.ControlsEditor
                         {
                             ActionName = "TrueforcePlugin.RevLightPatternNext",
-                            FriendlyName = "TF4ALL: rev-light pattern next",
+                            // Same key as the Controls tab row for this action, so
+                            // SimHub shows one name for it whichever surface bound it.
+                            FriendlyName = Loc.T("Controls_ControlsTabHostTf4allRevLightPatternNext_FriendlyName"),
                         };
                         Grid.SetColumn(ed, 1);
                         row.Children.Add(lbl);
@@ -14134,7 +14136,8 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var m = new SimHub.Plugins.UI.ControlsEditorModel(
-                    "TrueforcePlugin.RevLightPatternNext", "TF4ALL: rev-light pattern next");
+                    "TrueforcePlugin.RevLightPatternNext",
+                    Loc.T("Controls_ControlsTabHostTf4allRevLightPatternNext_FriendlyName"));
                 return m?.Triggers != null && m.Triggers.Count > 0;
             }
             catch { return false; }
