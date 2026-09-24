@@ -91,6 +91,11 @@ The game's own audio, captured from its process and fed to the wheel as
 haptics. It catches what telemetry never exposes, and works in games that
 publish none at all.
 
+### Trueforce EQ
+
+A parametric equalizer on the plugin's Trueforce effects. Cut the
+frequencies where your rig rattles and boost any that feel weak.
+
 ## Telemetry Based FFB
 
 In supported games the plugin builds the entire steering force itself,
@@ -626,9 +631,9 @@ driving the lights itself.
 
 Community features are on by default and anonymous; turn them off in
 Settings and the plugin runs fully offline. What the online features
-(community presets, car data, sign-in, cloud backup) store, who
-processes it, and how to export or delete it is covered in
-[PRIVACY.md](PRIVACY.md).
+(community presets, car data, sign-in, cloud backup, anonymous usage
+statistics) store, who processes it, and how to export or delete it is
+covered in [PRIVACY.md](PRIVACY.md).
 
 ## License
 
