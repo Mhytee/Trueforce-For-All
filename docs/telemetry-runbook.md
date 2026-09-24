@@ -8,9 +8,6 @@ Every query below is runnable as written from the repo root:
 supabase db query --linked "SELECT ..."
 ```
 
-The one exception is *How each game gets tuned* in section 3, which needs
-migration 0132 applied first; that section says so at the query.
-
 Read only. Several maintenance functions in this schema delete rows; never
 call one from here.
 
@@ -516,10 +513,9 @@ Migration 0132 adds two owner-only views over `telemetry_game_settings`.
 a dotted path (`FfbScale`, `GearShift.Waveform`). `v_game_disagreement` rolls
 that up into the paths installs do not agree on.
 
-**Migration 0132 is not applied as of 2026-09-24**, so unlike everything else
-here this query errors until it lands. Inline the view bodies from
-`supabase/migrations/0132_telemetry_tuning_views.sql` if you need the answer
-before then.
+Migration 0132 was applied on 2026-09-24, so this query runs as written. Both
+views are `security_invoker` and granted to `service_role` only, so they are
+invisible to the anon key that ships in the plugin.
 
 ```sql
 select * from public.v_game_disagreement
