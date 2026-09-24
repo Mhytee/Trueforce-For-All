@@ -25878,8 +25878,9 @@ namespace TrueforceForAll.Plugin
         }
 
         /// <summary>For each played game, its DEFAULT preset body (identity and text
-        /// stripped) as [{g, p}], but only for games whose body changed since we last
-        /// sent it. New hashes are STAGED into <paramref name="staged"/> rather than
+        /// stripped) plus the user's per-game intent triplet, as [{g, p}], but only
+        /// for games whose body changed since we last sent it. New hashes are STAGED
+        /// into <paramref name="staged"/> rather than
         /// written to Settings, so a send that never lands cannot mark a body as
         /// "already sent". Takes _carFactsLock: it walks the Settings preset graph,
         /// which is the documented rule (see BuildEnvelopeLocked).</summary>
@@ -25915,6 +25916,66 @@ namespace TrueforceForAll.Plugin
                         var body = Newtonsoft.Json.Linq.JObject.FromObject(snap, PresetPayloadSerializer);
                         StripPresetIdentity(body);
                         StripTextLeaves(body);
+                        // The three per-game things the user DECIDED, riding along on
+                        // the body that is already going out. Without them the Mode B
+                        // tuning corpus cannot be read: we can see that someone moved
+                        // ModeBBrakeGain, but not whether they run telemetry FFB in
+                        // iRacing, in FH6, or nowhere at all, so every Mode B number we
+                        // collect is unattributable.
+                        //
+                        // HERE and not in BuildUsageSettingsSnapshot. That blob is one
+                        // column with an 8192 byte cap, and telemetry_ping nulls it
+                        // WHOLE when it goes over while still answering ok, so nothing
+                        // fails and nothing retries; it measured 4932 bytes over 161
+                        // keys on 2026-09-24, about 60 percent of the limit, and it
+                        // grows with every setting classified Portable. Crossing that
+                        // line costs the entire settings half of usage statistics for
+                        // every install on the build at once. This body gets its own
+                        // 8192 byte budget per (anon_id, game), and the largest live
+                        // body measured 1871 bytes on 2026-09-24, so roughly 6300
+                        // spare; these three keys cost the scarce one nothing.
+                        //
+                        // ORDERING IS LOAD-BEARING, do not move this. StripTextLeaves is
+                        // name-blind: it sweeps the whole body and drops every text leaf
+                        // it meets, so anything injected above it that is, or later
+                        // becomes, text vanishes without a word. That is also why the
+                        // mode goes out as its integer rather than its name, the same
+                        // reason PresetPayloadSerializer forces every other enum to an
+                        // integer. The other side is worse: the hash below is what
+                        // decides whether this game is resent at all, so injecting
+                        // AFTER it means a user switching a game to Lightsync only
+                        // changes nothing the hash can see, no resend ever fires, and
+                        // the feature is silently dead.
+                        //
+                        // WARNING for whoever adds the fourth key: this site is
+                        // DOWNSTREAM of both privacy passes. Neither StripPresetIdentity
+                        // (the name deny-list) nor StripTextLeaves (the type-based
+                        // backstop) can see anything written here. Only non-text,
+                        // non-identifying scalars may be added at this point. Anything
+                        // text-valued, an active preset name, a car id, a custom game
+                        // name, either gets a numeric form or goes through the normal
+                        // body above, where the sweeps can see it.
+                        //
+                        // A key is emitted only when the map actually holds this game.
+                        // Absence has to stay readable as "never chose": the game-change
+                        // path deliberately stopped writing its own default into
+                        // GameModes precisely because doing so made that default
+                        // indistinguishable from a decision, and reading it back here
+                        // must not undo that. The leading underscore keeps these clear
+                        // of GameSettingsSnapshot's property names, which is where every
+                        // other key in the body comes from.
+                        if (Settings.ModeBGameEnabled != null
+                            && Settings.ModeBGameEnabled.TryGetValue(g, out var mbOn))
+                            body["_modeB"] = mbOn;
+                        // _mode is TrueforceMasterMode as stored: 0 Off, 1 Lightsync
+                        // only, 2 Normal. Renumbering that enum reinterprets every row
+                        // already collected.
+                        if (Settings.GameModes != null
+                            && Settings.GameModes.TryGetValue(g, out var gMode))
+                            body["_mode"] = (int)gMode;
+                        if (Settings.GameEnabled != null
+                            && Settings.GameEnabled.TryGetValue(g, out var gOn))
+                            body["_enabled"] = gOn;
                         string hash = HashSnapshot(body.ToString(Newtonsoft.Json.Formatting.None));
                         if (known != null && known.TryGetValue(g, out var last)
                             && string.Equals(last, hash, StringComparison.Ordinal)) continue;   // unchanged
