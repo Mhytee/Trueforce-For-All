@@ -1,0 +1,7 @@
+# Jekyll settings for the published guides site.
+#
+# Safe to keep here: scripts/gen_public_guides.py only prunes stale *.md files
+# from this folder, so a .yml survives regeneration. Do not rename it to .md.
+title: TF4ALL guides
+description: Setup and tuning guides for Trueforce For All, the SimHub plugin.
+theme: jekyll-theme-primer
