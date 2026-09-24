@@ -1,13 +1,13 @@
 # Trueforce For All
 
 **The ultimate companion for a Trueforce-enabled Logitech wheel.**
-Trueforce haptics in any game, rev lights, the Dynamic OLED screen, a dash
-for your phone, and a community library of presets.
+Trueforce haptics in any game, rev light enhancements, the Dynamic OLED
+screen, a phone dash, and community presets.
 
 [![Latest release](https://img.shields.io/github/v/release/Mhytee/Trueforce-For-All?label=latest%20release&color=2ea043)][releases]
 [![Downloads](https://img.shields.io/github/downloads/Mhytee/Trueforce-For-All/total?label=downloads&color=2ea043)][releases]
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?logo=windows&logoColor=white)](#requirements)
-[![License](https://img.shields.io/github/license/Mhytee/Trueforce-For-All?color=555)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--2.0--only-555)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)][discord]
 
 ### [Download the latest release][releases]
