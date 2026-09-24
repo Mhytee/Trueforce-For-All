@@ -87,8 +87,11 @@ templates today).
 **C#.** `Loc.T(key)`; `Loc.F(key, args)` (string.Format with `{0}`
 placeholders, catches `FormatException` and falls back to English with one
 Warn); `Loc.N(key, n, args)` picking `.one`/`.other`, later `.few`/`.many`.
-C# uses a generated `LocKeys` constants class so a typo is a compile error;
-XAML keys are checked by the test suite. Every C# sink that assigns a Loc
+C# and XAML both use string keys; `LocKeysResolve` and `LocFormatArity` in
+Core.Tests catch a typo or a wrong arity at test time on both surfaces. A
+generated constants class was considered and dropped on 2026-09-24: one
+mechanism, and the tests already cover both surfaces. Keys built at runtime
+(`"Effect_" + id + "_Name"`) are exempt as dynamic families. Every C# sink that assigns a Loc
 result is re-applied by `RefreshFromPlugin()` on `LanguageChanged`, and
 `PresetManagerControl` re-captures its DataGrid base headers.
 
@@ -207,7 +210,12 @@ then the pinned header region); the SHTabItem elements are the only
 trustworthy banners in that file. The owner reviews the proposed key list
 once before conversion; keys freeze at first shipped release. Shared keys
 for repeated values are opt-in per value after a sense check: "Strength:"
-appears four times with four meanings, "Save…" 19 times with one.
+appears four times with four meanings, "Save…" 19 times with one. The
+rehearsal slice (landed 2026-09-24: 155 replacements, 138 keys) held no
+XML-entity-bearing value, so before the next slice dry-run one that does
+(the `SlipEnabledCheck` Content `Road bumps &amp; curbs`) and confirm the
+plan decodes it to `Road bumps & curbs` and the round-trip test still passes
+after the real run.
 
 Tests in `Core.Tests` (net8, reads repo files): inventory round-trip against
 a committed baseline CSV (same rows, same count, resolved values
@@ -225,7 +233,18 @@ to pre-change screenshots; `[TF4ALL] Language en` line with no warnings;
 panel construction delta under 100 ms; `PSEUDO` shows brackets on every
 string and its clip log is captured as the Phase 3 worklist.
 
-### Phase 2: C# strings, windows, picker (3 to 5 days; ships alone)
+### Phase 2: C# strings, windows, picker, Translate window (4 to 6 days; ships alone)
+
+**Translate window (owner decision, 2026-09-24).** A translator must be able
+to see the English and type their language without touching a file. A window
+opened from the language picker: two columns, English on the left and the
+active language on the right, a search box, a filter for untranslated rows,
+keys never shown. Every edit re-renders the live panel through the hot-swap.
+Save writes the root `<culture>.json` for them, always valid. A Send action
+either opens the folder with the file selected plus the prefilled GitHub
+issue or Discord instructions (Phase 2), or submits to the community
+translation service (Phase 3, below). The Notepad path stays for people who
+prefer it.
 
 About 750 strings: dot-form and object-initializer assignments,
 `new Run(...)`, the seven `Set*Status` helpers, 90 window titles, about 245
@@ -235,7 +254,19 @@ fields, the 14 plural sites through `Loc.N`. The converter rewrites only
 known UI sinks and never matches by value: 125 XAML literals also appear
 verbatim in JSON keys and `case` labels. Cross-surface duplicates get one
 key (the XAML `SlipEnabledCheck` Content and the C# refresh that reassigns
-it). `LocKeys` constants. Effect display unification. The `UiLanguage`
+it). The rehearsal slice already went through this for its own controls (done
+in Phase 1, 2026-09-24): `PresetManagerControl` keeps the twelve DataGrid
+header bindings through sorting (only the sorted column carries text plus
+arrow, rebuilt on `LanguageChanged`), and every C# write to a converted
+control goes through `Loc.T`/`Loc.F` and is re-applied on `LanguageChanged`,
+so a switch reaches it at once. That is the pattern for the rest of Phase 2:
+route the write, then make sure a refresh path re-runs it on the event.
+Still literal in the converted files and due here: the community gate title
+and body (`CommunityGateTitle`/`CommunityGateBody`, XAML default empty),
+`EmptyShareCtaBtn.Content` (concatenated; a `_Fmt` key), the three `{n}
+checked` labels and `UpdatesChip` (plurals, `Loc.N` with `.one`/`.other`),
+and `SupportOpenStatus` (`Opening {0} in your browser…`, a `_Fmt` key). Each
+of these must also join the relabel path that re-runs on `LanguageChanged`. `LocKeys` constants. Effect display unification. The `UiLanguage`
 setting, picker, `BackupProjection` line and `LanguageChanged` wiring.
 
 Exit: C# literal sweep green with the allowlist confined to `DevCodes.cs`,
@@ -262,6 +293,31 @@ Exit: `LocTranslationIntegrity` green for es; guide parity green; `PSEUDO`
 and es walks log zero clips at SimHub's narrowest pane; a 30-minute
 `LOCMARK` walk shows no fallbacks; the picker entry reads
 "Español (beta, traducción automática)".
+
+### Phase 3b: community translation service (direction agreed 2026-09-24; design pending)
+
+The owner wants translations to reach the project in real time rather than
+as files sent by hand. Sketch, to be designed properly before Phase 3 ends:
+
+- A `translations` table on the existing Supabase backend: culture, key,
+  text, the SHA-256 of the English at submission time (staleness marker),
+  submitter, created_at; RLS like the other community tables; an RPC for
+  submit and one for fetch.
+- Submit from the Translate window. Sign-in required (the OTP flow exists),
+  so a submission has an accountable author and the moderation tooling that
+  already exists for presets applies; no anonymous free text reaches other
+  users.
+- Serving: what the plugin downloads live is the owner-approved set only,
+  layered between the shipped file and the user's own root override, with
+  the community fact cache's offline-first pattern. Raw submissions are
+  visible to the owner and to the submitter, never to the fleet, until
+  approved. Merging approved rows into the shipped `<culture>.json` at each
+  release is a script.
+- Open decisions: per-key conflict rule when two translators disagree
+  (latest approved wins, or car-facts style support counts); whether an
+  approved community row may override a shipped one between releases;
+  disclosure text in PRIVACY.md (a translation carries the submitter's
+  account id); rate limits.
 
 ### Phase 4: per release, and more languages
 
@@ -397,6 +453,18 @@ Decided 2026-09-24:
    `PRIVACY.md` needs no car-facts language bullet and the promise that
    usage reports "cannot be tied to your car-data submissions" stands
    without amendment.
+5. **Shared keys approved (2026-09-24).** `Delete`, `Edit`, `Edit…`, `Share`,
+   `Filter:`, `Rename…`, `Duplicate…`, `Preset name`, `Source`, `Shared by`,
+   `Car ID`, `Game`, `Name` join `Save…` on the opt-in list after a sense
+   check of the rehearsal slice; each has one meaning in this UI.
+6. **Contributor surfaces (2026-09-24): both.** A translation web page in
+   the style of MAIRA's `Translate/` site (browser only, no install, backed
+   by the existing Supabase project and the GitHub Pages site; one table per
+   language, completion percentages, a contributors list) and the in-plugin
+   Translate window, both writing to the same table, web page first because
+   that is where volume comes from and the window is the in-context
+   precision tool for reviewers. Both follow the remaining tab conversions;
+   the server side (Phase 3b) is designed together with the page.
 
 ## Companion change: telemetry language field
 
