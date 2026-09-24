@@ -37,26 +37,19 @@ some.
 
 ## FFB and Trueforce Effects
 
-The plugin drives the wheel's Trueforce motor in real time. The steering
-force underneath the effects comes from one of three places:
+The plugin layers Trueforce haptics over the game's built-in FFB. In most
+games it reads the force off the wire and adds to it. Some games go further:
 
-- **FFB pass-through (most games).** The plugin taps the force feedback the
-  game sends down the wire and layers the Trueforce haptics on top. Your
-  cornering load and curb forces keep coming through underneath.
-- **Handed over directly.** iRacing, RaceRoom, Le Mans Ultimate, and
-  Assetto Corsa with the TF4ALL CSP Bridge give the plugin their force
-  feedback with no capture involved. Each takes a switch or two in the game
-  first, and one tick on the FFB tab; the [setup guides](guides/README.md)
-  walk through them.
-- **Built from telemetry.** In some games the plugin can fully replace the
-  game's force feedback using telemetry
-  ([Telemetry Based FFB](#telemetry-based-ffb)). Currently supported:
-  Forza Horizon 4, 5 and 6, Forza Motorsport, and Farming Simulator 22
-  and 25.
+- **The sim hands its force over.** iRacing, RaceRoom, Le Mans Ultimate, and
+  Assetto Corsa with the CSP Bridge. No USB capture involved.
+- **The plugin can build the force itself.** The Forza titles and Farming
+  Simulator, through [Telemetry Based FFB](#telemetry-based-ffb).
 
-All of it tunes per game and per car from the plugin's panel in SimHub,
-down to typed values on every slider, with a preset library and community
-sharing built in.
+In these games the wheel's rev lights and screen are unlocked too, and
+[Per-game enhancements](#per-game-enhancements) covers what each one gets.
+
+Save your tunings per game and per car, and use the preset browser to manage
+your presets and share with the community.
 
 ### Effects from telemetry
 
