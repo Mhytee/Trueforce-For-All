@@ -2,8 +2,10 @@
 
 Turning TF4ALL into a game-agnostic dual-channel haptic engine: canonical telemetry in,
 three-way channel separation out (main FFB torque / TrueForce texture / shakers-later).
-This is the working plan for the `haptic-engine` branch. Local build first; upstream later
-if it earns it.
+Status: phases 0 to 6 shipped on `dev`. This was the working plan for Andrew's
+`haptic-engine` branch (restored here 2026-07-09 in 9301d78) and it is kept as the
+design rationale that the Engine and Core files still cite by phase. Where the plan
+and the shipped code differ, the notes below say so.
 
 Decisions locked up front: **FM8 is the first-class adapter target**, **replay harness comes
 first** (every phase proves parity before it ships to the wheel), **Mode B full-synthesis FFB
@@ -82,11 +84,16 @@ Key architectural calls (and why):
 ## Continuity guarantees (the daily-driver clause)
 
 - `FORZAFFB` + all existing access codes keep working every phase (Phase 4 aliases FORZAFFB
-  → profile+MODEA, same felt behavior).
+  → profile+MODEA, same felt behavior). **Not what shipped:** the `FORZAFFB` Mode A reshaper
+  was deliberately not carried over, and none of `FORZAFFB`, `MODEA`, `MODEB`, `AB`, `BLEND`,
+  `COMPLIN` or `GAIN` exists as an access code today. Mode B itself shipped as a first-class
+  feature with its own Telemetry Based FFB tab, and its live tuning runs through the `B*`
+  code family instead.
 - Every phase ends buildable AND wheel-drivable; parity phases (0b/0c/1/3) gate on golden
   tolerance or byte-diff before deploy.
 - `AB` is the one-code A/B toggle while driving; mode switches crossfade 50ms, never step.
-- Deploy stays `deploy_ffb.bat` (solution build → x64 path — remember the stale-DLL gotcha).
+- Deploy is `scripts\install-plugin.bat`, which prefers the AnyCPU output at
+  `bin\Release\net48` (remember the stale-DLL gotcha: all three DLLs have to match).
 
 ## Stability guardrails (3.3Hz limit cycle, never again)
 

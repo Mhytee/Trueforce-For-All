@@ -4,6 +4,10 @@ What a real steering wheel actually transmits, how our synthesis stacks up
 term by term, and the gaps ranked by how much feel they're worth. Written to
 guide the next test layers; read alongside `haptic-engine-plan.md`.
 
+Where it stands: layers 8 and 9 shipped, so GAP #1 and GAP #3 are closed and
+both ship on by default. GAP #2, the countersteer term, is still open behind
+the units bug described at the end.
+
 ## Where real steering torque comes from
 
 Rim torque is (almost entirely) front lateral force × total trail:
@@ -41,30 +45,35 @@ The product produces the signature everyone's hands know:
 | Real behavior | Our term | Verdict |
 |---|---|---|
 | Torque rises with front lateral force | SatForceModel rise × lat-g cornering weight (BLAT) | Good — the lat-g multiplier is a direct `F_lat` proxy |
-| Torque peak before grip peak | Peak pinned AT u = 1.0 | **GAP #1** — our wheel is still gaining weight where a real one has already plateaued; the pre-limit warning window is compressed |
-| Caster floor in a slide | DropFloor (0.20 default, slider) | Good — physically the `t_m` remainder; Andrew's 0.20 sits at the sporty end of the real 0.3–0.6 range, which suits a feel-forward setup |
+| Torque peak before grip peak | SatForceModel plateau from u = 0.75 ("Early torque peak", `ModeBEarlyTorquePeak`, on by default) | **GAP #1 CLOSED**, shipped as layer 8: the wheel stops gaining weight before the limit, so the pre-limit warning window is back |
+| Caster floor in a slide | DropFloor (0.50 default, slider) | Good: physically the `t_m` remainder, and 0.50 sits mid-band inside the real 0.3–0.6 range |
 | Counter-steer torque from front slip direction | dir = sign of the front slip signal, saturating at 3% of peak slip | **GAP #2 STILL OPEN, and now understood.** Both attempts at it (the BCS counter term and the trail spring) were retired 2026-08-02. The blocker is a units bug, not a tuning one. See below |
 | Load sensitivity (sub-proportional) | LoadEffect 0.5 | Good hedge — real tires gain grip sub-linearly with load, ~0.5 effective is the right ballpark |
 | Speed-proportional trail buildup | SpeedFullKmh ramp | Good |
 | Understeer stick-slip chatter (~10–20 Hz) | Layer 1 judder at 14 Hz past the limit | Good, matches the real mechanism |
-| One-wheel bump kick through the rack | — nothing — | **GAP #3**, see below |
+| One-wheel bump kick through the rack | RoadKickModel on `d/dt(suspFL − suspFR)` ("Road kick", on by default at gain 0.40) | **GAP #3 CLOSED**, shipped as layer 9, see below |
 | Yaw-rate damping (tire relaxation resists fast rotation) | Wheel-velocity damper (BDAMP) approximates it | Acceptable |
 
-## The gaps, as future test layers
+## The gaps: two closed, one still open
 
-**Layer 8 — early torque peak (GAP #1).** Reshape the rise so torque
-plateaus around u ≈ 0.7–0.8 and only *drops* after u = 1.0. Cheap version:
-piecewise rise with zero slope from PeakTorqueU to 1.0. This widens the
-"wheel stopped loading = you're approaching the edge" window, the single
-most information-dense cue a real wheel gives. Interacts with BPEAK/BRISE,
-so it must be its own layer — it will change his dialed feel.
+**Layer 8 (GAP #1): shipped.** The rise now plateaus from u = 0.75 to the
+limit and only *drops* past it, which widens the "wheel stopped loading =
+you're approaching the edge" window, the single most information-dense cue a
+real wheel gives. It lives as `SatForceModel.PlateauStartU`, driven by the
+"Early torque peak" checkbox (`ModeBEarlyTorquePeak`), and ships on. Turning
+it off restores the legacy shape, a peak pinned at u = 1.0, because it does
+interact with the rise curvature and grip-limit values (`ModeBRiseGamma` /
+`ModeBPeakUtil`) and changes a feel someone has already dialed in.
 
-**Layer 9 — road kick (GAP #3).** Real racks kick the rim when ONE front
+**Layer 9 (GAP #3): shipped.** Real racks kick the rim when ONE front
 wheel hits a bump: asymmetric vertical load × trail = signed torque blip.
-We already carry per-corner suspension travel at 60 Hz → derive
-`d/dt(suspFL − suspFR)`, band-limit it, inject as a signed transient into
-the force channel (not the texture channel). This is the "alive road"
-feeling sim wheels famously lack; FM8's suspension channel is clean enough.
+Per-corner suspension travel at 60 Hz gives `d/dt(suspFL − suspFR)`, which is
+band-limited and injected as a signed transient into the force channel (not
+the texture channel). It lives in `RoadKickModel`, behind the "Road kick
+(one-wheel bumps)" checkbox with its own strength slider, and ships on at
+0.40. Symmetric events cancel in the difference for free, so a crest taken
+square stays quiet. This is the "alive road" feeling sim wheels famously
+lack.
 
 **Layer 10 (GAP #2): both attempts retired 2026-08-02, gap still open.**
 

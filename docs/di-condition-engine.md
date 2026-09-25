@@ -1,10 +1,13 @@
 # DirectInput condition effects under the Trueforce stream
 
-Status: PHASE 1 BUILT 2026-09-01 (same day), uncommitted, deployed to the
-rig, awaiting the on-wheel sign check. Owner mandate: the force that
-reaches the wheel with the plugin running must match the native force, so
-the game's DirectInput condition effects (damper, spring, friction, inertia)
-have to be captured and rendered into `cur`, in every game, not just AC.
+Status: SHIPPED and on by default. Phase 1 was built 2026-09-01 and the
+damper sign was validated on the rig the same day (see "First rig session"
+below); the half-scale authority cap came off 2026-09-05.
+
+Owner mandate: the force that reaches the wheel with the plugin running
+must match the native force, so the game's DirectInput condition effects
+(damper, spring, friction, inertia) have to be captured and rendered into
+`cur`, in every game, not just AC.
 
 Build deltas from the design below, decided during implementation:
 
@@ -18,10 +21,13 @@ Build deltas from the design below, decided during implementation:
 - The wheel-reply slot assignment is implemented (interrupt IN, fn2 echo,
   params[0]); the fallback is provisional lowest-free-slot placement,
   corrected by the reply or by the driver's own re-download.
-- Rendering ships ON by default in the dev build behind the `DICOND` A/B
-  kill switch, with the engine term capped at half scale until the rig
-  check; `CSPFFB DAMPSIGN` flips it, `CSPFFB DAMPK` / `DAMPCAL` own the
-  damper scale. Session-only, no settings field.
+- Rendering ships ON by default behind the `DICOND` A/B kill switch. The
+  engine term was capped at half scale until the rig check; that cap was
+  lifted 2026-09-05 (5f6cb3a) and decoded conditions now reach full scale,
+  with only the wheel's own range clamping the sum. `CSPFFB DAMPSIGN` flips
+  the sign, `CSPFFB DAMPK` / `DAMPCAL` own the damper scale. The knobs were
+  session-only at first; the tuned gains persist now (see "Persistence"
+  below).
 - Position source at the pump, best first: shared DirectInputWheel (AC
   sessions), WheelSteeringReader, fresh game steering; one
   WheelMotionEstimator (alpha-beta) derives velocity/acceleration so the
@@ -166,11 +172,12 @@ a DAMPCAL gain transfers.
    FS25 misdecode drop, the no-FFB escalation). Condition re-downloads are
    ep0 force writes for the contention model too.
 4. Access codes, session-only: `DICOND` on/off A/B, `DICONDK <0..2>`
-   damper gain, `DICONDSIGN` flip. Ships default OFF until the owner's
-   on-wheel check, then default ON (fidelity is the mandate, and the CSP
-   damper already showed the missing damper is felt as a regression).
-5. Caps: engine sum clamped to +-0.5 FS on top of the per-effect
-   saturations while unvalidated; lift after validation.
+   damper gain, `DICONDSIGN` flip. Shipped default ON after the owner's
+   on-wheel check (fidelity is the mandate, and the CSP damper already
+   showed the missing damper is felt as a regression).
+5. Caps: the engine sum was clamped to +-0.5 FS on top of the per-effect
+   saturations while unvalidated. Lifted 2026-09-05 once DICOND was
+   validated; the wheel's own range is the only clamp left.
 
 ### Calibration
 
@@ -227,9 +234,11 @@ answers:
 7. Parametric-only game credit: a handled download counts as extraction
    (no false no-FFB escalation) and satisfies the active-shape hold.
 
-RIG GATE (owner, unchanged, now validates the polished build): sign
-check, DICOND A/B, DAMPCAL. Then: lift the half-scale cap, persist the
-calibrated gain (TrueforceSettings field + BackupProjection line).
+RIG GATE (owner): sign check, DICOND A/B, DAMPCAL. The sign was validated
+2026-09-01, the half-scale cap came off 2026-09-05 (5f6cb3a), and the gains
+persist (TrueforceSettings fields, classified in BackupProjection). The
+shipped gains came from the FXTEST effect bench rather than DAMPCAL, which
+still exists for the measured damper number.
 
 Phase 2, EVIDENCE-DRIVEN (each item needs a capture or a measurement,
 not more code study; prior art cannot answer these):
@@ -329,10 +338,12 @@ between the current build and 1:1; ranked.
 
 ### Known fidelity deltas (deliberate or pending calibration)
 
-- Authority cap +-16384 until the rig sign/scale check; then lift.
-- Damper/inertia gain 0.25 uncalibrated (DAMPCAL built, unrun) and
-  SESSION-ONLY: the calibrated gain needs a TrueforceSettings field +
-  BackupProjection line. Spring slope 1.0 assumed; SPRINGCAL pending.
+- Authority cap +-16384: closed. Lifted 2026-09-05 (5f6cb3a) once the rig
+  had validated the sign and the scale.
+- Damper/inertia gains are bench-tuned (G PRO effect bench, 2026-09-19 and
+  2026-09-20) rather than DAMPCAL-derived, and they persist: they are
+  TrueforceSettings fields, classified in BackupProjection. Spring slope
+  1.0 assumed; SPRINGCAL pending.
 - fn8 global gain applies to the engine term but not the scalar constant.
 - Pause wipes the effect table and assumes re-download; native slots
   persist. Retain parameters, suspend playback, resume on PLAY. fn3 PAUSE
@@ -446,11 +457,15 @@ while the two are still equal, and leave inertia alone once the bench
 has tuned it apart: linked until unlinked.
 
 Persistence (closes the "calibration is session-only" audit gap): the
-tuned gains, direction and filter live in TrueforceSettings
-(FfbConditionDamperGain 0.25 / FfbConditionSignInverted false /
-FfbConditionLpfHz 200 / FfbConditionSpringGain 1.0 /
-FfbConditionFrictionGain 1.0 / FfbConditionInertiaGain 0.25 /
-FfbConditionPeriodicGain 1.0 / FfbConditionRampGain 1.0), classified
+tuned gains, direction and filter live in TrueforceSettings, which is the
+source of truth for the numbers (generation 1, from the G PRO effect bench
+on 2026-09-19 and 2026-09-20: FfbConditionDamperGain 1.0 /
+FfbConditionSignInverted false / FfbConditionLpfHz 200 /
+FfbConditionSpringGain 4.5 / FfbConditionFrictionGain 0.15 /
+FfbConditionInertiaGain 0.10 / FfbConditionPeriodicGain 0.9 /
+FfbConditionRampGain 0.5, with FfbConditionDefaultsGeneration re-seeding the
+gains and filter cutoffs in every stored file once; the direction flip is a
+wheel fact, not tuning, and is held), classified
 Portable in BackupProjection (wheel feel, travels like FfbScale),
 applied at device attach. One Save writes all of them, so the loop is
 tune -> switch -> tune -> Save once. Session knobs (CSPFFB
