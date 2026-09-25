@@ -8,11 +8,11 @@ and rate-limit. Direct table writes from the anon key are revoked.
 
 ## What's in here
 
-`migrations/` (134, applied in filename order) grouped by subsystem:
+`migrations/` (135 files, applied in filename order) grouped by subsystem:
 
 - **CarFacts** (`0001`-`0004` + later refinements): community car data;
   submissions/votes/consensus with Wilson scoring, payload normalization,
-  IP-derived submitter identity, rate limiting, suppression.
+  account or anonymous submitter identity, rate limiting, suppression.
 - **Preset sharing** (`0005`+): presets, game presets, custom engines,
   packs; owner auth, votes, downloads, edit rate limits, target games.
 - **Accounts / auth** (`0007`, `0009`, `0023`+): profiles + usernames,
@@ -22,12 +22,15 @@ and rate-limit. Direct table writes from the anon key are revoked.
 - **Backup / sync + entitlements** (interleaved): cloud settings backup,
   retention, Patreon/Discord linking, supporters, achievements.
 
-`functions/`: Edge Functions (report/appeal notify, Discord + Patreon
-linking and role sync, supporters sync, backup retention warn/GC).
+`functions/`: Edge Functions (report/appeal notify and moderation actions,
+Discord + Patreon linking and role sync, supporters sync, backup retention
+warn/GC, the weekly arcade digest and the daily TeknoParrot board sync).
 `dev-seed/`: mock community data for local testing + teardown.
 
 Run `ls migrations/` for the current set; migration filenames are
-descriptive. Always make new migrations idempotent (`if not exists`,
+descriptive. The numbering is not contiguous: `0047` and `0090` are each used
+by two files and `0122` is unused, so the highest prefix is not the file
+count. Always make new migrations idempotent (`if not exists`,
 `create or replace`, `drop ... if exists`) so re-runs are safe.
 
 `recovered/`: 28 migrations that are applied to production but existed in no
@@ -48,7 +51,7 @@ silently did nothing looks exactly like one that worked.
 
 **Never run `supabase migration repair`, `db push`, `db pull` or `db reset`
 against this project.** Local files are numbered and the remote ledger is
-keyed by timestamp, so the two lists share nothing and the CLI reports all 134
+keyed by timestamp, so the two lists share nothing and the CLI reports all 135
 local files as pending and all 157 remote rows as missing. That is expected,
 not drift.
 
@@ -66,28 +69,45 @@ with the plugin has it. Treat it as a public token.
 
 **What the anon key can do**:
 
-1. `select` from `car_fact_consensus` (pull trusted facts).
+1. `select` from the three tables still open to it: `car_fact_consensus`
+   (trusted facts, granted in `0100`), `motd` (granted in `0067`, and its
+   policy shows only active rows) and `arcade_cars` (granted in `0117`).
+   `0023` revoked the anon `profiles` read and `0027` the preset and vote
+   reads, and nothing since has restored them.
 2. `execute` `submit_car_fact(...)`.
-3. `execute` `vote_car_fact(...)`.
+3. `execute` `list_supporters()` and `telemetry_ping(...)`.
+
+`vote_car_fact` is not on the anon surface at all. `0002` dropped the signature
+`0001` had granted, and `0026` revoked anon and PUBLIC EXECUTE from every
+SECURITY DEFINER function whose body raises `sign-in required`, which this one
+does. Voting needs a signed-in user, and anon is refused at the permission layer
+before the function body runs.
 
 **What the anon key can NOT do**:
 
-- Read raw submissions, votes, the salt config, or the block list.
-- Insert / update / delete anything directly.
+- Read raw car-fact submissions or votes, the salt config, or the block list.
+- Write to any table directly. The only anon-reachable write paths are the
+  validated `submit_car_fact` and `telemetry_ping` RPCs.
 - Call the internal helpers (`_recompute_car_fact_consensus`,
   `_derive_submitter_id`, `_client_ip`, `normalize_car_fact_payload`).
 
-**Identity**: `submitter_id` and `voter_id` are derived inside the RPCs as
-`sha256(client_ip + salt)`. The salt is held in `app_config` and a
-moderator can rotate it to invalidate accumulated attacker reputation.
-Legitimate users get re-seeded on their next submission, attackers lose
-their accumulated standing. False-positive bans wear off when the salt
-rotates — that's a deliberate trade-off against permanent collateral
-damage.
+**Identity**: a signed-in caller's id is derived inside the RPC from their
+token (`auth.uid()`), never from the request body. An anonymous car-fact
+submitter supplies its own: the plugin mints a random GUID, sends it as
+`p_anon_id`, and the RPC shape-checks it before storing it as `anon:<id>`.
+A client can therefore rotate its anon id at will, which is exactly why the
+IP backstop below exists. `vote_car_fact` has no anonymous path at all. The client IP survives only as an unsalted
+`source_ip_hash`, which backs the per-IP volume cap on anonymous submissions
+and lets a ban row key on `ip:<sha256>` when an anon id gets rotated. The
+`submitter_id_salt` row is still in `app_config`, but no current RPC reads
+it: `_derive_submitter_id` is the only function that ever did, and every RPC
+that called it has since been redefined without it.
 
 **Sybil resistance**:
-- Consensus uses `count(distinct submitter_id)` per payload, so a single
-  IP submitting the same value 100 times contributes 1, not 100.
+- Consensus counts one endorsement per submitter, their most recent
+  submission only, so a single submitter sending the same value 100 times
+  contributes 1, not 100, and one who changes their mind moves their support
+  instead of backing both payloads.
 - Wilson score is driven ONLY by `vote_car_fact` votes, not by submission
   count. 100 distinct submitter_ids alone do NOT produce a high Wilson:
   the v1 design that seeded Wilson from submission counts let cheap
@@ -125,9 +145,11 @@ shape per fact_type and canonicalizes (upper-cases config strings, trims
 names) to prevent split-vote via structurally-different-but-semantically-
 equal payloads. Out-of-spec payloads are rejected outright.
 
-**Rate limiting**: per IP, 30 submissions and 30 votes per rolling hour.
-Not bypassable by waiting for salt rotation (the rate limit keys on raw IP
-hash, which is salt-independent).
+**Rate limiting**: 30 distinct car-fact events and 30 votes per rolling hour,
+keyed on the caller's `submitter_id` / `voter_id`. Anonymous submissions carry
+a second cap on the same event count keyed on `source_ip_hash`, so minting
+fresh anon ids buys no extra budget. Signed-in callers are exempt from that
+backstop, so one anon flooder on a shared address cannot starve them.
 
 **Moderation**: suppress a bad consensus row by setting `is_suppressed =
 true`; the recompute respects the flag and won't unsuppress it on the next
@@ -158,9 +180,11 @@ Supabase Studio or psql.
      `Settings.CommunityBackendAnonKey` directly in
      `TrueforcePlugin.GeneralSettings.json`. Toggle
      `Settings.CommunityEnabled = true`.
-   - For release builds: hardcode the production values into
-     `CommunityClient` constants and have `Settings.CommunityEnabled`
-     gate the actual network calls (default off until we're confident).
+   - For release builds: the production URL and anon key are constants in
+     `CommunityBackend.cs`, written into `Settings.CommunityBackendUrl` and
+     `Settings.CommunityBackendAnonKey` on every launch, so a key rotation
+     ships with the next release. `Settings.CommunityEnabled` defaults to
+     true and is the user's off switch; the welcome screen discloses it.
 
 4. **Smoke-test from the plugin.**
    - Enable community, save a CarFact correction via the Effects tab,
@@ -186,14 +210,19 @@ update car_fact_consensus
  where game = 'FH6' and car_id = 'Car_X' and fact_type = 'engine_layout';
 ```
 
-### Ban a submitter (use a hash you've identified offline)
+### Ban a submitter (an account uuid, an `anon:<id>`, or `ip:<sha256>`)
 
 ```sql
 insert into submitter_blocked (submitter_id, reason)
-  values ('<the-hash>', 'sybil flood 2026-06-04');
+  values ('<the-id>', 'sybil flood 2026-06-04');
 ```
 
-### Rotate the salt (invalidates all current submitter_ids)
+### Rotate the salt (legacy; no longer invalidates anything)
+
+The salt was read by `_derive_submitter_id`, which no current RPC calls.
+Identities are account uuids or `anon:<id>` and bans key on those or on
+`ip:<sha256>`, so rotating the salt resets neither reputation nor bans. The
+row is kept only so the old migrations stay replayable.
 
 ```sql
 update app_config
@@ -245,13 +274,15 @@ update report_flags set status = 'dismissed', resolved_by = 'manual', resolved_a
 
 ## Why Supabase
 
-- Hosted Postgres + PostgREST means we get a HTTP API for free; no Edge
-  Functions or custom server to deploy.
+- Hosted Postgres + PostgREST means we get a HTTP API for free: the core
+  read/write path is RPC only, with no custom server fronting the data API.
+  The Edge Functions we do deploy (see `functions/`) handle outbound
+  integrations, not the data path.
 - The PostgREST RPC pattern is the right fit for "client can't be
   trusted with table access" — declarative functions enforce all the
   identity / validation / rate-limit logic in one place.
 - Cloudflare-fronted edge gives us a `cf-connecting-ip` header that the
-  IP-derived identity model needs.
+  per-IP volume cap and the `ip:<sha256>` ban rows need.
 - Row-Level Security is enabled belt-and-braces even though the revokes
   do the real gating; if a grant ever gets clobbered we fail closed.
 
@@ -259,7 +290,7 @@ update report_flags set status = 'dismissed', resolved_by = 'manual', resolved_a
 
 The CarFacts read path is plugin-startup pull only, not per-frame. Even
 with thousands of users the read load is bounded by the number of unique
-plugin-launch events per day. Writes are limited by the per-IP rate
+plugin-launch events per day. Writes are limited by the per-caller rate
 limit. Supabase free tier comfortably covers any reasonable usage; first
 paid tier ($25/mo) kicks in if/when concurrent connections or row counts
 grow.

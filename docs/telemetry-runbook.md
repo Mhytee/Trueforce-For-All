@@ -15,6 +15,9 @@ All numbers quoted as "measured" were taken on 2026-09-24, when the whole
 dataset was 21 rows over 18 installs, every one of them on plugin_version
 0.4.0. Re-measure rather than trusting the figures.
 
+Source line numbers were checked the same day. `TrueforcePlugin.cs` moves under
+them, so grep for the named symbol and treat the number as a hint.
+
 ---
 
 ## 1. Before you read anything after a release: the defaults merge wave
@@ -26,7 +29,7 @@ this data, so it goes first.
 
 ### Why it happens
 
-`ModeBRecipeFields` (TrueforcePlugin.cs, around line 11345) lists 44 fields:
+`ModeBRecipeFields` (TrueforcePlugin.cs, around line 11448) lists 44 fields:
 30 `ModeB*`, 12 `SpringMode*`, plus `FfbConditionInertiaGain` and
 `FfbConditionPeriodicGain`. `MergeWheelDefaults` rewrites every one of those
 still holding a shipped constant, and it runs on version upgrade as well as on
@@ -66,11 +69,11 @@ Four facts make the wave separable:
    not "this install reported nothing".
 
 2. `ModeBDefaultsGeneration` is a `private const` on TrueforcePlugin
-   (TrueforcePlugin.cs:11237), not a settings property at all, so
+   (TrueforcePlugin.cs:11340), not a settings property at all, so
    `BuildUsageSettingsSnapshot`, which walks `TrueforceSettings`, cannot see
    it and it is **not** in the blob. The latch that does carry the generation,
    `Settings.WheelDefaultsApplied` (`"G923#8"`, written at
-   TrueforcePlugin.cs:5171), is a string outside `UsageSnapshotStringAllow`
+   TrueforcePlugin.cs:5314), is a string outside `UsageSnapshotStringAllow`
    and is dropped too. Verify both:
 
    ```sql
@@ -187,9 +190,10 @@ by the seed keeps the window at roughly a decade of margin over round-trip
 noise everywhere in the list. Every deliberate control in the recipe moves in
 far larger steps: the `ModeBDamper` slider nudges by 0.02.
 
-(`MasterGain` is not a recipe field. TrueforcePlugin.cs:11340 says so
-explicitly: the wheel table seeds it on a fresh install only and the merge
-never touches it, so do not reason about the wave from it.)
+(`MasterGain` is not a recipe field. The NOTE above `ModeBRecipeFields`,
+TrueforcePlugin.cs:11443, says so explicitly: the wheel table seeds it on a
+fresh install only and the merge never touches it, so do not reason about
+the wave from it.)
 
 Do **not** reach for something loose like 1e-3. Live data on 2026-09-24 held
 `MasterGain` = 0.9995428 on an RS50. A 1e-3 tolerance reports that install as
@@ -210,7 +214,7 @@ exactly what this section exists to defeat.
 
 ### 2.1 Per-wheel seeded defaults: never average across wheels
 
-`ApplyWheelDefaults` (TrueforcePlugin.cs, around line 11153) gives each wheel
+`ApplyWheelDefaults` (TrueforcePlugin.cs, around line 11256) gives each wheel
 a different starting point. As of 2026-09-24:
 
 | Field | G PRO | RS50 | G923 |
@@ -296,13 +300,14 @@ an install that flipped `PluginEnabled` between two days appears in two of
 them.
 
 `MasterMode` in the blob is the **stored** global stance, not the effective
-mode. `ApplyEffectiveMode` (TrueforcePlugin.cs:1585) keeps the effective value
+mode. `ApplyEffectiveMode` (TrueforcePlugin.cs:1639) keeps the effective value
 in `_effectiveMode` and mirrors only `PluginEnabled`; it never writes
 `Settings.MasterMode`. A mode chosen while a game is running goes to
-`GameModes` and leaves the global alone (TrueforcePlugin.cs:1967). So the
-stored global choice is in the blob, and the per-game choice is the part that
-is missing: `GameModes`, `ModeBGameEnabled` and `GameEnabled` are dictionaries,
-and `BuildUsageSettingsSnapshot` drops every non-scalar. Confirm with:
+`GameModes` and leaves the global alone (`SetMasterMode`,
+TrueforcePlugin.cs:2029). So the stored global choice is in the blob, and the
+per-game choice is the part that is missing: `GameModes`, `ModeBGameEnabled`
+and `GameEnabled` are dictionaries, and `BuildUsageSettingsSnapshot` drops
+every non-scalar. Confirm with:
 
 ```sql
 select bool_or(settings ? 'GameModes')       as has_gamemodes,
@@ -315,7 +320,7 @@ All three return false. Per-game intent is the one genuine blind spot in this
 dataset today; do not infer it from `MasterMode`.
 
 (If you go to the source to check this, note that the plugin also exposes a
-`MasterMode` property, at TrueforcePlugin.cs:1476, which returns the effective
+`MasterMode` property, at TrueforcePlugin.cs:1530, which returns the effective
 mode. The blob's key is the settings one, because
 `BuildUsageSettingsSnapshot` walks `typeof(TrueforceSettings)`. The plugin
 property for the stored value is `StoredMasterMode`.)
