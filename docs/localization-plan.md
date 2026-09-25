@@ -244,11 +244,12 @@ string and its clip log is captured as the Phase 3 worklist.
 to see the English and type their language without touching a file. A window
 opened from the language picker: two columns, English on the left and the
 active language on the right, a search box, a filter for untranslated rows,
-keys never shown. Every edit re-renders the live panel through the hot-swap.
+keys behind a Show keys toggle, off by default. Every edit re-renders the
+live panel through the hot-swap.
 Save writes the root `<culture>.json` for them, always valid. A Send action
 either opens the folder with the file selected plus the prefilled GitHub
 issue or Discord instructions (Phase 2), or submits to the community
-translation service (Phase 3, below). The Notepad path stays for people who
+translation service (Phase 3b, below). The Notepad path stays for people who
 prefer it.
 
 About 750 strings: dot-form and object-initializer assignments,
@@ -299,30 +300,98 @@ and es walks log zero clips at SimHub's narrowest pane; a 30-minute
 `LOCMARK` walk shows no fallbacks; the picker entry reads
 "Español (beta, traducción automática)".
 
-### Phase 3b: community translation service (direction agreed 2026-09-24; design pending)
+### Phase 3b: community translation service (designed 2026-09-25)
 
-The owner wants translations to reach the project in real time rather than
-as files sent by hand. Sketch, to be designed properly before Phase 3 ends:
+A translator fixes a string, a reviewer the owner appointed for that
+language approves it, and every install of that language picks it up
+within a day with no release. Two surfaces write the same rows to one
+RPC: the guides-site page and the in-plugin Translate window. The build
+is `docs/localization-translation-service.md`. Decided 2026-09-24:
 
-- A `translations` table on the existing Supabase backend: culture, key,
-  text, the SHA-256 of the English at submission time (staleness marker),
-  submitter, created_at; RLS like the other community tables; an RPC for
-  submit and one for fetch.
-- Submit from the Translate window. Sign-in required (the OTP flow exists),
-  so a submission has an accountable author and the moderation tooling that
-  already exists for presets applies; no anonymous free text reaches other
-  users.
-- Serving: what the plugin downloads live is the owner-approved set only,
-  layered between the shipped file and the user's own root override, with
-  the community fact cache's offline-first pattern. Raw submissions are
-  visible to the owner and to the submitter, never to the fleet, until
-  approved. Merging approved rows into the shipped `<culture>.json` at each
-  release is a script.
-- Open decisions: per-key conflict rule when two translators disagree
-  (latest approved wins, or car-facts style support counts); whether an
-  approved community row may override a shipped one between releases;
-  disclosure text in PRIVACY.md (a translation carries the submitter's
-  account id); rate limits.
+- **Approval.** Reviewers appointed per language, service key only,
+  owner the first row; `review_policy` ships `'reviewer'`.
+- **Between-release override: yes.** A daily account-free fetch layers
+  approved rows between the shipped file and the user's root override,
+  killed by `UseCommunityTranslations` under `CommunityEnabled`.
+- **Conflicts: the reviewer picks.** `approve_with_edit` keeps the
+  translator as submitter and supersedes its source row, identical
+  proposals are superseded with credit, and Revoke is `reject` on a live
+  row, whose key falls back to shipped or English, never superseded.
+- **Pending visibility.** A per-key count, never text or a username.
+- **Rate limits, one set for both surfaces**, counted before the row
+  loop: 300 rows an hour and 3,000 pending per account, 50 per call,
+  2,000 characters and four times the English, plus 600 an hour per IP
+  hash, 20,000 pending per language and a 10-minute new-account wait.
+- **Spanish only at launch**, the other six SimHub tags reading "ask on
+  Discord to open this language" until a language has a reviewer and a
+  machine pass shipped as its `Languages\<tag>.json`.
+- **Owner nudge**, through `report-notify` with a new payload kind and
+  its own secret, one line to split out later: one Discord line a day
+  per language while anything is pending, one on a first submission, one
+  per approval call naming the language, the reviewer and the count.
+- **Credit.** Contributors by username per language, opt out by email,
+  gone with the account.
+- **Disclosure ships with the code**, since PRIVACY.md's Changes clause
+  re-shows the notice pages on update, moving `LegalRevision` to `"7"`.
+
+0135 and 0136 add five deny-all tables (`translation_cultures`,
+`english_strings`, its history, `translations`, `translation_reviewers`)
+plus `profiles.hide_from_translation_credits`, behind `security definer`
+RPCs keyed on `auth.uid()`; 0136 re-emits the account RPCs. The server
+holds a copy of `en.json`, so a caller cannot invent keys or English,
+and every row names its English by SHA-256: approval is unique per
+culture, key and hash, since dev, beta and stable show different English
+at once. Anon gets four executable reads and no readable table, revoked
+by name; `accepting` gates sending, not serving. No new Edge Function.
+
+The page is `guides/translate.html` on its own
+`guides/_layouts/app.html`, with `translate.js` in ES2017 and
+`translate.css`. Every network-supplied string is built with
+`textContent` under a `default-src 'none'` meta policy, and a
+`pages.yml` step fails the deploy on `innerHTML`. The refresh token
+lives in `sessionStorage`, never `localStorage`, and English loads from
+`raw.githubusercontent.com` at the ref `translation_progress` reports,
+so every slice that lands on `dev` owes a `push-english.ps1 -Ref dev` or
+submissions on those keys are refused. Keys sit behind a persisted Show
+keys toggle. Signed out, everything but sending works.
+
+Phase 2 owns the Translate window shell, the grid, search, Save and the
+`UiLanguage` picker, and gates 3b's window half: `TRANSLATE` decides how
+it opens, not whether it exists. 3b adds the community layer, status
+glyphs, Pick mode, divergence marks, the shared-English hint, Send and
+`UseCommunityTranslations` with one `BackupProjection.Portable` line.
+`LocStore` gains `<root>\community\<tag>.json` between shipped and root,
+so the user's own file still wins. `LocCommunity.cs` keeps a row only
+when its hash equals the English this build shows, replaces the file
+wholesale, writes none for a member with no rows, and keeps the old on
+failure. No localized value becomes a URL, a path or a process argument.
+Resolution is inline at `TrueforcePlugin.cs` line 4269 on
+`UsageLanguage.UiLang()`, two letters by design; 3b extracts it as
+`ResolveRequestedTag()` on the full Windows tag from the same P/Invoke,
+and Phase 2 adds the `UiLanguage` branch. The chain only walks child to
+parent, so shipped files carry the NEUTRAL tag (`de.json`, not
+`de-DE.json`) and `de-AT` resolves too; a region file is added only
+where regions truly differ, as with Portuguese.
+
+About 21 and a half working days, Phase 2's window shell outside it: 4
+backend, 3 tooling, 7.5 page, 6 plugin, 1 documentation. Order: the
+store layer and `LocValuesNeverBecomeUrlsOrPaths`; both migrations, with
+`push-english.ps1` in hand; `context.ps1` and the first dev English
+push; the page with `pages.yml`'s text-only step over its own files; the
+fetch client in the release carrying the PRIVACY.md edits; the window's
+community half after Phase 2; then `merge-community.ps1`. Spanish opens
+when Phase 3's first pass ships as `Languages\es.json`.
+
+Exit: both migrations applied, RLS on all five tables,
+`has_function_privilege('anon', ...)` true for exactly the four reads;
+the hash vectors matching in Postgres, Core.Tests and the page;
+`pages.yml` failing a planted `innerHTML`; an over-cap call refused
+whole in the server's words; an earlier-English row still serving the
+build that shows it; Revoke clearing a live row in one `LOCFETCH`; a
+`de-AT` Windows with no SimHub `Culture` loading a shipped `de.json`;
+`BackupSelfTest` passing with `UseCommunityTranslations` classified;
+and, given Phase 2, the `TRANSLATE` window showing the three status
+glyphs.
 
 ### Phase 4: per release, and more languages
 
