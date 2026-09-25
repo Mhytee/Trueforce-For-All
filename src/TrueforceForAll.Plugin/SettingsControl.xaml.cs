@@ -11396,7 +11396,9 @@ namespace TrueforceForAll.Plugin
             if (_toastQueue.Count == 0) { HideToast(); return; }
             var (label, needsLink) = _toastQueue.Dequeue();
             if (AchievementToastBody != null)
-                AchievementToastBody.Text = label + (needsLink ? ".  Link your Discord to join the server and claim the role." : ".  Click to view.");
+                AchievementToastBody.Text = needsLink
+                    ? Loc.F("Trailer_AchievementToastBodyLink_Fmt", label)
+                    : Loc.F("Trailer_AchievementToastBodyView_Fmt", label);
             if (AchievementToastLinkBtn != null)
                 AchievementToastLinkBtn.Visibility = needsLink ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
             AchievementToast.Visibility = System.Windows.Visibility.Visible;

@@ -4440,7 +4440,7 @@
             <!-- ============================ PRESETS ============================ -->
             <!-- The full preset library is hosted inline here (PresetManagerHost),
                  replacing the old Manage Presets pop-up. Populated in code-behind. -->
-            <sh:SHTabItem x:Name="PresetsTab" Header="Presets">
+            <sh:SHTabItem x:Name="PresetsTab" Header="{loc:T Presets_PresetsTab_Header}">
                 <Grid x:Name="PresetManagerHost" Margin="14,12,14,14"/>
             </sh:SHTabItem>
 
@@ -5832,18 +5832,18 @@
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="🏆" FontSize="22" VerticalAlignment="Center" Margin="0,0,10,0"/>
                 <StackPanel VerticalAlignment="Center" MaxWidth="300">
-                    <TextBlock x:Name="AchievementToastTitle" Text="Achievement unlocked" FontSize="13"
+                    <TextBlock x:Name="AchievementToastTitle" Text="{loc:T Trailer_AchievementToastTitle}" FontSize="13"
                                FontWeight="SemiBold" Foreground="#FFE5C04A"/>
                     <TextBlock x:Name="AchievementToastBody" Text="" FontSize="12" Foreground="#FFE6E6E6"
                                TextWrapping="Wrap" Margin="0,1,0,0"/>
                 </StackPanel>
-                <Button x:Name="AchievementToastLinkBtn" Content="Link" Style="{StaticResource DiscordButton}"
+                <Button x:Name="AchievementToastLinkBtn" Content="{loc:T Trailer_AchievementToastLink}" Style="{StaticResource DiscordButton}"
                         Visibility="Collapsed" Margin="12,0,0,0" Height="26" Padding="9,4,11,4"
                         FontSize="12" VerticalAlignment="Center" Click="AchievementToastLink_Click"/>
                 <Button x:Name="AchievementToastClose" Content="✕" FontSize="11"
                         Background="Transparent" BorderThickness="0" Foreground="#FFB0B0B0"
                         Cursor="Hand" Padding="6,0,2,0" VerticalAlignment="Top"
-                        ToolTip="Dismiss this notification (the achievement stays unlocked)."
+                        ToolTip="{loc:T Trailer_AchievementToastClose_Tip}"
                         Click="AchievementToastClose_Click"/>
             </StackPanel>
         </Border>

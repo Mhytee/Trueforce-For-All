@@ -25,6 +25,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Threading;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -539,7 +540,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin?.Settings == null) return;
             var def = new CustomEngineDef { Id = Guid.NewGuid().ToString("N") };
             var dlg = new CustomEngineEditor { Owner = this };
-            dlg.Init(def, "Create custom engine");
+            dlg.Init(def, Loc.T("EngineEditor_TitleCreate"));
             if (dlg.ShowDialog() != true || !dlg.Saved) return;
             if (_plugin.Settings.CustomEngines == null)
                 _plugin.Settings.CustomEngines = new List<CustomEngineDef>();

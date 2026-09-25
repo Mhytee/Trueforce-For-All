@@ -1,3 +1,4 @@
-src/TrueforceForAll.Plugin/SettingsControl.xaml|header:SettingsControl.xaml,resources:SettingsControl.xaml,tab:AccountTab,tab:ControlsTab,tab:EffectsTab,tab:LightsyncTab,tab:SettingsTab,tab:SupportTab,tab:TelemetryFfbTab
+src/TrueforceForAll.Plugin/SettingsControl.xaml
 src/TrueforceForAll.Plugin/PresetManagerControl.xaml
 src/TrueforceForAll.Plugin/MotdStrip.xaml
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml

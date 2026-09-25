@@ -19,6 +19,7 @@
 using System;
 using System.Windows;
 using TrueforceForAll.Plugin.Effects;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -53,7 +54,12 @@ namespace TrueforceForAll.Plugin
         public void Init(CustomEngineDef target, string windowTitle)
         {
             _target = target ?? new CustomEngineDef { Id = Guid.NewGuid().ToString("N") };
-            Title = string.IsNullOrEmpty(windowTitle) ? "Custom engine" : windowTitle;
+            // The caller's title is runtime text and stays as passed; only the
+            // fallback is ours, and it reads the same key the XAML default
+            // carries. Assigning Title replaces that binding, so the window
+            // keeps the language it opened in. Harmless for a modal: the panel
+            // builds a fresh editor on every open.
+            Title = string.IsNullOrEmpty(windowTitle) ? Loc.T("EngineEditor_CustomEngine_Title") : windowTitle;
 
             _suppress = true;
             try
@@ -191,7 +197,13 @@ namespace TrueforceForAll.Plugin
             var (min, max) = FiringPatternDb.CountRangeForShape(shape);
             int? fixedCount = FiringPatternDb.FixedCountForShape(shape);
 
-            CountLabel.Text   = shape == FiringPatternDb.CustomEngineShape.Rotary ? "Rotors:" : "Cylinders:";
+            // Both captions come from en.json: the label's XAML default holds
+            // EngineEditor_Count and the rotary caption is its sibling key.
+            // This writer runs on every open and every shape change, which is
+            // all the re-apply a modal needs; a language change while the
+            // editor is up is picked up the next time it runs.
+            CountLabel.Text   = shape == FiringPatternDb.CustomEngineShape.Rotary
+                ? Loc.T("EngineEditor_CountRotors") : Loc.T("EngineEditor_Count");
             CountSlider.Minimum = min;
             CountSlider.Maximum = max;
             CountSlider.IsEnabled = fixedCount == null;

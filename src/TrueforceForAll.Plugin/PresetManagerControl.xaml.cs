@@ -3932,7 +3932,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 Pattern      = row.Def.Pattern,
             };
             var editor = new CustomEngineEditor { Owner = Window.GetWindow(this) };
-            editor.Init(draft, "Edit custom engine");
+            editor.Init(draft, Loc.T("EngineEditor_TitleEdit"));
             if (editor.ShowDialog() == true && editor.Saved)
             {
                 row.Def.Name         = draft.Name;
