@@ -615,8 +615,13 @@ namespace TrueforceForAll.Core.Tests
         private static readonly Dictionary<string, string> EdgeSpaceKeys = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             // Followed immediately by the Hyperlink "Lovely Sim Racing" in the
-            // light-pattern credit line on the LIGHTSYNC and Telemetry FFB tabs.
+            // light-pattern credit line inside the LIGHTSYNC tab itself.
             { "Lightsync_LightPatternsPerCar", "runs into the Lovely Sim Racing hyperlink" },
+            // The second copy of that credit line, the one declared on the
+            // Telemetry FFB tab under the per-car rev light option. Its lead-in
+            // names the rev light data rather than the patterns, so it is its own
+            // value, and it runs into the same hyperlink.
+            { "TelemetryFfb_LovelyPerCarRevLightTiming", "runs into the Lovely Sim Racing hyperlink" },
             // The two help lines under the usage-statistics and community
             // checkboxes on the Settings tab. Each is a Run followed by the
             // "Privacy policy" Hyperlink in the same sentence.

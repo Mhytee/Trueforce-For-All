@@ -978,8 +978,7 @@ namespace TrueforceForAll.Plugin
                     // with takeover off in a reshape game the game's own force
                     // does pass through, so the section is a pass-through again.
                     if (FfbPassthroughHeader != null)
-                        FfbPassthroughHeader.Text = _plugin.TapCorrectionsBypassed
-                            ? "Wheel Output" : "FFB Pass-Through";
+                        FfbPassthroughHeader.Text = FfbPassthroughLabel(_plugin.TapCorrectionsBypassed);
 
                     // Tab name. "Telemetry FFB" is wrong for iRacing, where the
                     // force is not built FROM telemetry but is the sim's own
@@ -999,22 +998,12 @@ namespace TrueforceForAll.Plugin
                     // has none is a promise the tab cannot keep. Same source of
                     // truth the OLED section itself uses, so the two can never
                     // disagree.
-                    if (TelemetryFfbTab != null)
-                    {
-                        // The wheels with a screen (G PRO, RS50) are exactly the
-                        // ones with programmable lights, and they keep a separate
-                        // LIGHTSYNC tab, so their FFB tab is just "FFB". The only
-                        // wheel whose lights share this tab is the G923, which has
-                        // LED rev lights and no screen, so the shared name is
-                        // "FFB & LED". There is no FFB+LED+OLED case.
-                        // Matches the LIGHTSYNC tab's own show condition: unlocked
-                        // (auto for programmable wheels) AND not a wheel that
-                        // cannot be programmed (the G923 keeps its lights here).
-                        bool lightsHaveTheirOwnTab =
-                            _plugin?.Settings?.LightsyncTabUnlocked == true
-                            && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern);
-                        TelemetryFfbTab.Header = lightsHaveTheirOwnTab ? "FFB" : "FFB & LED";
-                    }
+                    //
+                    // One writer, ApplyTelemetryFfbTabHeader, because this write
+                    // detaches the XAML {loc:T} binding for good: a language
+                    // change has to go through the same method or the next
+                    // refresh would put the old language straight back.
+                    ApplyTelemetryFfbTabHeader();
                     // Spring-mode enhancements show ONLY in spring games; in
                     // Forza the composer has its own kick layer and these
                     // controls would be dead weight there.
@@ -1138,8 +1127,7 @@ namespace TrueforceForAll.Plugin
                             FsModBanner.Visibility = System.Windows.Visibility.Collapsed;
                             if (FsModInstallButton != null)
                                 FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
-                            if (FsModBannerText != null)
-                                FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator.";
+                            SetFsModBannerLine(FsModBannerLine.Install);
                         }
                         else
                         {
@@ -1150,8 +1138,7 @@ namespace TrueforceForAll.Plugin
                                 FsModBanner.Visibility = System.Windows.Visibility.Collapsed;
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
-                                if (FsModBannerText != null)
-                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator.";
+                                SetFsModBannerLine(FsModBannerLine.Install);
                             }
                             else if (_fsModBannerHold)
                             {
@@ -1163,16 +1150,14 @@ namespace TrueforceForAll.Plugin
                                 FsModBanner.Visibility = System.Windows.Visibility.Visible;
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Visible;
-                                if (FsModBannerText != null)
-                                    FsModBannerText.Text = "Install the TF4ALL Enhanced Telemetry mod for richer force feedback in Farming Simulator.";
+                                SetFsModBannerLine(FsModBannerLine.Install);
                             }
                             else if (fsState == 2)
                             {
                                 FsModBanner.Visibility = System.Windows.Visibility.Visible;
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;
-                                if (FsModBannerText != null)
-                                    FsModBannerText.Text = "The TF4ALL Enhanced Telemetry mod is installed but its data isn't reaching the plugin. Enable it in the game's mod screen when loading your save, or restart Farming Simulator if SimHub restarted while the game was running.";
+                                SetFsModBannerLine(FsModBannerLine.NotReaching);
                             }
                             else if (fsState == 4)
                             {
@@ -1183,8 +1168,7 @@ namespace TrueforceForAll.Plugin
                                 FsModBanner.Visibility = System.Windows.Visibility.Visible;
                                 if (FsModInstallButton != null)
                                     FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;
-                                if (FsModBannerText != null)
-                                    FsModBannerText.Text = "The TF4ALL Enhanced Telemetry mod was updated. Restart Farming Simulator to load the new version; until then some newer features stay off.";
+                                SetFsModBannerLine(FsModBannerLine.Updated);
                             }
                             else
                             {
@@ -1202,28 +1186,11 @@ namespace TrueforceForAll.Plugin
                     // 2026-08-09).
                     if (ModeBIntroText != null)
                     {
-                        ModeBIntroText.Text = springGame
-                            ? "In Farming Simulator the plugin replaces the game's basic force " +
-                              "feedback with its own steering model built from the game's physics, " +
-                              "and engages by itself. The game's force feedback setting doesn't " +
-                              "change the feel while SimHub runs; leaving it on just keeps native " +
-                              "FFB as a fallback when SimHub is closed."
-                            : reshapeGame
-                            ? $"The plugin takes force feedback over from {ModeBGameDisplayName(mbGame)} rather " +
-                              "than inventing its own: it reads the forces the sim computes and delivers " +
-                              "them over Trueforce, so the car still feels like the car and your rev " +
-                              "lights and wheel screen work again. The setup steps are in the note below."
-                            : "The wheel's steering force is built from telemetry instead of the game's " +
-                              "own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. " +
-                              "Set the game's force feedback and vibration to 0 so this is the only " +
-                              "force on the wheel. Farming Simulator 22 and 25 are supported too, " +
-                              "through the spring option below.";
+                        ModeBIntroText.Text = ModeBIntroLabel(springGame, reshapeGame, mbGame);
                         // The other-games coverage line moved off the visible intro
                         // and into a tooltip, and only the Farming Simulator variant
                         // carries it, so it is set beside the text it belongs to.
-                        ModeBIntroText.ToolTip = springGame
-                            ? "Also works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6."
-                            : null;
+                        ModeBIntroText.ToolTip = ModeBIntroTip(springGame);
                     }
                     // Route back to the one-time introduction, on exactly the games
                     // the dialog itself will open for. Everywhere else it would be a
@@ -1268,15 +1235,12 @@ namespace TrueforceForAll.Plugin
                     // over Trueforce. Same physics, different route. Framing it
                     // as a HANDOVER makes the disable step read as part of the
                     // feature instead of an argument with it.
-                    ModeBEnabledCheck.Content = reshapeGame
-                        ? $"Take over force feedback for {ModeBGameDisplayName(mbGame)}"
-                        : "Enable Telemetry Based FFB for this game";
+                    ModeBEnabledCheck.Content = ModeBEnabledLabel(reshapeGame, mbGame);
                     // Same correction wherever the phrase is user-facing. A
                     // heading and a checkbox that disagree about what the feature
                     // IS are worse than either being wrong alone.
                     if (TeleFfbSectionHeader != null)
-                        TeleFfbSectionHeader.Text = reshapeGame
-                            ? "Force feedback" : "Telemetry Based FFB";
+                        TeleFfbSectionHeader.Text = TeleFfbSectionLabel(reshapeGame);
                     if (ModeBUnsupportedBadge != null)
                         ModeBUnsupportedBadge.Visibility = (!gameActive)
                             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
@@ -1309,16 +1273,7 @@ namespace TrueforceForAll.Plugin
                             // all with nothing on screen to explain why. What it
                             // needs is force feedback DISABLED, with max force
                             // left wherever they like it.
-                            string note = r3eHere
-                                ? "Applies to RaceRoom. Checked, the wheel is driven from the sim's own steering force read straight from its shared memory, instead of the USB capture. Unchecked returns to the USB capture (the tap route)."
-                                : lmuHere
-                                ? "Applies to Le Mans Ultimate. Checked, the wheel is driven from the sim's own steering shaft torque read straight from its shared memory, instead of the USB capture. In the game, set Vendor Specific Force Feedback to Off and Use LEDs off; its force feedback strength can stay. Unchecked returns to the USB capture (the tap route)."
-                                : reshapeGame
-                                ? "Applies to iRacing. Turn iRacing's own force feedback OFF (do not set its strength to 0, the plugin reads that number), and set loadTrueForceAPI=0 in app.ini."
-                                : $"Applies to {ModeBGameDisplayName(mbGame)}. Set that game's own force feedback and vibration to 0.";
-                            if (mbGame == "FM8")
-                                note += " Forza Motorsport has native Trueforce, so also enable the plugin for it at the top of this panel.";
-                            ModeBGameNote.Text = note;
+                            ModeBGameNote.Text = ModeBGameNoteLabel(r3eHere, lmuHere, reshapeGame, mbGame);
                             ModeBGameNote.Visibility = System.Windows.Visibility.Visible;
                         }
                         else
@@ -1474,9 +1429,7 @@ namespace TrueforceForAll.Plugin
                 // the screen has its own named section, so the header should stop
                 // claiming it.
                 if (WheelLightsHeaderText != null)
-                    WheelLightsHeaderText.Text = (_plugin.WheelHasOledScreen
-                                                  && _plugin.Settings?.LightsyncTabUnlocked != true)
-                        ? "Wheel lights and screen" : "Wheel lights";
+                    WheelLightsHeaderText.Text = WheelLightsHeaderLabel();
                 if (LovelyCarDataCheck != null)
                 {
                     LovelyCarDataCheck.IsChecked = _plugin.Settings?.LovelyCarDataEnabled == true;
@@ -3209,13 +3162,41 @@ namespace TrueforceForAll.Plugin
             StationarySpringUnsupportedBadge.Visibility = springLive ? Visibility.Collapsed : Visibility.Visible;
             if (!springLive)
             {
-                StationarySpringUnsupportedBadge.Text = inert;
+                StationarySpringUnsupportedBadge.Text = StationarySpringInertBadge(inert);
                 StationarySpringUnsupportedBadge.ToolTip = StationarySpringInertTooltip(inert);
             }
             // Grayed, not hidden: the section is per game, so its tuning for
             // other games is untouched; the dimming just says "inert here".
             if (StationarySpringExpander != null)
                 StationarySpringExpander.Opacity = springLive ? 1.0 : 0.55;
+        }
+
+        /// <summary>Badge text for each StationarySpringInertReason.
+        ///
+        /// The plugin's reason property returns an English sentence that this
+        /// file and its tooltip twin below both switch on, so the sentence is a
+        /// token as well as copy. Turning it into an enum is a plugin-side
+        /// change Phase 2 owns; until then the token stays English and the two
+        /// switches here decide what the panel shows. An unknown reason falls
+        /// back to the sentence itself, which is what the badge showed before
+        /// the badge had keys.</summary>
+        private static string StationarySpringInertBadge(string reason)
+        {
+            switch (reason)
+            {
+                case "not used in Forza on the capture route":
+                    return Loc.T("TelemetryFfb_StationarySpringInertForzaCapture");
+                case "not used on an arcade cabinet":
+                    return Loc.T("TelemetryFfb_StationarySpringInertArcade");
+                case "not used in iRacing":
+                    return Loc.T("TelemetryFfb_StationarySpringInertIRacing");
+                case "needs the stationary friction on":
+                    return Loc.T("TelemetryFfb_StationarySpringInertFriction");
+                case "off outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza in this version":
+                    return Loc.T("TelemetryFfb_StationarySpringInertLocked");
+                default:
+                    return reason;
+            }
         }
 
         /// <summary>Badge tooltip for each StationarySpringInertReason. Kept
@@ -3225,15 +3206,15 @@ namespace TrueforceForAll.Plugin
             switch (reason)
             {
                 case "not used in Forza on the capture route":
-                    return "Skipped in Forza on the capture route, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Available with Telemetry Based FFB on. Your tuning still applies in other games.";
+                    return Loc.T("TelemetryFfb_StationarySpringInertForzaCapture_Tip");
                 case "not used in iRacing":
-                    return "iRacing weights the wheel itself while parked, so the spring is skipped there. Your tuning still applies in other games.";
+                    return Loc.T("TelemetryFfb_StationarySpringInertIRacing_Tip");
                 case "needs the stationary friction on":
-                    return "With RaceRoom's force handed over, the spring works against the plugin's own stationary friction instead of the game's parked damper. With that friction off there is nothing to settle the spring, so it is skipped. Turn the stationary friction on in the RaceRoom section to use it.";
+                    return Loc.T("TelemetryFfb_StationarySpringInertFriction_Tip");
                 case "off outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza in this version":
-                    return "The spring is offered in Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza (with Telemetry Based FFB) in this version while it is retested game by game. Type SPRING in the access code box to unlock it for testing. Your saved per-game tuning is kept.";
+                    return Loc.T("TelemetryFfb_StationarySpringInertLocked_Tip");
                 default:
-                    return "Not used for the active game. Your tuning still applies in other games.";
+                    return Loc.T("TelemetryFfb_StationarySpringInertOther_Tip");
             }
         }
 
@@ -6501,7 +6482,7 @@ namespace TrueforceForAll.Plugin
                 double g = _plugin.FxKindGainNow(kind);
                 FxTuneGainSlider.Value = TrueforcePlugin.ClampFxGain(g);
                 if (FxTuneGainText != null)   FxTuneGainText.Text   = g.ToString("F2");
-                if (FxTuneGainCaption != null) FxTuneGainCaption.Text = TrueforcePlugin.FxGainFamilyLabel(kind);
+                if (FxTuneGainCaption != null) FxTuneGainCaption.Text = FxGainFamilyCaption(kind);
             }
             finally { _suppressEvents = prev; }
         }
@@ -6559,7 +6540,26 @@ namespace TrueforceForAll.Plugin
         private void FxUpdateTraceButton()
         {
             if (FxTraceButton == null || _plugin == null) return;
-            FxTraceButton.Content = _plugin.FfbTraceRunning ? "Save trace" : "Record trace";
+            FxTraceButton.Content = _plugin.FfbTraceRunning
+                ? Loc.T("TelemetryFfb_FxTraceSave")
+                : Loc.T("TelemetryFfb_FxTrace");
+        }
+
+        /// <summary>The bench gain row's caption, in the user's language.
+        /// TrueforcePlugin.FxGainFamilyLabel keeps its English words for the
+        /// FXTEST log line, which is identity, so the panel switches on the
+        /// same protocol family token instead of on that label's text.</summary>
+        private static string FxGainFamilyCaption(string kind)
+        {
+            switch (TrueforcePlugin.FxGainFamily(kind))
+            {
+                case "SPRING":   return Loc.T("TelemetryFfb_FxGainSpring");
+                case "FRICTION": return Loc.T("TelemetryFfb_FxGainFriction");
+                case "INERTIA":  return Loc.T("TelemetryFfb_FxGainInertia");
+                case "PERIODIC": return Loc.T("TelemetryFfb_FxGainWaveform");
+                case "RAMP":     return Loc.T("TelemetryFfb_FxGainRamp");
+                default:         return Loc.T("TelemetryFfb_FxTuneGainCaption");
+            }
         }
 
         private void FxAutoTune_Click(object sender, RoutedEventArgs e)
@@ -6956,14 +6956,42 @@ namespace TrueforceForAll.Plugin
         // keeps the success text visible after an install; the banner state
         // machine otherwise belongs to RefreshFromPlugin.
         private bool _fsModBannerHold;
+
+        /// <summary>Which sentence the banner is showing. Held rather than read
+        /// back off the TextBlock so a language change can re-render the line
+        /// the state machine chose, including the post-install pair that a
+        /// refresh deliberately leaves alone while _fsModBannerHold is set.</summary>
+        private enum FsModBannerLine { Install, NotReaching, Updated, Installed, InstallFailed }
+        private FsModBannerLine _fsModBannerLine;
+        private string _fsModBannerError;
+
+        // The banner's text for the line it is on. A composer rather than a
+        // cached sentence, so the relabel pass renders the current language.
+        private string FsModBannerLabel()
+        {
+            switch (_fsModBannerLine)
+            {
+                case FsModBannerLine.NotReaching:   return Loc.T("TelemetryFfb_FsModBannerNotReaching");
+                case FsModBannerLine.Updated:       return Loc.T("TelemetryFfb_FsModBannerUpdated");
+                case FsModBannerLine.Installed:     return Loc.T("TelemetryFfb_FsModBannerInstalled");
+                case FsModBannerLine.InstallFailed: return Loc.F("TelemetryFfb_FsModBannerInstallFailed_Fmt", _fsModBannerError);
+                default:                            return Loc.T("TelemetryFfb_FsModBanner");
+            }
+        }
+
+        private void SetFsModBannerLine(FsModBannerLine line)
+        {
+            _fsModBannerLine = line;
+            if (FsModBannerText != null) FsModBannerText.Text = FsModBannerLabel();
+        }
+
         private void FsModInstall_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null || FsModBannerText == null) return;
             string err = _plugin.InstallFsModForActiveGame();
             _fsModBannerHold = err == null;
-            FsModBannerText.Text = err == null
-                ? "Installed. It loads the next time Farming Simulator starts, so restart the game if it is running now."
-                : "Install failed: " + err + ".";
+            _fsModBannerError = err;
+            SetFsModBannerLine(err == null ? FsModBannerLine.Installed : FsModBannerLine.InstallFailed);
             if (err == null && FsModInstallButton != null)
                 FsModInstallButton.Visibility = System.Windows.Visibility.Collapsed;
         }
@@ -7388,9 +7416,11 @@ namespace TrueforceForAll.Plugin
             // to clobber it; "Use 23.8" can only mean one thing, and it doubles
             // as the readout of what the learner currently thinks, so there is no
             // separate suggestion label to keep in sync.
+            // The number is formatted first and passed as a string, so the
+            // label reads exactly as it did before the key.
             string label = offer > 0.5
-                ? "Use " + offer.ToString("F1")
-                : "Auto";
+                ? Loc.F("TelemetryFfb_IRacingAutoMaxForceUse_Fmt", offer.ToString("F1"))
+                : Loc.T("TelemetryFfb_IRacingAutoMaxForce");
             if (_irAutoReadyShown == ready && _irAutoPctShown == pct && _irAutoBtnShown == label) return;
             bool wasReady = _irAutoReadyShown == true;
             _irAutoReadyShown = ready;
@@ -7447,7 +7477,9 @@ namespace TrueforceForAll.Plugin
             float obs = _plugin.R3EObservedPeak;
             // The button carries the number it would set, doubling as the readout of
             // what the car pushes, exactly like the iRacing Auto button.
-            string label = (ready && obs > 0.02f) ? "Apply " + obs.ToString("0.00") : "Apply";
+            string label = (ready && obs > 0.02f)
+                ? Loc.F("TelemetryFfb_R3EApplyStrengthValue_Fmt", obs.ToString("0.00"))
+                : Loc.T("Common_Apply");
             if (_r3eAutoReadyShown == ready && _r3eAutoPctShown == pct && _r3eAutoBtnShown == label) return;
             bool wasReady = _r3eAutoReadyShown == true;
             _r3eAutoReadyShown = ready;
@@ -7481,14 +7513,15 @@ namespace TrueforceForAll.Plugin
                     R3EAutoStrengthStatus.Text = $"Set this car's max to {applied:0.00}. Watching again from now.";
                 if (R3EMaxBox != null && !R3EMaxBox.IsKeyboardFocused)
                     R3EMaxBox.Text = _plugin.R3EEffectivePeak.ToString("0.00");
-                R3EApplyStrengthBtn.Content = "Apply";
+                R3EApplyStrengthBtn.Content = Loc.T("Common_Apply");
                 R3EApplyStrengthBtn.IsEnabled = false;
                 R3EApplyStrengthBtn.Opacity = 0.45;
                 // Reflect the post-apply reset (peak zeroed) so the next tick sees no
-                // change and does NOT clobber this confirmation line.
+                // change and does NOT clobber this confirmation line. The cache holds
+                // the text that is on the button, so it is seeded through the same key.
                 _r3eAutoReadyShown = false;
                 _r3eAutoPctShown = 0;
-                _r3eAutoBtnShown = "Apply";
+                _r3eAutoBtnShown = Loc.T("Common_Apply");
             }
             else if (R3EAutoStrengthStatus != null)
             {
@@ -10288,7 +10321,11 @@ namespace TrueforceForAll.Plugin
         // lines through RelabelSettingsTab, read back from the plugin; the
         // Effects tab's road-bumps caption and capture-status line through
         // RelabelEffectsTab, from the active game and the plugin's capture
-        // state; the supporters wall status through RefreshSupportersWallAsync,
+        // state; the Telemetry FFB tab's tab name, section headings, per-game
+        // intro and note, mod banner, wheel-lights heading, OLED line, badges
+        // and bench captions through RelabelTelemetryFfbTab, from the active
+        // game and the wheel already discovered; the supporters wall status
+        // through RefreshSupportersWallAsync,
         // and only while the Support tab is showing: every entry to that tab
         // refreshes it anyway, and the method's generation counter drops a
         // fetch still in flight. LocStore raises the event on the UI thread
@@ -10311,6 +10348,8 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Settings tab language relabel failed: " + ex.Message); }
             try { RelabelEffectsTab(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Effects tab language relabel failed: " + ex.Message); }
+            try { RelabelTelemetryFfbTab(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Telemetry FFB tab language relabel failed: " + ex.Message); }
             try
             {
                 // IsLoaded: SimHub builds a new panel on every page open, and a
@@ -10420,6 +10459,204 @@ namespace TrueforceForAll.Plugin
                 CaptureStatusText.Text = _plugin.AudioCapture != null
                     ? _plugin.CaptureStatus
                     : Loc.T("Effects_CaptureStatus");
+        }
+
+        // ---- Telemetry FFB tab: the labels code writes -------------------
+        //
+        // Each one is a method rather than a ternary at the write site, so
+        // RefreshFromPlugin and the language pass below render the same words
+        // from the same state and cannot drift apart. None of them touches the
+        // plugin beyond the flags handed in.
+
+        // "Wheel Output" while nothing passes through, "FFB Pass-Through" when
+        // the game's own force does.
+        private static string FfbPassthroughLabel(bool bypassed)
+            => bypassed
+                ? Loc.T("TelemetryFfb_FfbPassthroughWheelOutput")
+                : Loc.T("TelemetryFfb_FfbPassthrough");
+
+        // The section heading. "Telemetry Based FFB" is a promise we do not keep
+        // in a reshape game, where the force is the sim's own.
+        private static string TeleFfbSectionLabel(bool reshapeGame)
+            => reshapeGame
+                ? Loc.T("TelemetryFfb_TeleFfbSectionForce")
+                : Loc.T("TelemetryFfb_TeleFfbSection");
+
+        // The contextual intro. The game's display name is runtime data and is
+        // passed into the format rather than keyed.
+        private string ModeBIntroLabel(bool springGame, bool reshapeGame, string mbGame)
+            => springGame
+                ? Loc.T("TelemetryFfb_ModeBIntroSpring")
+                : reshapeGame
+                ? Loc.F("TelemetryFfb_ModeBIntroReshape_Fmt", ModeBGameDisplayName(mbGame))
+                : Loc.T("TelemetryFfb_ModeBIntro");
+
+        // Only the Farming Simulator intro carries the other-games line, and it
+        // carries it on the hover; everywhere else the tooltip is cleared.
+        private static object ModeBIntroTip(bool springGame)
+            => springGame ? Loc.T("TelemetryFfb_ModeBIntroSpring_Tip") : null;
+
+        // The master switch's own caption. Framing it as a HANDOVER in the
+        // reshape games makes the "turn the sim's FFB off" step read as part of
+        // the feature instead of an argument with it.
+        private string ModeBEnabledLabel(bool reshapeGame, string mbGame)
+            => reshapeGame
+                ? Loc.F("TelemetryFfb_ModeBTakeOver_Fmt", ModeBGameDisplayName(mbGame))
+                : Loc.T("TelemetryFfb_ModeBEnabled");
+
+        // The per-game setup note under the checkbox. iRacing takes the OPPOSITE
+        // instruction to every other game, which is why each one has its own
+        // sentence, and Forza Motorsport adds a second one about its native
+        // Trueforce. The FM8 sentence is a format around the note rather than a
+        // value with a leading space, so a translator owns the join.
+        private string ModeBGameNoteLabel(bool r3eHere, bool lmuHere, bool reshapeGame, string mbGame)
+        {
+            string note = r3eHere
+                ? Loc.T("TelemetryFfb_ModeBGameNoteR3E")
+                : lmuHere
+                ? Loc.T("TelemetryFfb_ModeBGameNoteLmu")
+                : reshapeGame
+                ? Loc.T("TelemetryFfb_ModeBGameNoteIRacing")
+                : Loc.F("TelemetryFfb_ModeBGameNoteAppliesTo_Fmt", ModeBGameDisplayName(mbGame));
+            if (mbGame == "FM8")
+                note = Loc.F("TelemetryFfb_ModeBGameNoteFm8_Fmt", note);
+            return note;
+        }
+
+        // "and screen" is right on this tab, where the lights and the screen sit
+        // back to back under one header. On LIGHTSYNC the screen has its own
+        // named section, so the header stops claiming it.
+        private string WheelLightsHeaderLabel()
+            => (_plugin != null && _plugin.WheelHasOledScreen
+                && _plugin.Settings?.LightsyncTabUnlocked != true)
+                ? Loc.T("TelemetryFfb_WheelLightsHeader")
+                : Loc.T("TelemetryFfb_WheelLightsHeaderLightsOnly");
+
+        // The key the tab header is wearing, for the guide browser's "Open the
+        // ... tab" sentence. Null until the first apply, which is the state the
+        // XAML default covers.
+        private string _telemetryFfbHeaderKey;
+
+        private string TelemetryFfbTabHeaderKey
+            => _telemetryFfbHeaderKey ?? "TelemetryFfb_TelemetryFfbTab_Header";
+
+        /// <summary>The tab's own name, and the only writer of it.
+        ///
+        /// The wheels with a screen (G PRO, RS50) are exactly the ones with
+        /// programmable lights, and they keep a separate LIGHTSYNC tab, so their
+        /// FFB tab is just "FFB". The only wheel whose lights share this tab is
+        /// the G923, which has LED rev lights and no screen, so the shared name
+        /// is "FFB &amp; LED". There is no FFB+LED+OLED case. The condition
+        /// matches the LIGHTSYNC tab's own show condition: unlocked (auto for
+        /// programmable wheels) AND not a wheel that cannot be programmed.
+        ///
+        /// Guarded the same way the call site in RefreshFromPlugin is, so the
+        /// language pass cannot name the tab in a state that a refresh never
+        /// reaches. Nothing here fetches or raises LanguageChanged.</summary>
+        private void ApplyTelemetryFfbTabHeader()
+        {
+            if (TelemetryFfbTab == null || _plugin?.Settings == null || ModeBEnabledCheck == null) return;
+            bool lightsHaveTheirOwnTab =
+                _plugin.Settings.LightsyncTabUnlocked == true
+                && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern);
+            // Written key by key rather than through the recorded field, so the
+            // no-unreferenced-key check can see both keys at their call site.
+            if (lightsHaveTheirOwnTab)
+            {
+                _telemetryFfbHeaderKey = "TelemetryFfb_TabHeaderFfb";
+                TelemetryFfbTab.Header = Loc.T("TelemetryFfb_TabHeaderFfb");
+            }
+            else
+            {
+                _telemetryFfbHeaderKey = "TelemetryFfb_TabHeaderFfbAndLed";
+                TelemetryFfbTab.Header = Loc.T("TelemetryFfb_TabHeaderFfbAndLed");
+            }
+        }
+
+        // Language pass over the Telemetry FFB tab's code-written labels.
+        //
+        // This event must not call RefreshFromPlugin (it is long and it starts a
+        // community fetch), so the writers are called one by one. The six game
+        // flags below are recomputed from the same plugin properties
+        // RefreshFromPlugin reads them from, the way the Effects pass recomputes
+        // its spring-game test, and every one of them is a field read or a small
+        // string compare.
+        //
+        // The tab header goes through ApplyTelemetryFfbTabHeader, the arcade
+        // heading through ApplyArcadeTuningHeader: both writes detach their
+        // {loc:T} binding for good, so re-applying the key here instead would be
+        // overwritten by the next refresh. The arcade heading is only touched
+        // while a cabinet is the active game, which is the one state its own
+        // refresh writes it in, and the call deliberately skips
+        // RefreshArcadePanel, which can open the submit notice. That heading is
+        // the one writer here that reads the disk (TeknoParrot's profiles), and
+        // it is the same read its own refresh does every pass.
+        //
+        // The two auto-strength buttons and the stationary-spring badge go
+        // through their own refresh methods. Each returns early when its row is
+        // hidden and each caches the text it last showed, and a label in a new
+        // language differs from the cached one, which is exactly what makes the
+        // repaint happen. They also run on the 60 Hz meter tick, so they would
+        // repaint by themselves 16 ms later while the panel is loaded; calling
+        // them costs a few property reads and makes the switch land while the
+        // tick is stopped, which it is whenever the panel is unloaded.
+        //
+        // The OLED line is read back from the controller, which composes it on
+        // read. A preview-held-back notice on that line is replaced by the live
+        // status here; it is a transient explanation and the language change is
+        // the user's own action. A RaceRoom apply confirmation on the
+        // auto-strength line goes the same way, for the same reason: the
+        // readiness refresh recomputes that line from live state.
+        //
+        // Deliberately left to the next tick: the FX bench's status sentence and
+        // the two learning lines beside the auto buttons hold live device and
+        // telemetry state and are still English literals, due in Phase 2.
+        //
+        // Nothing below fetches, loads or reloads the language store, or raises
+        // LanguageChanged, so the pass cannot loop.
+        private void RelabelTelemetryFfbTab()
+        {
+            if (_plugin == null) return;
+            string mbGame = _plugin.ActiveGame;
+            bool r3eHere = _plugin.ActiveGameIsR3E;
+            bool lmuHere = _plugin.ActiveGameIsLmu;
+            bool smHere = r3eHere || lmuHere;
+            bool mbSupported = _plugin.ActiveGameSupportsModeB || smHere;
+            bool springGame = _plugin.ActiveGameIsSpringGame;
+            bool reshapeGame = _plugin.ActiveGameIsReshapeGame || smHere;
+
+            ApplyTelemetryFfbTabHeader();
+            if (_plugin.ActiveGameIsArcade) ApplyArcadeTuningHeader();
+
+            if (FfbPassthroughHeader != null)
+                FfbPassthroughHeader.Text = FfbPassthroughLabel(_plugin.TapCorrectionsBypassed);
+            if (TeleFfbSectionHeader != null)
+                TeleFfbSectionHeader.Text = TeleFfbSectionLabel(reshapeGame);
+            if (FsModBannerText != null)
+                FsModBannerText.Text = FsModBannerLabel();
+            if (ModeBIntroText != null)
+            {
+                ModeBIntroText.Text = ModeBIntroLabel(springGame, reshapeGame, mbGame);
+                ModeBIntroText.ToolTip = ModeBIntroTip(springGame);
+            }
+            if (ModeBEnabledCheck != null)
+                ModeBEnabledCheck.Content = ModeBEnabledLabel(reshapeGame, mbGame);
+            // Only the state that writes the note re-writes it; the other two
+            // hide the note instead, and their Visibility is not this pass's
+            // business.
+            if (ModeBGameNote != null && !springGame && mbSupported)
+                ModeBGameNote.Text = ModeBGameNoteLabel(r3eHere, lmuHere, reshapeGame, mbGame);
+            if (WheelLightsHeaderText != null)
+                WheelLightsHeaderText.Text = WheelLightsHeaderLabel();
+            if (OledStatusText != null)
+                OledStatusText.Text = _plugin.OledStatus;
+
+            RefreshStationarySpringBadge();
+            RefreshIRacingAutoReadiness();
+            RefreshR3EAutoReadiness();
+            FxUpdateTraceButton();
+            if (FxTuneGainCaption != null)
+                FxTuneGainCaption.Text = FxGainFamilyCaption(FxSelectedKind());
         }
 
         private int _supportersWallGen;
@@ -15007,9 +15244,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin.Settings.ModeBOledEnabled != true) return;
             int ms = _plugin.PreviewOledScreen();
             if (ms >= 0 || OledStatusText == null) return;
-            OledStatusText.Text = "preview held back: telemetry is arriving, so a game may be sending "
-                + "its own force feedback and writing the screen now could cut it. Close the game, or "
-                + "turn on Telemetry Based FFB, and the preview works.";
+            OledStatusText.Text = Loc.T("TelemetryFfb_OledPreviewHeldBack");
         }
 
         /// <summary>Say so when the running game never reports a lap delta,

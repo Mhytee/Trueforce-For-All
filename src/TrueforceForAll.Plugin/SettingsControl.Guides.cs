@@ -30,6 +30,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -95,12 +96,16 @@ namespace TrueforceForAll.Plugin
         /// reshape games, and "Wheel (FFB, LED)" when the lights have not been
         /// given their own tab. A hard-coded label sends the reader looking for a
         /// tab that is not on screen, and it does so worst in iRacing, which is
-        /// the one game whose guide is mostly about that tab.</summary>
+        /// the one game whose guide is mostly about that tab.
+        ///
+        /// The name comes from the key the header's own writer last applied, not
+        /// from the Header property, so the sentence and the tab cannot end up in
+        /// two languages. Before the first write there is no key yet and the XAML
+        /// default's key stands in, which is the value the property would have
+        /// carried. The guide browser is built when it opens, long after the
+        /// panel's first refresh, so in practice the writer has always run.</summary>
         private string TelemetryFfbTabLabel()
-        {
-            string header = TelemetryFfbTab?.Header as string;
-            return "Open the " + (string.IsNullOrEmpty(header) ? "Telemetry FFB" : header) + " tab";
-        }
+            => Loc.F("Guides_OpenTheTab_Fmt", Loc.T(TelemetryFfbTabHeaderKey));
 
         private List<GuideEntry> BuildGuideEntries()
         {

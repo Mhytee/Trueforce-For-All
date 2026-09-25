@@ -18020,7 +18020,7 @@ namespace TrueforceForAll.Plugin
             if (!OledWritesSafeNow)
             { SimHub.Logging.Current.Info("[OLED] test skipped: the screen is not ours to write in this mode"); return; }
             int ms = _oledDash.RunTest();
-            SimHub.Logging.Current.Info($"[OLED] Test started, duration={ms} ms ({_oledDash.Status})");
+            SimHub.Logging.Current.Info($"[OLED] Test started, duration={ms} ms ({_oledDash.StatusForLog})");
         }
 
         /// <summary>Hand the OLED back to the wheel's own firmware (feature
@@ -18742,7 +18742,7 @@ namespace TrueforceForAll.Plugin
         /// off at startup takes the feature away with it.</summary>
         public bool WheelDetected => _hidWheelPid != 0;
 
-        public string OledStatus => _oledDash?.Status ?? "(n/a)";
+        public string OledStatus => _oledDash?.Status ?? Loc.T("TelemetryFfb_OledStatusUnavailable");
         public bool OledIsTesting => _oledDash?.IsTesting ?? false;
 
         /// <summary>Whether writing the screen right now cannot disturb anyone's

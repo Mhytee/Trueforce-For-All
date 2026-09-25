@@ -49,11 +49,39 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Controls;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
     public partial class SettingsControl
     {
+        /// <summary>The card's heading, which names the cabinet when TeknoParrot
+        /// has a profile for it. Its own method because the write detaches the
+        /// XAML binding for good, so the language relabel has to come back
+        /// through here rather than re-apply the key: RefreshArcadePanel would
+        /// otherwise put the old language back on its next pass. The cabinet's
+        /// display name is runtime data and stays as the profile spells it.
+        ///
+        /// ActiveArcadeTarget reads TeknoParrot's profiles from disk, the same
+        /// lookup RefreshArcadePanel already does on every refresh, and returns
+        /// null without touching anything when the arcade path is locked. No
+        /// network, no store load, and nothing that raises LanguageChanged.</summary>
+        private void ApplyArcadeTuningHeader()
+        {
+            if (ArcadeTuningHeader == null || _plugin == null) return;
+            ApplyArcadeTuningHeader(_plugin.ActiveArcadeTarget());
+        }
+
+        // The overload RefreshArcadePanel uses, so one refresh resolves the
+        // cabinet once instead of reading the profiles twice.
+        private void ApplyArcadeTuningHeader(TrueforcePlugin.ArcadeModTarget target)
+        {
+            if (ArcadeTuningHeader == null) return;
+            ArcadeTuningHeader.Text = target != null
+                ? Loc.F("TelemetryFfb_ArcadeCabinetNamed_Fmt", target.DisplayName)
+                : Loc.T("TelemetryFfb_ArcadeTuning");
+        }
+
         /// <summary>Show or hide the panel and fill it in. Called from
         /// RefreshFromPlugin, which has already set _suppressEvents, so writing
         /// into these controls cannot fire their handlers back at us.</summary>
@@ -71,10 +99,7 @@ namespace TrueforceForAll.Plugin
 
             var target = _plugin.ActiveArcadeTarget();
 
-            if (ArcadeTuningHeader != null)
-                ArcadeTuningHeader.Text = target != null
-                    ? "Arcade cabinet: " + target.DisplayName
-                    : "Arcade cabinet";
+            ApplyArcadeTuningHeader(target);
 
             if (ArcadeTuningStatus != null)
             {
