@@ -24,7 +24,7 @@ Gain is how loud an effect is. The rest affect how it feels:
 
 Engine pulse is built from the car's firing order. Each cylinder fires at its own point in the engine cycle, so a cross-plane V8 lopes, a V-twin leaves its gap, and a rotary hums flat.
 
-That makes the engine layout the first thing to get right. It is set at the top of the plugin, in the active car's **Car Facts**, so it follows the car wherever you take it. Most cars arrive already known. The list runs from a single cylinder through parallel twins at 180 and 360 degrees, inline sixes, crossplane inline fours, boxers, even and odd fire V6s, V4s including the Panigale's Twin Pulse, cross and flat plane V8s, V10s, V12s, W engines, V-twins at three angles, and rotaries up to four rotors.
+That makes the engine layout the first thing to get right. It is set at the top of the plugin, in the active car's **Car Facts**, so it follows the car wherever you take it. Most cars arrive already known. The list covers the layouts that fire differently enough to feel different: cylinder counts from one upward, the V angles and crank types that change the beat, boxers and rotaries, and the odd-fire layouts that lope rather than hum.
 
 Past the gain and the waveform:
 

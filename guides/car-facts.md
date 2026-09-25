@@ -4,13 +4,13 @@
 
 Car facts are what is true about the car you are driving: its name, its engine layout, where its redline starts. They belong to the car rather than to a preset, and they sit at the top of the plugin.
 
-Three things read them. **Engine pulse** builds its firing pattern from the layout, the **redline buzz** fires as you enter the redline, and your **rev lights** light up to it.
+They drive what the wheel does. **Engine pulse** builds its firing pattern from the layout, the **redline buzz** fires as you enter the redline, and your **rev lights** light up to it.
 
 ## Where the numbers come from
 
 Some games tell the plugin these details themselves. For the games that don't, the plugin carries its own list of cars. Anything still missing can come from what other people have filled in, and if nothing has an answer the plugin guesses from the revs it sees the car using.
 
-The line beside a value says where it came from: from the game, from the community, or an estimated guess. A value you set yourself carries no label, because you already know.
+The line beside a value says where it came from. A value you set yourself carries no label, because you already know.
 
 ## What you can set
 

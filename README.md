@@ -128,7 +128,7 @@ forces straight to the plugin. None of it needs a SimHub license.
 <details>
 <summary><b>iRacing</b></summary>
 
-Reads the sim's telemetry at 1 kHz. iRacing keeps publishing the
+iRacing keeps publishing the
 steering torque it wants the wheel to hold even with its own force feedback
 off, so the plugin carries that to the wheel with its effects on top, and
 the rev lights and the wheel's screen come with it.
@@ -495,9 +495,9 @@ SimHub itself is free, and the plugin works without a SimHub license. The
 difference is the telemetry rate: unlicensed, games the plugin doesn't read
 directly run at only 10 Hz, which makes the effects feel coarse. A licensed
 copy lifts that to 60 Hz, which is a big step up in feel. SimHub is cheap and
-well worth it. (Assetto Corsa, iRacing, RaceRoom, Le Mans Ultimate, the
-Forza titles and Farming Simulator are read directly, so they run at their
-full rate regardless of license.)
+well worth it. (Assetto Corsa, the Forza titles and Farming Simulator are
+read directly, so their telemetry runs at its own rate whatever the license.
+The others still take their numbers through SimHub.)
 
 </details>
 

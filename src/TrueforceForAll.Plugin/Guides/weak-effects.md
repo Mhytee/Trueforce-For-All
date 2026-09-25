@@ -7,6 +7,6 @@ In the panel itself:
 - **Master gain** first, since it lifts everything at once.
 - Then the **gain on the individual effects** you want more of.
 
-The G923 is gear driven and quieter by nature than the G PRO and the RS50, so it usually wants more gain than they do.
+A G923 renders the Trueforce stream more quietly than the direct-drive wheels, so it usually wants more master gain. A fresh install on one already starts it higher; if yours still reads faint, raising it further is fair.
 
 If it still feels flat with Master gain high, the problem may not be gain at all: see [Force feedback: limp, weak, or silent](guide:ffb-not-working) for the case where the game's own force is missing rather than quiet.

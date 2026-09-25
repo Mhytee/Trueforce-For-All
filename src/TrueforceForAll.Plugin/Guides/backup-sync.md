@@ -14,7 +14,7 @@ To hand one preset to someone rather than your whole setup, use Import and Expor
 
 ## What stays on this PC
 
-Anything tied to this machine stays behind: the USB capture details, file paths, the ports the plugin listens on. They belong to the PC rather than to you, so the second machine keeps its own and its wheel works on arrival.
+Anything tied to this machine stays behind: the capture device, the folders and game mods on this disk, the network addresses, and anything signed in or cached here. They belong to the PC rather than to you, so the second machine keeps its own and its wheel works on arrival.
 
 ## Tuning from another wheel
 

@@ -8,10 +8,12 @@ This is the opposite of [Telemetry Based FFB](telemetry-ffb.md), where the plugi
 
 ## Where it works
 
-- **iRacing**, which keeps publishing its steering torque even with its own force feedback switched off. [Setup](iracing-setup.md).
-- **RaceRoom**, which publishes its steering force in telemetry. [Setup](raceroom-setup.md).
-- **Le Mans Ultimate**, which publishes its steering shaft torque in its shared memory. [Setup](lmu-setup.md).
+- **iRacing**. [Setup](iracing-setup.md).
+- **RaceRoom**. [Setup](raceroom-setup.md).
+- **Le Mans Ultimate**. [Setup](lmu-setup.md).
 - **Assetto Corsa**, through [the TF4ALL CSP Bridge](csp-bridge.md), which hands over the game's finished force after your in-game gain and every CSP tweak. [Setup](assetto-corsa-setup.md).
+
+Each sim publishes its force somewhere different and calls it something different. You do not need to know where: the force feedback tab carries one checkbox, named after the sim you are in. Assetto Corsa needs no checkbox, since the bridge takes over as soon as its script is installed.
 
 ## Why hand it over
 

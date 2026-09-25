@@ -9,7 +9,7 @@ It also frees your wheel's rev lights and screen. [Why](force-and-lights.md).
 ## Where it works
 
 - Forza Motorsport (2023) and Forza Horizon 4, 5 and 6. Opt-in, per game, and it needs Forza's telemetry pointed at the plugin first ([how](forza-setup.md)).
-- Farming Simulator 22 and 25, where the plugin entirely replaces the game's force feedback with its own. It engages by itself. Installing [our enhanced telemetry mod](farming-sim.md) is optional, but adds ground texture, implement reactive effects, and airborne ducking.
+- Farming Simulator, where the plugin entirely replaces the game's force feedback with its own. It engages by itself. Installing [our enhanced telemetry mod](farming-sim.md) is optional, but adds ground texture, implement reactive effects, and airborne ducking.
 
 ## Before you turn it on, in Forza
 
