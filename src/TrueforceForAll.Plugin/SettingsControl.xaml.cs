@@ -2561,20 +2561,20 @@ namespace TrueforceForAll.Plugin
 
                     if (_forceForzaStall)
                     {
-                        ForzaStatusText.Text =
-                            "No packets arriving now (0 Hz). 0 received this session. If you're in-game, check Forza Data Out config + the troubleshooter below. [STALL test active]";
+                        ForzaStatusText.Text = Loc.T("Settings_ForzaStatusStallTest");
                         zeroPacketsSustained = true;
                     }
                     else if (fzSrc == null)
                     {
-                        ForzaStatusText.Text = "(idle, not active for current game)";
+                        ForzaStatusText.Text = Loc.T("Settings_ForzaStatusIdleInactive");
                         _forzaZeroSinceTicks = 0;
                         _forzaTroubleshootAutoExpanded = false;
                     }
                     else if (fzSrc.PacketsReceived == 0)
                     {
-                        ForzaStatusText.Text =
-                            $"Listening on {(_plugin.Settings?.Forza?.BindAddress ?? "0.0.0.0")}:{(_plugin.Settings?.Forza?.Port ?? 0)}, no packets yet (check Forza Data Out config + the troubleshooter below)";
+                        ForzaStatusText.Text = Loc.F("Settings_ForzaStatusListening_Fmt",
+                            _plugin.Settings?.Forza?.BindAddress ?? "0.0.0.0",
+                            _plugin.Settings?.Forza?.Port ?? 0);
                         // Stamp when the zero-packet stretch began so we can
                         // auto-open the troubleshooter once it's sustained.
                         long nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -2601,14 +2601,18 @@ namespace TrueforceForAll.Plugin
                         double hz = fzSrc.MeasuredHz;
                         if (hz > 0)
                         {
-                            string state = fzSrc.LastIsRaceOn ? "driving" : "paused / in menu";
-                            ForzaStatusText.Text =
-                                $"Receiving at ~{hz:0} Hz, {state}. {fzSrc.PacketsReceived:N0} packets this session.";
+                            string state = fzSrc.LastIsRaceOn
+                                ? Loc.T("Settings_ForzaStateDriving")
+                                : Loc.T("Settings_ForzaStatePaused");
+                            // The numbers are formatted here, as the interpolation
+                            // did, so the key carries plain {0} placeholders.
+                            ForzaStatusText.Text = Loc.F("Settings_ForzaStatusReceiving_Fmt",
+                                hz.ToString("0"), state, fzSrc.PacketsReceived.ToString("N0"));
                         }
                         else
                         {
-                            ForzaStatusText.Text =
-                                $"No packets arriving now (0 Hz). {fzSrc.PacketsReceived:N0} received earlier this session. If you're in-game, check Forza Data Out config + the troubleshooter below.";
+                            ForzaStatusText.Text = Loc.F("Settings_ForzaStatusStalled_Fmt",
+                                fzSrc.PacketsReceived.ToString("N0"));
                         }
                     }
 
@@ -2638,16 +2642,18 @@ namespace TrueforceForAll.Plugin
                         var fwd = _plugin.Settings?.Forza;
                         if (fwd == null || !fwd.ForwardEnabled)
                         {
-                            ForzaForwardStatusText.Text = "(disabled)";
+                            // Same text as the XAML default on this line, so the
+                            // key is shared rather than minted twice.
+                            ForzaForwardStatusText.Text = Loc.T("Settings_ForzaForwardStatus");
                         }
                         else if (fzSrc == null)
                         {
-                            ForzaForwardStatusText.Text = "(armed, will relay once a Forza title is detected)";
+                            ForzaForwardStatusText.Text = Loc.T("Settings_ForzaForwardStatusArmed");
                         }
                         else
                         {
-                            ForzaForwardStatusText.Text =
-                                $"{fzSrc.PacketsForwarded:N0} packets relayed to {fwd.ForwardHost}:{fwd.ForwardPort}";
+                            ForzaForwardStatusText.Text = Loc.F("Settings_ForzaForwardStatusRelayed_Fmt",
+                                fzSrc.PacketsForwarded.ToString("N0"), fwd.ForwardHost, fwd.ForwardPort);
                         }
                     }
 
@@ -2663,8 +2669,8 @@ namespace TrueforceForAll.Plugin
                         if (show && ForzaDiscoveryText != null)
                         {
                             ForzaDiscoveryText.Text = alt > 0
-                                ? $"Forza packets detected on port {alt}. Switch to it?"
-                                : "Forza packets detected on a different port. Switch to it?";
+                                ? Loc.F("Settings_ForzaDiscoveryOnPort_Fmt", alt)
+                                : Loc.T("Settings_ForzaDiscoveryOtherPort");
                         }
                     }
                 }
@@ -2685,12 +2691,16 @@ namespace TrueforceForAll.Plugin
             var telSrc = _plugin?.TelemetrySource;
             if (telSrc != null)
             {
-                string label = telSrc.IsEnhanced ? "Enhanced Effects" : "SimHub";
+                // "SimHub" is the product's name and stays as written; the
+                // suffix is a wrapping format so no key carries an edge space.
+                string label = telSrc.IsEnhanced ? Loc.T("Settings_TelemetrySourceEnhanced") : "SimHub";
                 double hz = telSrc.MeasuredHz;
-                string baseText = hz > 0 ? $"{label} · {hz:0} Hz" : $"{label} · idle";
+                string baseText = hz > 0
+                    ? Loc.F("Settings_TelemetrySourceHz_Fmt", label, hz.ToString("0"))
+                    : Loc.F("Settings_TelemetrySourceIdle_Fmt", label);
                 bool gameRunning = !string.IsNullOrEmpty(_plugin.ActiveGame);
                 bool audioOnly   = gameRunning && hz > 0 && !_plugin.HasUsefulTelemetry;
-                if (audioOnly) baseText += " · audio only";
+                if (audioOnly) baseText = Loc.F("Settings_TelemetrySourceAudioOnly_Fmt", baseText);
                 TelemetrySourceText.Text = baseText;
 
                 // Grey out the telemetry-effect controls (engine pulse, road
@@ -10274,13 +10284,14 @@ namespace TrueforceForAll.Plugin
         // reloads. Labels assigned in code are re-run here: the Account tab's
         // through RelabelAccountTab, from cached state and without a fetch;
         // the LIGHTSYNC tab's selected-LED caption through RelabelLightsyncTab,
-        // from the selection already in hand; the supporters wall status
-        // through RefreshSupportersWallAsync, and only while the Support tab is
-        // showing: every entry to that tab refreshes it anyway, and the
-        // method's generation counter drops a fetch still in flight. LocStore
-        // raises the event on the UI thread (the folder watcher dispatches its
-        // reload, the access codes run from the panel), and the CheckAccess
-        // guard covers any other raiser.
+        // from the selection already in hand; the Settings tab's four status
+        // lines through RelabelSettingsTab, read back from the plugin; the
+        // supporters wall status through RefreshSupportersWallAsync, and only
+        // while the Support tab is showing: every entry to that tab refreshes
+        // it anyway, and the method's generation counter drops a fetch still
+        // in flight. LocStore raises the event on the UI thread (the folder
+        // watcher dispatches its reload, the access codes run from the panel),
+        // and the CheckAccess guard covers any other raiser.
         private void OnLanguageChanged(object sender, EventArgs e)
         {
             if (!Dispatcher.CheckAccess())
@@ -10294,6 +10305,8 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Account tab language relabel failed: " + ex.Message); }
             try { RelabelLightsyncTab(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] LIGHTSYNC tab language relabel failed: " + ex.Message); }
+            try { RelabelSettingsTab(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Settings tab language relabel failed: " + ex.Message); }
             try
             {
                 // IsLoaded: SimHub builds a new panel on every page open, and a
@@ -10332,6 +10345,37 @@ namespace TrueforceForAll.Plugin
                 AccountDeleteBtn.Content = _deletingAccount
                     ? Loc.T("Account_AccountDeleteBusy")
                     : Loc.T("Account_AccountDelete");
+        }
+
+        // Language pass over the Settings tab's four status lines, each read
+        // straight back from the plugin's in-memory state. The wheel line is
+        // written once in the constructor and the rev-light line inside
+        // RefreshFromPlugin, which this event must not call (it is long and it
+        // starts a community fetch), plus the rev-light test's own poll, so
+        // without this pass those two would keep the previous language until
+        // the panel was rebuilt. The stream and
+        // FFB-tap lines are also rewritten by the 60 Hz meter tick; re-reading
+        // them here costs two property reads and makes the switch land even
+        // while the tick is stopped, which it is whenever the panel is
+        // unloaded. Every property below is a field or a small string build:
+        // nothing fetches, loads a store or raises LanguageChanged, so the
+        // pass cannot loop. The Forza and ring-counter lines hold live
+        // telemetry state and are rewritten by the next meter tick, 16 ms
+        // away, so they are deliberately left to it. The telemetry-source line
+        // is too, but only while a source exists: the tick's writer is gated on
+        // one, and the pipeline drops it whenever the master mode goes to
+        // lights-only or off, so that state is handled here instead. Its first
+        // write detached the {loc:T} binding for good, which is why the default
+        // has to be written rather than left to the binding.
+        private void RelabelSettingsTab()
+        {
+            if (_plugin == null) return;
+            if (WheelText != null)        WheelText.Text        = _plugin.WheelStatus;
+            if (StreamText != null)       StreamText.Text       = _plugin.StreamStatus;
+            if (FfbTapText != null)       FfbTapText.Text       = _plugin.FfbTapStatus;
+            if (RpmLedStatusText != null) RpmLedStatusText.Text = _plugin.RpmLedStatus;
+            if (TelemetrySourceText != null && _plugin.TelemetrySource == null)
+                TelemetrySourceText.Text = Loc.T("Settings_TelemetrySource");
         }
 
         private int _supportersWallGen;
@@ -16951,11 +16995,9 @@ namespace TrueforceForAll.Plugin
 
             long tfWindow = 0, auWindow = 0;
             for (int i = 0; i < 60; i++) { tfWindow += _perfTfBucket[i]; auWindow += _perfAudioBucket[i]; }
-            string tfLabel = $" (cap {_plugin.CurrentTfRingSize})";
-            string auLabel = $" (cap {_plugin.CurrentAudioRingSize})";
-            PerfCountersText.Text =
-                $"Output ring{tfLabel}: {tfWindow} underruns/min · " +
-                $"Audio ring{auLabel}: {auWindow} glitches/min";
+            PerfCountersText.Text = Loc.F("Settings_PerfCountersDetail_Fmt",
+                _plugin.CurrentTfRingSize, tfWindow,
+                _plugin.CurrentAudioRingSize, auWindow);
         }
 
         private void OnAutoRatchetBumped(bool isTf, int oldCap, int newCap)

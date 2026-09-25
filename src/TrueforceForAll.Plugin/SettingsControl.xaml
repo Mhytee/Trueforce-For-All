@@ -4557,7 +4557,7 @@
             </sh:SHTabItem>
 
             <!-- ============================ SETTINGS ============================ -->
-            <sh:SHTabItem x:Name="SettingsTab" Header="Settings">
+            <sh:SHTabItem x:Name="SettingsTab" Header="{loc:T Settings_SettingsTab_Header}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
 
@@ -4568,36 +4568,36 @@
             <Expander x:Name="UpdatesExpander" IsExpanded="False" Margin="0,0,0,8"
                       Expanded="UpdatesExpander_Expanded">
                 <Expander.Header>
-                    <TextBlock Text="Updates" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{loc:T Settings_Updates}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Check for app updates:" Style="{StaticResource LabelText}"
+                        <TextBlock Text="{loc:T Settings_UpdatesCheckForAppUpdates}" Style="{StaticResource LabelText}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <ComboBox x:Name="UpdateCheckIntervalCombo" Width="160"
                                   SelectionChanged="UpdateCheckIntervalCombo_SelectionChanged"
-                                  ToolTip="How often the plugin checks GitHub for a newer release while it's running. A check always runs once when SimHub starts, and the header's 'Check for updates' link checks on demand, no matter what you pick here. 'On startup only' just turns off the background re-checks.">
-                            <ComboBoxItem Tag="0" Content="On startup only"/>
-                            <ComboBoxItem Tag="1" Content="Every hour"/>
-                            <ComboBoxItem Tag="2" Content="Every 2 hours"/>
-                            <ComboBoxItem Tag="6" Content="Every 6 hours"/>
-                            <ComboBoxItem Tag="24" Content="Daily"/>
+                                  ToolTip="{loc:T Settings_UpdateCheckInterval_Tip}">
+                            <ComboBoxItem Tag="0" Content="{loc:T Settings_UpdateCheckIntervalOnStartupOnly}"/>
+                            <ComboBoxItem Tag="1" Content="{loc:T Settings_UpdateCheckIntervalEveryHour}"/>
+                            <ComboBoxItem Tag="2" Content="{loc:T Settings_UpdateCheckIntervalEvery2Hours}"/>
+                            <ComboBoxItem Tag="6" Content="{loc:T Settings_UpdateCheckIntervalEvery6Hours}"/>
+                            <ComboBoxItem Tag="24" Content="{loc:T Settings_UpdateCheckIntervalDaily}"/>
                         </ComboBox>
                     </StackPanel>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="When an update is available, an 'Update to vX.Y.Z' button appears in the header up top."/>
+                               Text="{loc:T Settings_UpdatesWhenAnUpdateIsAvailable}"/>
 
                     <!-- Beta (pre-release) updates, open to everyone. Pre-releases
                          are always public on GitHub; this pulls them through the
                          in-app updater instead of downloading each one by hand. -->
-                    <CheckBox x:Name="BetaUpdatesCheck" Content="Get beta (pre-release) updates in-app"
+                    <CheckBox x:Name="BetaUpdatesCheck" Content="{loc:T Settings_BetaUpdates}"
                               Margin="0,14,0,0"
                               Checked="BetaUpdates_Changed" Unchecked="BetaUpdates_Changed"
-                              ToolTip="Receive pre-release 'beta' builds through the in-app updater, so you can try new effects and fixes before they reach the stable release. Pre-releases are always public on GitHub; this just brings them to the in-app updater. Turn it off to return to the stable release next time one ships."/>
+                              ToolTip="{loc:T Settings_BetaUpdates_Tip}"/>
                     <TextBlock x:Name="BetaUpdatesNote" Style="{StaticResource HelpText}" Margin="0,4,0,0"
                                FontSize="12" TextWrapping="Wrap" Visibility="Collapsed" Text=""/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                               Text="Beta builds get fixes and new effects first, but are less tested."/>
+                               Text="{loc:T Settings_UpdatesBetaBuildsGetFixes}"/>
                 </StackPanel>
             </Expander>
 
@@ -4614,49 +4614,49 @@
                          not a preference. Tabs opens by default as the one people come
                          here for; the rest stay shut until wanted. -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                        <TextBlock Text="Theme" VerticalAlignment="Center" Width="52"/>
+                        <TextBlock Text="{loc:T Settings_RemoteDashTheme}" VerticalAlignment="Center" Width="52"/>
                         <ComboBox x:Name="RemoteDashThemeCombo" Width="140"
                                   SelectionChanged="RemoteDashTheme_Changed"
-                                  ToolTip="Repaints the dashboard live. Themes change the structural colors only: the greens and reds that mean something keep their meaning."/>
+                                  ToolTip="{loc:T Settings_RemoteDashTheme_Tip}"/>
                     </StackPanel>
 
                     <!-- Phone-access funnel: same handler as the header phone
                     button; the QR dialog itself carries the scan / same
                     network / Add to Home Screen guidance. -->
-                    <Button x:Name="DashPhoneSettingsButton" Content="Open on your phone or tablet…"
+                    <Button x:Name="DashPhoneSettingsButton" Content="{loc:T Settings_DashPhoneSettings}"
                     Style="{StaticResource PopoverPrimaryButton}"
                     HorizontalAlignment="Left" Height="26"
                     Click="DashPhoneAccess_Click"
-                    ToolTip="Shows a QR code and link that open TF4ALL Dash on your phone."/>
+                    ToolTip="{loc:T Settings_DashPhoneSettings_Tip}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                    Text="Control effects, gains, and presets from your phone or tablet while driving."/>
+                    Text="{loc:T Settings_RemoteDashControlEffectsGainsAnd}"/>
 
                     <Expander IsExpanded="True" Margin="0,8,0,0">
                         <Expander.Header>
-                            <TextBlock Text="Tabs" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashTabs}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,4">
-                            <TextBlock Text="Opening tab:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
-                            <CheckBox x:Name="RemoteDashRememberTabCheck" Content="Remember last used tab"
+                            <TextBlock Text="{loc:T Settings_RemoteDashOpeningTab}" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
+                            <CheckBox x:Name="RemoteDashRememberTabCheck" Content="{loc:T Settings_RemoteDashRememberTab}"
                             Checked="RemoteDashRememberTab_Changed" Unchecked="RemoteDashRememberTab_Changed"
-                            ToolTip="The dash comes back on whichever tab was open last, surviving SimHub restarts."/>
+                            ToolTip="{loc:T Settings_RemoteDashRememberTab_Tip}"/>
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <TextBlock Text="Default tab:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashDefaultTab}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                             <!-- Items are built in code (RebuildRemoteDashTabsEditor):
                             only ENABLED tabs are offered, in the user's order. -->
                             <ComboBox x:Name="RemoteDashDefaultTabCombo" Width="140" Margin="8,0,0,0"
                             SelectionChanged="RemoteDashDefaultTab_Changed"
-                            ToolTip="The tab the dash opens on when 'Remember last used tab' is off. Applies at the next SimHub start."/>
+                            ToolTip="{loc:T Settings_RemoteDashDefaultTab_Tip}"/>
                             </StackPanel>
 
                             <!-- Tab layout editor: one row per dash tab (enable checkbox
                             + up/down reorder). Rows are built in code
                             (RebuildRemoteDashTabsEditor); the dash re-reads the
                             layout live, so changes apply with no reload. -->
-                            <TextBlock Text="Tabs:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashTabsList}" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
                             <StackPanel x:Name="RemoteDashTabsPanel"/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="Untick a tab to hide it on the dash; use the arrows to change the order. At least one tab always stays on."/>
+                            Text="{loc:T Settings_RemoteDashUntickATabToHide}"/>
 
                             <!-- Drive tab: which of the four boxes around the gear shows
                             what, plus the one-row / two-row choice. Combo items are
@@ -4666,125 +4666,125 @@
                     </Expander>
                     <Expander IsExpanded="False" Margin="0,8,0,0">
                         <Expander.Header>
-                            <TextBlock Text="Drive Tab" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashDriveTab}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,4">
-                            <TextBlock Text="Drive tab boxes:" Style="{StaticResource LabelText}" Margin="0,16,0,4"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashDriveTabBoxes}" Style="{StaticResource LabelText}" Margin="0,16,0,4"/>
                             <RadioButton x:Name="RemoteDashDriveTwoRowsRadio" GroupName="RemoteDashDriveRows"
-                            Content="Two rows (tablet)" Checked="RemoteDashDriveRows_Changed"
-                            ToolTip="All four boxes, two above and two below."/>
+                            Content="{loc:T Settings_RemoteDashDriveTwoRowsRadio}" Checked="RemoteDashDriveRows_Changed"
+                            ToolTip="{loc:T Settings_RemoteDashDriveTwoRowsRadio_Tip}"/>
                             <RadioButton x:Name="RemoteDashDriveOneRowRadio" GroupName="RemoteDashDriveRows"
-                            Content="Bottom row only (phone)" Margin="0,4,0,0" Checked="RemoteDashDriveRows_Changed"
-                            ToolTip="Just the bottom two boxes, with a bigger gear readout above them."/>
+                            Content="{loc:T Settings_RemoteDashDriveOneRowRadio}" Margin="0,4,0,0" Checked="RemoteDashDriveRows_Changed"
+                            ToolTip="{loc:T Settings_RemoteDashDriveOneRowRadio_Tip}"/>
                             <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Grid.Column="0" x:Name="RemoteDashDriveSlot0Label" Text="Top left:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="0" x:Name="RemoteDashDriveSlot0Label" Text="{loc:T Settings_RemoteDashDriveSlot0}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                             <ComboBox   Grid.Row="0" Grid.Column="1" x:Name="RemoteDashDriveSlot0Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
-                            <TextBlock Grid.Row="1" Grid.Column="0" x:Name="RemoteDashDriveSlot1Label" Text="Top right:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" x:Name="RemoteDashDriveSlot1Label" Text="{loc:T Settings_RemoteDashDriveSlot1}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                             <ComboBox   Grid.Row="1" Grid.Column="1" x:Name="RemoteDashDriveSlot1Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Bottom left:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:T Settings_RemoteDashBottomLeft}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                             <ComboBox   Grid.Row="2" Grid.Column="1" x:Name="RemoteDashDriveSlot2Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Bottom right:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="{loc:T Settings_RemoteDashBottomRight}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                             <ComboBox   Grid.Row="3" Grid.Column="1" x:Name="RemoteDashDriveSlot3Combo" Margin="0,2" SelectionChanged="RemoteDashDriveSlot_Changed"/>
                             </Grid>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="Lap times, tire and fuel readouts come from the game, so what they show depends on what that game reports."/>
+                            Text="{loc:T Settings_RemoteDashLapTimesTireAndFuel}"/>
 
-                            <CheckBox x:Name="RemoteDashDrivePerGameCheck" Content="Remember box layout per game" Margin="0,14,0,0"
+                            <CheckBox x:Name="RemoteDashDrivePerGameCheck" Content="{loc:T Settings_RemoteDashDrivePerGame}" Margin="0,14,0,0"
                             Checked="RemoteDashDrivePerGame_Changed" Unchecked="RemoteDashDrivePerGame_Changed"
-                            ToolTip="Each game keeps its own set of four boxes, and switching games loads the one you last used there. Games report different telemetry, so a layout that fills up in one can be half empty in another."/>
+                            ToolTip="{loc:T Settings_RemoteDashDrivePerGame_Tip}"/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="20,2,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="With this on, a game you have not set up yet uses the layout above, and so do changes you make with no game running."/>
+                            Text="{loc:T Settings_RemoteDashWithThisOnAGameYou}"/>
 
-                            <CheckBox x:Name="RemoteDashPedalsCheck" Content="Show pedals and steering around the gear" Margin="0,14,0,0"
+                            <CheckBox x:Name="RemoteDashPedalsCheck" Content="{loc:T Settings_RemoteDashPedals}" Margin="0,14,0,0"
                             Checked="RemoteDashPedals_Changed" Unchecked="RemoteDashPedals_Changed"
-                            ToolTip="Thin throttle and brake bars either side of the gear on the Drive tab, with steering underneath."/>
-                            <CheckBox x:Name="RemoteDashRevCenteredCheck" Content="Narrow the rev strip on the Drive tab" Margin="0,8,0,0"
+                            ToolTip="{loc:T Settings_RemoteDashPedals_Tip}"/>
+                            <CheckBox x:Name="RemoteDashRevCenteredCheck" Content="{loc:T Settings_RemoteDashRevCentered}" Margin="0,8,0,0"
                             Checked="RemoteDashRevCentered_Changed" Unchecked="RemoteDashRevCentered_Changed"
-                            ToolTip="On the Drive tab only: the strip spans the space above the gear between the two box columns instead of the full width. Other tabs are always full width."/>
+                            ToolTip="{loc:T Settings_RemoteDashRevCentered_Tip}"/>
                         </StackPanel>
                     </Expander>
                     <Expander IsExpanded="False" Margin="0,8,0,0">
                         <Expander.Header>
-                            <TextBlock Text="Rev Lights" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashRevLights}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,4">
-                            <TextBlock Text="Rev light direction:" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
-                            <RadioButton x:Name="RemoteRevAutoRadio" GroupName="RemoteRevDir" Content="Auto (follow the wheel)"
+                            <TextBlock Text="{loc:T Settings_RemoteDashRevLightDirection}" Style="{StaticResource LabelText}" Margin="0,14,0,4"/>
+                            <RadioButton x:Name="RemoteRevAutoRadio" GroupName="RemoteRevDir" Content="{loc:T Settings_RemoteRevAutoRadio}"
                             Checked="RemoteRevDirection_Changed"
-                            ToolTip="The strip shows your wheel's rev lights: their colors, their fill direction, and the switch-on points of the car you are driving. Falls back to the settings below on a wheel whose lights we cannot read."/>
-                            <RadioButton x:Name="RemoteRevLtrRadio" GroupName="RemoteRevDir" Content="Left to right"
+                            ToolTip="{loc:T Settings_RemoteRevAutoRadio_Tip}"/>
+                            <RadioButton x:Name="RemoteRevLtrRadio" GroupName="RemoteRevDir" Content="{loc:T Settings_RemoteRevLtrRadio}"
                             Margin="0,4,0,0" Checked="RemoteRevDirection_Changed"
-                            ToolTip="The rev strip fills from the left edge toward the right as revs climb."/>
-                            <RadioButton x:Name="RemoteRevOutsideInRadio" GroupName="RemoteRevDir" Content="Outside in"
+                            ToolTip="{loc:T Settings_RemoteRevLtrRadio_Tip}"/>
+                            <RadioButton x:Name="RemoteRevOutsideInRadio" GroupName="RemoteRevDir" Content="{loc:T Settings_RemoteRevOutsideInRadio}"
                             Margin="0,4,0,0" Checked="RemoteRevDirection_Changed"
-                            ToolTip="The rev strip lights from both ends toward the center as revs climb."/>
+                            ToolTip="{loc:T Settings_RemoteRevOutsideInRadio_Tip}"/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="Applies to the rev LED strip on the TF4ALL Dash dashboard. On Auto the strip is your wheel's own strip, drawn on the phone. The other two draw a green to red ramp scaled to the current car's redline, which is also what Auto falls back to when there is no wheel to follow. Either way it flashes in step with the wheel at the redline, and changes apply instantly with no dashboard reload."/>
+                            Text="{loc:T Settings_RemoteDashAppliesToTheRevLed}"/>
                         </StackPanel>
                     </Expander>
                     <Expander IsExpanded="False" Margin="0,8,0,0">
                         <Expander.Header>
-                            <TextBlock Text="Alerts" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashAlerts}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,4">
-                            <CheckBox x:Name="RemoteDashFlagsCheck" Content="Show race flags on the dash" Margin="0,14,0,0"
+                            <CheckBox x:Name="RemoteDashFlagsCheck" Content="{loc:T Settings_RemoteDashFlags}" Margin="0,14,0,0"
                             Checked="RemoteDashFlags_Changed" Unchecked="RemoteDashFlags_Changed"
-                            ToolTip="A colored band across the top of the dash whenever a flag is out."/>
+                            ToolTip="{loc:T Settings_RemoteDashFlags_Tip}"/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="Shows yellow, blue, black, white and chequered flags in a band across whichever tab is open. Forza does not report flags, so the band never appears there."/>
+                            Text="{loc:T Settings_RemoteDashShowsYellowBlueBlack}"/>
 
-                            <CheckBox x:Name="RemoteDashSpotterCheck" Content="Show the spotter when a car is alongside" Margin="0,8,0,0"
+                            <CheckBox x:Name="RemoteDashSpotterCheck" Content="{loc:T Settings_RemoteDashSpotter}" Margin="0,8,0,0"
                             Checked="RemoteDashSpotter_Changed" Unchecked="RemoteDashSpotter_Changed"
-                            ToolTip="A bar down the edge of whichever tab is open while a car is beside you on that side. Only games that report car positions can drive it; it never appears in the others."/>
+                            ToolTip="{loc:T Settings_RemoteDashSpotter_Tip}"/>
 
-                            <CheckBox x:Name="RemoteDashIncidentsCheck" Content="Show incident points (iRacing)" Margin="0,8,0,0"
+                            <CheckBox x:Name="RemoteDashIncidentsCheck" Content="{loc:T Settings_RemoteDashIncidents}" Margin="0,8,0,0"
                             Checked="RemoteDashIncidents_Changed" Unchecked="RemoteDashIncidents_Changed"
-                            ToolTip="Your incident count sits under the speed on the Drive tab. A band across the top of the dash announces each new incident with what it cost (1x, 4x), and the wheel's screen shows it too. iRacing is the only game that publishes a count, so nothing appears anywhere else."/>
+                            ToolTip="{loc:T Settings_RemoteDashIncidents_Tip}"/>
                             <TextBlock Style="{StaticResource HelpText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                            Text="Shows the points you have taken against the limit that ends your session, turning violet and then red as you run out of room."/>
+                            Text="{loc:T Settings_RemoteDashShowsThePointsYou}"/>
                         </StackPanel>
                     </Expander>
                     <Expander IsExpanded="False" Margin="0,8,0,0">
                         <Expander.Header>
-                            <TextBlock Text="Idle Card" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashIdleCard}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,4">
-                            <TextBlock Text="Idle mode" FontWeight="SemiBold" Margin="0,18,0,0"/>
-                            <CheckBox x:Name="RemoteDashIdleCheck" Content="Show the idle card when no game is running" Margin="0,8,0,0"
-                            ToolTip="Shows an ambient card with your name and number instead of an empty dashboard. It clears the moment a game starts, and the card has its own Exit button."
+                            <TextBlock Text="{loc:T Settings_RemoteDashIdleMode}" FontWeight="SemiBold" Margin="0,18,0,0"/>
+                            <CheckBox x:Name="RemoteDashIdleCheck" Content="{loc:T Settings_RemoteDashIdle}" Margin="0,8,0,0"
+                            ToolTip="{loc:T Settings_RemoteDashIdle_Tip}"
                             Checked="RemoteDashIdle_Changed" Unchecked="RemoteDashIdle_Changed"/>
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <TextBlock Text="Parked for" VerticalAlignment="Center" Width="94"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashParkedFor}" VerticalAlignment="Center" Width="94"/>
                             <TextBox x:Name="RemoteDashIdleDelayBox" Width="60" TextAlignment="Center"
                             LostFocus="RemoteDashIdleDelay_Commit" KeyDown="RemoteDashIdleDelay_KeyDown"
-                            ToolTip="Only applies while a game IS running: how long the car must sit still before the card takes over from the dashboard. Set it long if you would rather it never interrupted a session. With no game running the card shows straight away regardless."/>
-                            <TextBlock Text="seconds" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                            <TextBlock Text="Background" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                            ToolTip="{loc:T Settings_RemoteDashIdleDelay_Tip}"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashSeconds}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashBackground}" VerticalAlignment="Center" Margin="24,0,0,0"/>
                             <ComboBox x:Name="RemoteDashIdleStyleCombo" Width="120" Margin="8,0,0,0"
                             SelectionChanged="RemoteDashIdleStyle_Changed"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <TextBlock Text="Driver name" VerticalAlignment="Center" Width="94"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashDriverName}" VerticalAlignment="Center" Width="94"/>
                             <TextBox x:Name="RemoteDashIdleNameBox" Width="180"
                             LostFocus="RemoteDashIdleName_Commit" KeyDown="RemoteDashIdleName_KeyDown"/>
-                            <TextBlock Text="Number" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashNumber}" VerticalAlignment="Center" Margin="24,0,0,0"/>
                             <TextBox x:Name="RemoteDashIdleNumberBox" Width="70" Margin="8,0,0,0" TextAlignment="Center"
                             LostFocus="RemoteDashIdleNumber_Commit" KeyDown="RemoteDashIdleNumber_KeyDown"/>
-                            <TextBlock Text="Color" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashColor}" VerticalAlignment="Center" Margin="24,0,0,0"/>
                             <ComboBox x:Name="RemoteDashIdleColorCombo" Width="110" Margin="8,0,0,0"
                             SelectionChanged="RemoteDashIdleColor_Changed"/>
-                            <TextBlock Text="Font" VerticalAlignment="Center" Margin="24,0,0,0"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashFont}" VerticalAlignment="Center" Margin="24,0,0,0"/>
                             <ComboBox x:Name="RemoteDashIdleFontCombo" Width="118" Margin="8,0,0,0"
                             SelectionChanged="RemoteDashIdleFont_Changed"
-                            ToolTip="Applies to the name and number on the idle card. The font has to exist on the device showing the dash, so an unknown one quietly falls back to the default."/>
-                            <CheckBox x:Name="RemoteDashIdleNameAboveCheck" Content="Name above" VerticalAlignment="Center" Margin="24,0,0,0"
+                            ToolTip="{loc:T Settings_RemoteDashIdleFont_Tip}"/>
+                            <CheckBox x:Name="RemoteDashIdleNameAboveCheck" Content="{loc:T Settings_RemoteDashIdleNameAbove}" VerticalAlignment="Center" Margin="24,0,0,0"
                             Checked="RemoteDashIdleNameAbove_Changed" Unchecked="RemoteDashIdleNameAbove_Changed"
-                            ToolTip="Puts the driver name over the number instead of under it."/>
+                            ToolTip="{loc:T Settings_RemoteDashIdleNameAbove_Tip}"/>
                             </StackPanel>
                         </StackPanel>
                     </Expander>
@@ -4797,7 +4797,7 @@
                  config directly. -->
             <Expander x:Name="UdpTelemetryExpander" IsExpanded="False" Margin="0,0,0,8">
                 <Expander.Header>
-                    <TextBlock Text="UDP Telemetry" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{loc:T Settings_UdpTelemetry}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
 
@@ -4826,11 +4826,11 @@
                     <ColumnDefinition Width="120"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Port:" Style="{StaticResource LabelText}"/>
+                <TextBlock Grid.Column="0" Text="{loc:T Settings_ForzaSectionPort}" Style="{StaticResource LabelText}"/>
                 <TextBox   Grid.Column="1" x:Name="ForzaPortBox" LostFocus="ForzaPort_LostFocus" KeyDown="ForzaPort_KeyDown" VerticalAlignment="Center"
-                           ToolTip="Match this in Forza's DATA OUT IP PORT. Default 5300; pick anything if it collides with another listener (SimHub's typical 4123, Sim Racing Studio's 4123, etc.)."/>
+                           ToolTip="{loc:T Settings_ForzaPort_Tip}"/>
                 <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" Margin="8,0,0,0" VerticalAlignment="Center"
-                           Text="Takes effect immediately."/>
+                           Text="{loc:T Settings_ForzaSectionTakesEffectImmediately}"/>
             </Grid>
             <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
@@ -4838,19 +4838,19 @@
                     <ColumnDefinition Width="120"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Bind address:" Style="{StaticResource LabelText}"/>
+                <TextBlock Grid.Column="0" Text="{loc:T Settings_ForzaSectionBindAddress}" Style="{StaticResource LabelText}"/>
                 <TextBox   Grid.Column="1" x:Name="ForzaBindBox" LostFocus="ForzaBind_LostFocus" KeyDown="ForzaBind_KeyDown" VerticalAlignment="Center"
-                           ToolTip="Local IP to listen on. 0.0.0.0 = all interfaces (recommended). Use a specific LAN IP only if you want to filter."/>
+                           ToolTip="{loc:T Settings_ForzaBind_Tip}"/>
                 <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" Margin="8,0,0,0" VerticalAlignment="Center"
-                           Text="0.0.0.0 = listen on every network adapter."/>
+                           Text="{loc:T Settings_ForzaSection0000ListenOn}"/>
             </Grid>
             <Grid Margin="0,4,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="140"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Status:" Style="{StaticResource LabelText}"/>
-                <TextBlock Grid.Column="1" x:Name="ForzaStatusText" Text="(idle)" FontSize="11" Opacity="0.85"/>
+                <TextBlock Grid.Column="0" Text="{loc:T Settings_ForzaSectionStatus}" Style="{StaticResource LabelText}"/>
+                <TextBlock Grid.Column="1" x:Name="ForzaStatusText" Text="{loc:T Settings_ForzaStatus}" FontSize="11" Opacity="0.85"/>
             </Grid>
             <!-- Auto-discovered alternate port banner. Shown when the
                  plugin scanned candidate ports and found Forza packets on
@@ -4860,11 +4860,11 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock x:Name="ForzaDiscoveryText" FontSize="11" TextWrapping="Wrap"
                                VerticalAlignment="Center" MaxWidth="380"
-                               Text="Forza packets detected on a different port."/>
-                    <Button x:Name="ForzaDiscoveryAdoptButton" Content="Switch" Width="80" Height="22" FontSize="11"
+                               Text="{loc:T Settings_ForzaDiscovery}"/>
+                    <Button x:Name="ForzaDiscoveryAdoptButton" Content="{loc:T Settings_ForzaDiscoveryAdopt}" Width="80" Height="22" FontSize="11"
                             Style="{StaticResource InfoBannerButton}"
                             Margin="10,0,4,0" Click="ForzaDiscoveryAdopt_Click"/>
-                    <Button x:Name="ForzaDiscoveryDismissButton" Content="Dismiss" Width="80" Height="22" FontSize="11"
+                    <Button x:Name="ForzaDiscoveryDismissButton" Content="{loc:T Settings_ForzaDiscoveryDismiss}" Width="80" Height="22" FontSize="11"
                             Style="{StaticResource InfoBannerButton}"
                             Click="ForzaDiscoveryDismiss_Click"/>
                 </StackPanel>
@@ -4877,13 +4877,13 @@
                  packets out of the network when the user doesn't run SimHub. -->
             <Border BorderThickness="0,1,0,0" BorderBrush="#22FFFFFF" Margin="0,4,0,8" Padding="0,8,0,0">
                 <StackPanel>
-                    <CheckBox x:Name="ForzaForwardEnabledCheck" Content="Also forward to SimHub (dashboards, ShakeIt / Buttkicker, etc.)" Click="ForzaForwardEnabled_Changed" Margin="0,0,0,4"
+                    <CheckBox x:Name="ForzaForwardEnabledCheck" Content="{loc:T Settings_ForzaForwardEnabled}" Click="ForzaForwardEnabled_Changed" Margin="0,0,0,4"
                               FontWeight="SemiBold"
-                              ToolTip="Enable when you also use SimHub for Forza (dashboards, ShakeIt bass shakers / Buttkicker, anything SimHub drives). Forza can only send telemetry to one place, so this plugin receives it and relays every packet on to SimHub. Live telemetry passes through unaltered; short replay and menu gaps are filled on the forwarded copy so SimHub does not read them as the game disconnecting."/>
+                              ToolTip="{loc:T Settings_ForzaForwardEnabled_Tip}"/>
                     <!-- Intro on its own line; the numbered setup steps render as
                          separate rows below so the option isn't a wall of text. -->
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" FontSize="11"
-                               Text="Forza already points at this plugin; this just relays a copy on to SimHub."/>
+                               Text="{loc:T Settings_ForzaSectionForzaAlreadyPointsAt}"/>
                     <!-- Rendered from Guides\forza-forward.md, the same text the
                          "Forza: UDP & Data Out setup" guide carries under its own
                          steps. Filled by RenderEmbeddedGuideSteps. -->
@@ -4895,38 +4895,38 @@
                             <ColumnDefinition Width="80"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Forward to host:" Style="{StaticResource LabelText}"/>
+                        <TextBlock Grid.Column="0" Text="{loc:T Settings_ForzaSectionForwardToHost}" Style="{StaticResource LabelText}"/>
                         <TextBox   Grid.Column="1" x:Name="ForzaForwardHostBox" LostFocus="ForzaForwardHost_LostFocus" KeyDown="ForzaForwardHost_KeyDown" VerticalAlignment="Center"
-                                   ToolTip="127.0.0.1 if SimHub runs on the same PC. A LAN IP (or hostname) for a separate SimHub host."/>
-                        <TextBlock Grid.Column="2" Text="port:" Style="{StaticResource LabelText}" Margin="8,0,0,0"/>
+                                   ToolTip="{loc:T Settings_ForzaForwardHost_Tip}"/>
+                        <TextBlock Grid.Column="2" Text="{loc:T Settings_ForzaSectionForwardPort}" Style="{StaticResource LabelText}" Margin="8,0,0,0"/>
                         <TextBox   Grid.Column="3" x:Name="ForzaForwardPortBox" LostFocus="ForzaForwardPort_LostFocus" KeyDown="ForzaForwardPort_KeyDown" VerticalAlignment="Center" Width="120" HorizontalAlignment="Left"
-                                   ToolTip="The port SimHub is listening on for Forza Data Out. Match this to the UDP port shown in SimHub's Forza Game config."/>
+                                   ToolTip="{loc:T Settings_ForzaForwardPort_Tip}"/>
                     </Grid>
                     <Grid Margin="0,0,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Forwarded:" Style="{StaticResource LabelText}"/>
-                        <TextBlock Grid.Column="1" x:Name="ForzaForwardStatusText" Text="(disabled)" FontSize="11" Opacity="0.85"/>
+                        <TextBlock Grid.Column="0" Text="{loc:T Settings_ForzaSectionForwarded}" Style="{StaticResource LabelText}"/>
+                        <TextBlock Grid.Column="1" x:Name="ForzaForwardStatusText" Text="{loc:T Settings_ForzaForwardStatus}" FontSize="11" Opacity="0.85"/>
                     </Grid>
                 </StackPanel>
             </Border>
             <Expander x:Name="ForzaTroubleshootExpander" IsExpanded="False" Margin="0,8,0,16">
                 <Expander.Header>
-                    <TextBlock Text="Not receiving packets?" FontSize="12"/>
+                    <TextBlock Text="{loc:T Settings_ForzaTroubleshootNotReceivingPackets}" FontSize="12"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" FontSize="11"
-                               Text="Most setups receive fine on 127.0.0.1. If you're getting zero packets, work through these:"/>
+                               Text="{loc:T Settings_ForzaTroubleshootMostSetupsReceiveFine}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" FontSize="11"
-                               Text="• Confirm Forza's DATA OUT is ON, and its IP and PORT match this plugin (IP 127.0.0.1, PORT = the Port field above)."/>
+                               Text="{loc:T Settings_ForzaTroubleshootConfirmForzaSData}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" FontSize="11"
-                               Text="• Port collision with SimHub or another tool? Pick a different port here, then update Forza's DATA OUT IP PORT to match."/>
+                               Text="{loc:T Settings_ForzaTroubleshootPortCollisionWithSimHub}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,4" FontSize="11"
-                               Text="• Still nothing on 127.0.0.1: set Forza's DATA OUT IP ADDRESS to your PC's LAN IP (e.g. 192.168.x.x) instead, and leave the bind address here at 0.0.0.0. This gets around localhost quirks on some installs."/>
+                               Text="{loc:T Settings_ForzaTroubleshootStillNothingOn127}"/>
                     <TextBlock Style="{StaticResource HelpText}" FontSize="11"
-                               Text="• Firewall: Windows Defender may prompt the first time the listener opens. Allow it on private/domain networks."/>
+                               Text="{loc:T Settings_ForzaTroubleshootFirewallWindowsDefenderMay}"/>
                 </StackPanel>
             </Expander>
             </StackPanel> <!-- /ForzaSection -->
@@ -4946,7 +4946,7 @@
                  carries. The FFB tab's arcade panel is per-cabinet tuning, which these are not. -->
             <Expander x:Name="ArcadeLeaderboardExpander" IsExpanded="False" Margin="0,0,0,8">
                 <Expander.Header>
-                    <TextBlock Text="Arcade leaderboards" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{loc:T Settings_ArcadeLeaderboardArcadeLeaderboards}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
                     <!-- Initial D 8 only: it is the one cabinet whose boards we know how to
@@ -4954,31 +4954,31 @@
                          standing preference rather than something to set mid-session. -->
                     <CheckBox x:Name="ArcadeLeaderboardsCheck" Margin="0,0,0,4"
                               Checked="ArcadeLeaderboards_Changed" Unchecked="ArcadeLeaderboards_Changed"
-                              Content="Fill Initial D 8's in-game leaderboards"/>
+                              Content="{loc:T Settings_ArcadeLeaderboards}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                               Text="SEGA&apos;s servers shut down years ago, so every row in-game shows a placeholder. This puts real community names and times on the leaderboard instead."/>
+                               Text="{loc:T Settings_ArcadeLeaderboardSegaSServersShut}"/>
 
                     <StackPanel x:Name="ArcadeLeaderboardOptions">
                         <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="Online board shows"/>
+                            <TextBlock Grid.Column="0" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="{loc:T Settings_ArcadeLeaderboardOptionsOnlineBoardShows}"/>
                             <ComboBox Grid.Column="1" x:Name="ArcadeOnlineSourceCombo" Width="170" VerticalAlignment="Center"
                                       SelectionChanged="ArcadeBoardSource_Changed">
-                                <ComboBoxItem Content="All" Tag="Merged"/>
+                                <ComboBoxItem Content="{loc:T Settings_ArcadeOnlineSourceAll}" Tag="Merged"/>
                                 <ComboBoxItem Content="Trueforce For All" Tag="Community"/>
                                 <ComboBoxItem Content="TeknoParrot" Tag="TeknoParrot"/>
-                                <ComboBoxItem Content="Local" Tag="Local"/>
+                                <ComboBoxItem Content="{loc:T Settings_ArcadeOnlineSourceLocal}" Tag="Local"/>
                             </ComboBox>
                         </Grid>
                         <Grid x:Name="ArcadeShopSourceRow" Margin="0,0,0,6" ToolTipService.ShowOnDisabled="True">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="Shop board shows"/>
+                            <TextBlock Grid.Column="0" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="{loc:T Settings_ArcadeShopSourceRowShopBoardShows}"/>
                             <ComboBox Grid.Column="1" x:Name="ArcadeShopSourceCombo" Width="170" VerticalAlignment="Center"
                                       SelectionChanged="ArcadeBoardSource_Changed">
-                                <ComboBoxItem Content="All" Tag="Merged"/>
+                                <ComboBoxItem Content="{loc:T Settings_ArcadeShopSourceAll}" Tag="Merged"/>
                                 <ComboBoxItem Content="Trueforce For All" Tag="Community"/>
                                 <ComboBoxItem Content="TeknoParrot" Tag="TeknoParrot"/>
-                                <ComboBoxItem Content="Local" Tag="Local"/>
+                                <ComboBoxItem Content="{loc:T Settings_ArcadeShopSourceLocal}" Tag="Local"/>
                                 <!-- Shown ONLY while climb mode owns this board, and the box is
                                      greyed whenever it is. It reads Ladder rather than All because
                                      All is what the board is doing and Ladder is why, and why is
@@ -4986,24 +4986,24 @@
                                      if it is ever read back it says what the board actually shows.
                                      Collapsed the rest of the time so it is not a second All in
                                      the list. -->
-                                <ComboBoxItem x:Name="ArcadeShopSourceLadderItem" Content="Ladder"
+                                <ComboBoxItem x:Name="ArcadeShopSourceLadderItem" Content="{loc:T Settings_ArcadeShopSourceLadderItem}"
                                               Tag="Merged" Visibility="Collapsed"/>
                             </ComboBox>
                         </Grid>
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="Two boards, so they can show different things. Your own times are on both. The shop board is also the time to beat the game shows you while driving."/>
+                                   Text="{loc:T Settings_ArcadeLeaderboardOptionsTwoBoardsSoTheyCan}"/>
 
                         <CheckBox x:Name="ArcadeLadderClimbCheck" Margin="0,0,0,4"
                                   Checked="ArcadeLadderClimb_Changed" Unchecked="ArcadeLadderClimb_Changed"
-                                  Content="Ladder climb: show the times around mine"/>
+                                  Content="{loc:T Settings_ArcadeLadderClimb}"/>
                         <TextBlock x:Name="ArcadeLadderClimbHelp" Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="Puts the ten times around yours on the shop board, with you fifth, and makes the time to beat the driver just ahead."/>
+                                   Text="{loc:T Settings_ArcadeLadderClimbHelp}"/>
 
                         <CheckBox x:Name="ArcadeSubmitTimesCheck" Margin="0,0,0,4"
                                   Checked="ArcadeSubmitTimes_Changed" Unchecked="ArcadeSubmitTimes_Changed"
-                                  Content="Send my finished Time Attack runs to the leaderboard"/>
+                                  Content="{loc:T Settings_ArcadeSubmitTimes}"/>
                         <TextBlock x:Name="ArcadeSubmitTimesHelp" Style="{StaticResource HelpText}" Margin="0,0,0,4" TextWrapping="Wrap"
-                                   Text="Sent under your Trueforce For All username, so it needs you signed in. Only runs you finish are sent; records already in your save are never uploaded."/>
+                                   Text="{loc:T Settings_ArcadeSubmitTimesHelp}"/>
                     </StackPanel>
                 </StackPanel>
             </Expander>
@@ -5011,14 +5011,14 @@
             <Expander x:Name="FsModExpander" IsExpanded="False" Margin="0,0,0,8"
                       Expanded="FsModExpander_Expanded">
                 <Expander.Header>
-                    <TextBlock Text="Game Mods" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{loc:T Settings_FsModGameMods}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
                     <!-- One card per mod, built in SettingsControl.Guides.cs
                          (RefreshModsList). Uniform: title + version, description,
                          status, Install/Remove. The home for future mods too. -->
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                               Text="Optional per-game mods that unlock extra features. Install copies the mod into the game's own folders; Remove deletes it again."/>
+                               Text="{loc:T Settings_FsModOptionalPerGameMods}"/>
                     <StackPanel x:Name="FsModTargetsPanel"/>
                     <TextBlock x:Name="FsModTargetsStatus" Style="{StaticResource HelpText}" FontSize="11"
                                Margin="0,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
@@ -5038,7 +5038,7 @@
                      and the pause-release wheel handoff. -->
                 <Expander x:Name="FfbPassthroughExpander" IsExpanded="False" Margin="0,0,0,8">
                     <Expander.Header>
-                        <TextBlock Text="Force Feedback (Advanced)" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="{loc:T Settings_FfbPassthroughForceFeedbackAdvanced}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <!-- Hand the wheel back to the game while paused. When on,
@@ -5049,22 +5049,22 @@
                              pause path handles a pause itself now (the game's constant
                              force zeroed, its spring and damper kept), so this is the
                              escape hatch (owner call 2026-09-14). -->
-                        <CheckBox x:Name="StopStreamOnPauseCheck" Content="Hand the wheel back to the game while paused"
+                        <CheckBox x:Name="StopStreamOnPauseCheck" Content="{loc:T Settings_StopStreamOnPause}"
                                   Margin="0,4,0,2" Checked="StopStreamOnPause_Changed" Unchecked="StopStreamOnPause_Changed"
-                                  ToolTip="Off by default. Turn it on and, when the game pauses (menu, fast travel, race start), the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center. Leave it off and the plugin keeps hold of the wheel while paused. It only bites where the game's own force feedback is what the wheel would fall back to, so it does nothing while the plugin is building or carrying the whole steering force."/>
+                                  ToolTip="{loc:T Settings_StopStreamOnPause_Tip}"/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
-                                   Text="If the wheel misbehaves around pauses or fast travel, try flipping this."/>
+                                   Text="{loc:T Settings_FfbPassthroughIfTheWheelMisbehaves}"/>
 
                         <!-- The sibling of the above, for the games its test cannot
                              reach: one that keeps its car idling in the background
                              neither raises a pause flag nor stops sending telemetry,
                              so alt-tabbing left a held force walking the wheel to
                              its stop (Wreckfest, owner 2026-08-16). -->
-                        <CheckBox x:Name="ReleaseOnFocusLossCheck" Content="Let go of the wheel when you switch away from the game"
+                        <CheckBox x:Name="ReleaseOnFocusLossCheck" Content="{loc:T Settings_ReleaseOnFocusLoss}"
                                   Margin="0,4,0,2" Checked="ReleaseOnFocusLoss_Changed" Unchecked="ReleaseOnFocusLoss_Changed"
-                                  ToolTip="On by default. Alt-tab out of the game and the wheel goes free instead of holding whatever force it had. Some games stop sending force feedback the moment they lose focus without telling anyone, and a held force with no self-aligning torque behind it slowly walks the wheel to full lock. Turn it off if you run the game windowed alongside something else and want force to continue."/>
+                                  ToolTip="{loc:T Settings_ReleaseOnFocusLoss_Tip}"/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
-                                   Text="Force comes back as soon as the game does. Brief interruptions like an overlay or a notification are ignored."/>
+                                   Text="{loc:T Settings_FfbPassthroughForceComesBackAs}"/>
 
                         <!-- Driver testing mode. Hidden by default (Collapsed); revealed
                              only after the DRIVER access code is entered, and kept revealed
@@ -5072,12 +5072,12 @@
                              MANUALPIN unlock pattern). Routes FFB through the kernel filter
                              driver; needs the TFFA filter driver installed. -->
                         <CheckBox x:Name="DriverInterceptCheck" Visibility="Collapsed"
-                                  Content="Driver testing mode: route FFB through the kernel filter driver (claims sole wheel ownership). Experimental."
+                                  Content="{loc:T Settings_DriverIntercept}"
                                   Margin="0,4,0,2" Checked="DriverIntercept_Changed" Unchecked="DriverIntercept_Changed"
-                                  ToolTip="Experimental. Claims sole ownership of the wheel through the TFFA kernel filter driver and routes the game's force feedback through the Trueforce stream. Needs the TFFA filter driver installed. Takes effect on the next plugin start (restart SimHub or re-detect)."/>
+                                  ToolTip="{loc:T Settings_DriverIntercept_Tip}"/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
                                    x:Name="DriverInterceptHelp" Visibility="Collapsed"
-                                   Text="Restart SimHub or re-detect the wheel after changing this."/>
+                                   Text="{loc:T Settings_DriverInterceptHelp}"/>
                     </StackPanel>
                 </Expander>
 
@@ -5086,34 +5086,34 @@
                      Collapsed Expander since most users never need to touch it. -->
                 <Expander x:Name="PerformanceExpander" IsExpanded="False" Margin="0,0,0,8">
                     <Expander.Header>
-                        <TextBlock Text="Performance" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="{loc:T Settings_Performance}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                            Text="Smaller ring buffers = less latency between game and wheel, but require Windows to wake our threads on time."/>
+                            Text="{loc:T Settings_PerformanceSmallerRingBuffersLess}"/>
 
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Mode:" VerticalAlignment="Center" Opacity="0.7"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Settings_PerformanceMode}" VerticalAlignment="Center" Opacity="0.7"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <RadioButton x:Name="PerfAutoRadio"   Content="Auto" GroupName="PerfMode"
+                                <RadioButton x:Name="PerfAutoRadio"   Content="{loc:T Settings_PerfAutoRadio}" GroupName="PerfMode"
                                              Margin="0,0,16,0" VerticalAlignment="Center"
-                                             ToolTip="Start at smallest ring sizes; ratchet up on persistent dropouts. Survived size is remembered across sessions."
+                                             ToolTip="{loc:T Settings_PerfAutoRadio_Tip}"
                                              Checked="PerfMode_Changed"/>
-                                <RadioButton x:Name="PerfManualRadio" Content="Manual" GroupName="PerfMode"
+                                <RadioButton x:Name="PerfManualRadio" Content="{loc:T Settings_PerfManualRadio}" GroupName="PerfMode"
                                              Margin="0,0,16,0" VerticalAlignment="Center"
-                                             ToolTip="Lock the slider values. No automatic changes. Use for streaming or force-testing."
+                                             ToolTip="{loc:T Settings_PerfManualRadio_Tip}"
                                              Checked="PerfMode_Changed"/>
-                                <Button x:Name="PerfResetButton" Content="Reset to lowest" Padding="10,2" VerticalAlignment="Center"
-                                        ToolTip="Drop both rings back to the smallest configured value. In Auto mode the ratchet will re-discover whether your machine can hold them."
+                                <Button x:Name="PerfResetButton" Content="{loc:T Settings_PerfReset}" Padding="10,2" VerticalAlignment="Center"
+                                        ToolTip="{loc:T Settings_PerfReset_Tip}"
                                         Click="PerfReset_Click"/>
                             </StackPanel>
                         </Grid>
 
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Output ring:" VerticalAlignment="Center" Opacity="0.7"
-                                       ToolTip="Sample buffer between the audio mixer and the USB stream. Smaller = lower wheel latency, but Windows must wake the stream thread on time."/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Settings_PerformanceOutputRing}" VerticalAlignment="Center" Opacity="0.7"
+                                       ToolTip="{loc:T Settings_PerformanceOutputRing_Tip}"/>
                             <Slider     Grid.Column="1" x:Name="PerfTfRingSlider"
                                         Minimum="8" Maximum="64" SmallChange="8" LargeChange="8"
                                         TickFrequency="8" IsSnapToTickEnabled="True"
@@ -5122,8 +5122,8 @@
                         </Grid>
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Audio ring:" VerticalAlignment="Center" Opacity="0.7"
-                                       ToolTip="Sample buffer between WASAPI loopback and the audio mixer. Runs 16 to 128 samples; 16 is both the smallest and the default. If you hear continuous clicks, raise it, or let the auto-ratchet (Auto mode) raise it for you."/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Settings_PerformanceAudioRing}" VerticalAlignment="Center" Opacity="0.7"
+                                       ToolTip="{loc:T Settings_PerformanceAudioRing_Tip}"/>
                             <Slider     Grid.Column="1" x:Name="PerfAudioRingSlider"
                                         Minimum="16" Maximum="128" SmallChange="16" LargeChange="16"
                                         TickFrequency="16" IsSnapToTickEnabled="True"
@@ -5133,12 +5133,12 @@
 
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Live counters:" VerticalAlignment="Top" Opacity="0.7" Margin="0,2,0,0"/>
+                            <TextBlock Grid.Column="0" Text="{loc:T Settings_PerformanceLiveCounters}" VerticalAlignment="Top" Opacity="0.7" Margin="0,2,0,0"/>
                             <StackPanel Grid.Column="1">
                                 <TextBlock x:Name="PerfCountersText" FontSize="11" Opacity="0.8"
-                                           Text="Output ring: 0 underruns/min · Audio ring: 0 glitches/min"/>
+                                           Text="{loc:T Settings_PerfCounters}"/>
                                 <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,2,0,0"
-                                           Text="Counters tally events in a rolling 60-second window. If they are going up, your machine is glitching at the current ring size."/>
+                                           Text="{loc:T Settings_PerformanceCountersTallyEventsIn}"/>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -5148,7 +5148,7 @@
                      Useful for troubleshooting; rarely needed otherwise. -->
                 <Expander x:Name="DiagnosticsExpander" IsExpanded="False" Margin="0,0,0,8">
                     <Expander.Header>
-                        <TextBlock Text="Diagnostics &amp; Support" FontWeight="SemiBold"/>
+                        <TextBlock Text="{loc:T Settings_DiagnosticsSupport}" FontWeight="SemiBold"/>
                     </Expander.Header>
                     <StackPanel Margin="0,8,0,0">
                         <Grid>
@@ -5166,27 +5166,27 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Wheel:" Style="{StaticResource LabelText}"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="WheelText" Text="(checking...)"/>
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Stream:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="StreamText" Text="(checking...)" Margin="0,4,0,0"/>
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="FFB pass-through:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:T Settings_DiagnosticsWheel}" Style="{StaticResource LabelText}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="WheelText" Text="{loc:T Settings_Wheel}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:T Settings_DiagnosticsStream}" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="StreamText" Text="{loc:T Settings_Stream}" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:T Settings_DiagnosticsFfbPassThrough}" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
                         <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
-                            <TextBlock x:Name="FfbTapText" Text="(checking...)" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="FfbTapText" Text="{loc:T Settings_FfbTap}" VerticalAlignment="Center"/>
                             <!-- Visible only when USBPcap can't be located. Lets users
                                  point at a non-standard install, or reinstall the
                                  driver from the bundled setup without re-running our
                                  installer. Toggled from code-behind on the tick. -->
-                            <Button x:Name="UsbPcapBrowseButton" Content="Browse…"
+                            <Button x:Name="UsbPcapBrowseButton" Content="{loc:T Settings_UsbPcapBrowse}"
                                     Style="{StaticResource LinkButton}" Margin="10,0,0,0"
                                     Visibility="Collapsed"
                                     Click="UsbPcapBrowse_Click"
-                                    ToolTip="Point at USBPcapCMD.exe if USBPcap is installed somewhere off the default Program Files path."/>
-                            <Button x:Name="UsbPcapReinstallButton" Content="Reinstall"
+                                    ToolTip="{loc:T Settings_UsbPcapBrowse_Tip}"/>
+                            <Button x:Name="UsbPcapReinstallButton" Content="{loc:T Settings_UsbPcapReinstall}"
                                     Style="{StaticResource LinkButton}" Margin="10,0,0,0"
                                     Visibility="Collapsed"
                                     Click="UsbPcapReinstall_Click"
-                                    ToolTip="Run the bundled USBPcap installer (requires admin). Use this if USBPcap was uninstalled or the install is broken."/>
+                                    ToolTip="{loc:T Settings_UsbPcapReinstall_Tip}"/>
                             <!-- Hidden by default. Auto-discovery + identity-based
                                  self-heal cover the realistic failure modes for
                                  almost every user; a forgotten manual pin (the
@@ -5200,15 +5200,15 @@
                                  the FfbTapPicker banner stays available, since
                                  it only appears when the tap genuinely can't
                                  find the wheel. -->
-                            <Button x:Name="UsbPcapPickDeviceButton" Content="Pick device manually…"
+                            <Button x:Name="UsbPcapPickDeviceButton" Content="{loc:T Settings_UsbPcapPickDevice}"
                                     Style="{StaticResource LinkButton}" Margin="10,0,0,0"
                                     Visibility="Collapsed"
                                     Click="UsbPcapPickDevice_Click"
-                                    ToolTip="Scan every USBPcap interface and pick your wheel manually. Use this only if auto-discovery genuinely can't find your wheel: a forgotten manual pin can silently break FFB after a replug. Type MANUALPIN in the access code box to reveal this control."/>
+                                    ToolTip="{loc:T Settings_UsbPcapPickDevice_Tip}"/>
                         </StackPanel>
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Telemetry:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
-                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TelemetrySourceText" Text="(checking...)" Margin="0,4,0,0"/>
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Active sources:" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="{loc:T Settings_DiagnosticsTelemetry}" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TelemetrySourceText" Text="{loc:T Settings_TelemetrySource}" Margin="0,4,0,0"/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="{loc:T Settings_DiagnosticsActiveSources}" Style="{StaticResource LabelText}" Margin="0,4,0,0"/>
                         <TextBlock Grid.Row="4" Grid.Column="1" x:Name="VoicesText" Text="0" Margin="0,4,0,0"/>
                         <!-- Raw USB packet logging. Off by default. When on,
                              every OUT transfer (host → wheel) on every
@@ -5222,9 +5222,9 @@
                         <CheckBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
                                   x:Name="LogUsbBytesCheck"
                                   Margin="0,12,0,0"
-                                  Content="Log raw USB FFB packets to usb-trace.pcap (for support)"
+                                  Content="{loc:T Settings_LogUsbBytes}"
                                   Checked="LogUsbBytes_Changed" Unchecked="LogUsbBytes_Changed"
-                                  ToolTip="Off by default. When on, captures every USB OUT transfer to your wheel (any endpoint, any transfer type) as a pcap file alongside SimHub's logs. Open in Wireshark with USBPcap. Use only when support asks for it: the file grows several KB/sec during active FFB. Capped at 50 MB; toggle off and on to reset."/>
+                                  ToolTip="{loc:T Settings_LogUsbBytes_Tip}"/>
 
                         <!-- Self-test: one click that aggregates every health
                              signal into a pass/fail checklist and fires a
@@ -5233,10 +5233,10 @@
                              state; doesn't reopen a healthy device. -->
                         <Button Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
                                 x:Name="SelfTestButton"
-                                Content="Run self-test"
+                                Content="{loc:T Settings_SelfTest}"
                                 HorizontalAlignment="Left" Margin="0,14,0,0"
                                 Padding="10,3" Click="SelfTest_Click"
-                                ToolTip="Checks USBPcap, the wheel, stream, FFB pass-through and telemetry (and whether G HUB is open, since it can hold the wheel), then sends a short test buzz so you can confirm the wheel responds."/>
+                                ToolTip="{loc:T Settings_SelfTest_Tip}"/>
                         <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
                                    x:Name="SelfTestResultText"
                                    Visibility="Collapsed"
@@ -5253,12 +5253,12 @@
                              flips Settings.ShareUsageStats + persists; the ping
                              self-gates on it. -->
                         <CheckBox x:Name="ShareUsageStatsCheck"
-                                  Content="Share anonymous usage statistics"
+                                  Content="{loc:T Settings_ShareUsageStats}"
                                   Margin="0,16,0,0"
                                   Checked="ShareUsageStats_Changed" Unchecked="ShareUsageStats_Changed"
-                                  ToolTip="Sends an anonymous once-a-day report (a random id not tied to you or your hardware, the plugin version, your wheel model, the games you play, your settings, and two-letter codes for your Windows display and regional-format languages) so development can follow real use. Never sends your name, account, or anything you type; your IP address is not stored. Turn off to send nothing."/>
+                                  ToolTip="{loc:T Settings_ShareUsageStats_Tip}"/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,2,0,0" FontSize="12" TextWrapping="Wrap">
-                            <Run Text="Helps decide what to build next. Anonymous. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
+                            <Run Text="{loc:T Settings_DiagnosticsHelpsDecideWhatTo}"/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="{loc:T Settings_DiagnosticsOpensPrivacyMdOn_Tip}"><Run Text="{loc:T Settings_DiagnosticsPrivacyPolicy}"/></Hyperlink>
                         </TextBlock>
                         <!-- Issue reporting moved to the bottom of this tab,
                              outside any expander: beta users shouldn't have to
@@ -5279,21 +5279,21 @@
                  users set once. -->
             <Expander x:Name="WidgetsExpander" IsExpanded="False" Margin="0,0,0,8">
                 <Expander.Header>
-                    <TextBlock Text="Widgets &amp; Display" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{loc:T Settings_WidgetsDisplay}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
-                    <CheckBox x:Name="ShowFeedbackBoxCheck" Content="Show TF4ALL gain tile on SimHub's home screen"
+                    <CheckBox x:Name="ShowFeedbackBoxCheck" Content="{loc:T Settings_ShowFeedbackBox}"
                               Margin="0,0,0,2" Checked="ShowFeedbackBox_Changed" Unchecked="ShowFeedbackBox_Changed"
-                              ToolTip="Adds a TF4ALL master + audio gain box to SimHub's home 'Feedback' section, next to Motors and Wind, for quick access without opening this panel."/>
-                    <CheckBox x:Name="ShowPerGearRedlineEditorCheck" Content="Show per-gear redlines in the Car facts panel"
+                              ToolTip="{loc:T Settings_ShowFeedbackBox_Tip}"/>
+                    <CheckBox x:Name="ShowPerGearRedlineEditorCheck" Content="{loc:T Settings_ShowPerGearRedlineEditor}"
                               Margin="0,8,0,2" Checked="ShowPerGearRedlineEditor_Changed" Unchecked="ShowPerGearRedlineEditor_Changed"
-                              ToolTip="Shows the per-gear redline editor in the Car facts panel, for cars where you shift at a different point in specific gears. Cars whose current engine already has per-gear redlines saved keep showing the editor, and saved values keep working either way."/>
+                              ToolTip="{loc:T Settings_ShowPerGearRedlineEditor_Tip}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12"
-                               Text="Off by default to keep the Car facts panel small."/>
+                               Text="{loc:T Settings_WidgetsOffByDefaultToKeep}"/>
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button x:Name="ResetNoticesButton" Content="Show one-time messages again" Width="220" Height="26"
+                        <Button x:Name="ResetNoticesButton" Content="{loc:T Settings_ResetNotices}" Width="220" Height="26"
                                 Click="ResetNotices_Click"
-                                ToolTip="Reset the pop-ups that only show once or were dismissed with 'Don't show again' (welcome, what's new, the iRacing Trueforce notice, the stepped-aside notice for every game, share prompt) so they can appear again."/>
+                                ToolTip="{loc:T Settings_ResetNotices_Tip}"/>
                         <TextBlock x:Name="ResetNoticesStatus" Margin="10,0,0,0" FontSize="11" VerticalAlignment="Center" Opacity="0.85"/>
                     </StackPanel>
                 </StackPanel>
@@ -5318,7 +5318,7 @@
                  Backup & sync expander below, next to local file backup. Collapsed by default. -->
             <Expander x:Name="NetworkExpander" IsExpanded="False" Margin="0,0,0,8">
                 <Expander.Header>
-                    <TextBlock Text="Community" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{loc:T Settings_NetworkCommunity}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
                     <!-- Networking master toggle (online community features: car-fact
@@ -5326,81 +5326,81 @@
                          Does NOT gate account sign-in or cloud backup, which have
                          their own controls. This is the only consent surface for the
                          third-party dataset fetch, so its tooltip has to name it. -->
-                    <CheckBox x:Name="CommunityEnabledCheck" Content="Enable community features (online)"
+                    <CheckBox x:Name="CommunityEnabledCheck" Content="{loc:T Settings_CommunityEnabled}"
                               Margin="0,0,0,2" Checked="CommunityEnabled_Changed" Unchecked="CommunityEnabled_Changed"
-                              ToolTip="Lets the plugin go online for community features: downloading and submitting community car facts, sharing presets, and fetching per-car rev-light data from the Lovely Sim Racing dataset on GitHub. Turn off to stay offline for community features (already-downloaded community car facts still apply if 'Use community car facts' is on). Does not affect account sign-in or cloud backup."/>
+                              ToolTip="{loc:T Settings_CommunityEnabled_Tip}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12" TextWrapping="Wrap">
-                        <Run Text="Sign-in is only needed for presets. Anything you share there (presets, packs, custom engines) shows your username; car facts are anonymous and need no account. "/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="Opens PRIVACY.md on GitHub.">Privacy policy</Hyperlink>
+                        <Run Text="{loc:T Settings_NetworkSignInIsOnlyNeeded}"/><Hyperlink Click="PrivacyPolicy_Click" ToolTip="{loc:T Settings_NetworkOpensPrivacyMdOn_Tip}"><Run Text="{loc:T Settings_NetworkPrivacyPolicy}"/></Hyperlink>
                     </TextBlock>
                     <TextBlock Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap" Foreground="#E5C04A"
-                               Text="Pre-release: the community backend is in testing. Shared presets, packs, and custom engines are test data and may be reset before the public launch. Your account, achievements, and car data you contribute are kept."/>
+                               Text="{loc:T Settings_NetworkPreReleaseTheCommunity}"/>
                     <!-- ===== Community car facts: apply (read) + auto-submit (write) ===== -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
-                        <TextBlock Text="Community car facts" Style="{StaticResource SectionHeaderText}"/>
+                        <TextBlock Text="{loc:T Settings_NetworkCommunityCarFacts}" Style="{StaticResource SectionHeaderText}"/>
                     </Border>
                     <!-- Apply community car facts (cache-first; works offline). Separate
                          from the networking master so cached data keeps applying with
                          networking off. -->
-                    <CheckBox x:Name="UseCommunityCarFactsCheck" Content="Use community car facts (names, engine types, redlines)"
+                    <CheckBox x:Name="UseCommunityCarFactsCheck" Content="{loc:T Settings_UseCommunityCarFacts}"
                               Margin="0,0,0,2" Checked="UseCommunityCarFacts_Changed" Unchecked="UseCommunityCarFacts_Changed"
-                              ToolTip="Apply community-sourced car facts to your cars: human-readable names, engine types, and redlines. Uses a local cache, so it keeps working offline and only refreshes from the server every few days (or when you hit the refresh icon). Turn off to ignore community car facts entirely and use only your own values."/>
+                              ToolTip="{loc:T Settings_UseCommunityCarFacts_Tip}"/>
                     <!-- Car-data sharing. ON by default (opt-out posture; the welcome
                          modal is the disclosure). This checkbox is the opt-out; gated by
                          the community master toggle; no sign-in needed (signed-out
                          submissions use the anon fallback id). Toggling here also
                          answers the residual consent ask (CarFactsConsentGate). -->
                     <CheckBox x:Name="AutoSubmitCarFactsCheck"
-                              Content="Share my car data with the community"
+                              Content="{loc:T Settings_AutoSubmitCarFacts}"
                               Margin="0,0,0,2"
                               Checked="AutoSubmitCarFacts_Changed"
                               Unchecked="AutoSubmitCarFacts_Changed"
-                              ToolTip="When on, your redline and engine-type corrections are submitted automatically, and naming a car offers a share prompt. Needs community features on; no account required. Turn off to stop sharing car data."/>
+                              ToolTip="{loc:T Settings_AutoSubmitCarFacts_Tip}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
-                               Text="Submissions are anonymous and work without an account; signed-in contributions count toward achievements."/>
+                               Text="{loc:T Settings_NetworkSubmissionsAreAnonymousAnd}"/>
 
                     <!-- ===== Community presets: share buttons + auto-update of downloads ===== -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
-                        <TextBlock Text="Community presets" Style="{StaticResource SectionHeaderText}"/>
+                        <TextBlock Text="{loc:T Settings_NetworkCommunityPresets}" Style="{StaticResource SectionHeaderText}"/>
                     </Border>
                     <!-- Effects-tab share buttons: lets a user who uses community data
                          but never shares presets declutter the active card. The Preset
                          Manager stays the place to share regardless. -->
-                    <CheckBox x:Name="EffectsTabShareButtonsCheck" Content="Show preset Share buttons on the active car/game card"
+                    <CheckBox x:Name="EffectsTabShareButtonsCheck" Content="{loc:T Settings_EffectsTabShareButtons}"
                               Margin="0,0,0,2" Checked="EffectsTabShareButtons_Changed" Unchecked="EffectsTabShareButtons_Changed"
-                              ToolTip="Adds a Share button to the active game and car on the header card so you can share the preset you're driving. Turn off to keep the Effects tab clean; the Preset Manager is still the place to share. Doesn't affect community car facts."/>
+                              ToolTip="{loc:T Settings_EffectsTabShareButtons_Tip}"/>
                     <!-- Auto-update downloaded community presets. Off by default; only fires on
                          presets you haven't locally edited since download. -->
                     <CheckBox x:Name="AutoUpdateDownloadedPresetsCheck"
-                              Content="Auto-update downloaded community presets"
+                              Content="{loc:T Settings_AutoUpdateDownloadedPresets}"
                               Margin="0,0,0,2"
                               Checked="AutoUpdateDownloadedPresets_Changed"
                               Unchecked="AutoUpdateDownloadedPresets_Changed"
-                              ToolTip="When a curator publishes a new version of a preset you downloaded, apply it silently. Only runs when you haven't edited your local copy since download."/>
+                              ToolTip="{loc:T Settings_AutoUpdateDownloadedPresets_Tip}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,12" FontSize="12" TextWrapping="Wrap"
-                               Text="If you've changed your local copy, those changes are kept; the curator's update is offered through the updates-available chip instead."/>
+                               Text="{loc:T Settings_NetworkIfYouVeChangedYour}"/>
 
                     <!-- Message of the day: how much of the top strip the user wants.
                          Gated by the community master above (the strip is hidden when
                          community features are off). None is honored literally. -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,4,0,8">
-                        <TextBlock Text="Message of the day" Style="{StaticResource SectionHeaderText}"/>
+                        <TextBlock Text="{loc:T Settings_NetworkMessageOfTheDay}" Style="{StaticResource SectionHeaderText}"/>
                     </Border>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,6" FontSize="12" TextWrapping="Wrap"
-                               Text="A short message at the top of this window: announcements, tips, and the occasional bit of news."/>
+                               Text="{loc:T Settings_NetworkAShortMessageAtThe}"/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                         <RadioButton x:Name="MotdLevelAllRadio" GroupName="MotdLevel"
-                                     Content="Show all" VerticalAlignment="Center"
+                                     Content="{loc:T Settings_MotdLevelAllRadio}" VerticalAlignment="Center"
                                      Checked="MotdLevel_Changed"/>
                         <RadioButton x:Name="MotdLevelImportantRadio" GroupName="MotdLevel"
-                                     Content="Important only" VerticalAlignment="Center"
+                                     Content="{loc:T Settings_MotdLevelImportantRadio}" VerticalAlignment="Center"
                                      Margin="18,0,0,0" Checked="MotdLevel_Changed"/>
                         <RadioButton x:Name="MotdLevelNoneRadio" GroupName="MotdLevel"
-                                     Content="None" VerticalAlignment="Center"
+                                     Content="{loc:T Settings_MotdLevelNoneRadio}" VerticalAlignment="Center"
                                      Margin="18,0,0,0" Checked="MotdLevel_Changed"/>
                     </StackPanel>
                     <TextBlock x:Name="MotdNoneWarning" Visibility="Collapsed"
                                Foreground="#FFC107" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,10"
-                               Text="With messages off, you may miss important announcements like outage notices or critical fixes."/>
+                               Text="{loc:T Settings_MotdNoneWarning}"/>
                 </StackPanel>
             </Expander>
 
@@ -5413,7 +5413,7 @@
                  (this margin formerly lived on the removed Presets header). -->
             <Expander x:Name="BackupExpander" IsExpanded="False" Margin="0,0,0,8" Expanded="BackupExpander_Expanded">
                 <Expander.Header>
-                    <TextBlock Text="Backup &amp; Sync" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{loc:T Settings_BackupSync}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Expander.Header>
                 <StackPanel Margin="0,10,0,0">
                     <!-- Cloud backup / sync (moved here from the old Network/Community section).
@@ -5422,36 +5422,36 @@
                          supporter (server-enforced); download (Restore) is free. -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,2,0,8">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Cloud backup" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{loc:T Settings_BackupCloudBackup}" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             <!-- Small static "Supporter" badge marking this as a member perk, so it's
                                  clear (right where the feature lives) that Patreon unlocks it. -->
                             <Border CornerRadius="7" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center"
                                     Background="#33E5C04A" BorderBrush="#FFE5C04A" BorderThickness="1"
-                                    ToolTip="A supporter perk. Support on Patreon (Account tab) to enable cloud backup.">
-                                <TextBlock Text="Supporter" FontSize="10" FontWeight="SemiBold" Foreground="#FFE5C04A"/>
+                                    ToolTip="{loc:T Settings_BackupASupporterPerkSupport_Tip}">
+                                <TextBlock Text="{loc:T Settings_BackupSupporter}" FontSize="10" FontWeight="SemiBold" Foreground="#FFE5C04A"/>
                             </Border>
                         </StackPanel>
                     </Border>
                     <!-- General cloud-backup description (section intro, above the controls). -->
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                               Text="Backs up your settings, presets, defaults, car facts and light patterns. Restore the same setup on another PC by signing in there."/>
-                    <CheckBox x:Name="AutoSyncBackupCheck" Content="Keep my devices in sync"
+                               Text="{loc:T Settings_BackupBacksUpYourSettings}"/>
+                    <CheckBox x:Name="AutoSyncBackupCheck" Content="{loc:T Settings_AutoSyncBackup}"
                               Margin="0,0,0,2" Checked="AutoSyncBackup_Changed" Unchecked="AutoSyncBackup_Changed"
-                              ToolTip="Automatically uploads your setup to the cloud as you change it, and pulls those changes down on your other signed-in devices. Sign-in required."/>
+                              ToolTip="{loc:T Settings_AutoSyncBackup_Tip}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,8" FontSize="12"
-                               Text="Off = back up only when you click 'Back up now'."/>
+                               Text="{loc:T Settings_BackupOffBackUpOnlyWhen}"/>
                     <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
-                        <TextBlock Text="FFB tuning from a different wheel model:" VerticalAlignment="Center" FontSize="12"/>
+                        <TextBlock Text="{loc:T Settings_BackupFfbTuningFromADifferent}" VerticalAlignment="Center" FontSize="12"/>
                         <ComboBox x:Name="CrossWheelFfbModeCombo" Width="140" Margin="8,0,0,0"
                                   SelectionChanged="CrossWheelFfbMode_Changed"
-                                  ToolTip="Force feedback tuning (Telemetry Based FFB) is dialed in for a specific wheel. Your FFB always backs up; this controls what happens when a restore or sync brings tuning made for a different wheel model (G PRO, RS50, G923).">
-                            <ComboBoxItem Tag="Ask" Content="Ask me"/>
-                            <ComboBoxItem Tag="Always" Content="Always apply"/>
-                            <ComboBoxItem Tag="Never" Content="Never apply"/>
+                                  ToolTip="{loc:T Settings_CrossWheelFfbMode_Tip}">
+                            <ComboBoxItem Tag="Ask" Content="{loc:T Settings_CrossWheelFfbModeAskMe}"/>
+                            <ComboBoxItem Tag="Always" Content="{loc:T Settings_CrossWheelFfbModeAlwaysApply}"/>
+                            <ComboBoxItem Tag="Never" Content="{loc:T Settings_CrossWheelFfbModeNeverApply}"/>
                         </ComboBox>
                     </StackPanel>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                               Text="'Ask me' prompts once per change; you can tick 'remember my choice' on that prompt to stop being asked."/>
+                               Text="{loc:T Settings_BackupAskMePromptsOnce}"/>
                     <!-- Cross-wheel FFB notice: shown from code (RefreshCrossWheelFfbNotice) when a
                          restore/sync held back FFB tuning built on a different wheel model. -->
                     <Border x:Name="CrossWheelFfbNotice" Visibility="Collapsed"
@@ -5460,28 +5460,28 @@
                         <StackPanel>
                             <TextBlock x:Name="CrossWheelFfbNoticeText" TextWrapping="Wrap" FontSize="12"
                                        Foreground="#FFF0D890" Margin="0,0,0,6"/>
-                            <CheckBox x:Name="CrossWheelFfbRememberCheck" Content="Remember my choice"
+                            <CheckBox x:Name="CrossWheelFfbRememberCheck" Content="{loc:T Settings_CrossWheelFfbRemember}"
                                       Margin="0,0,0,6" FontSize="12" Foreground="#FFF0D890"
-                                      ToolTip="Apply this choice to future syncs from a different wheel model without asking again. (Apply anyway = always apply; Dismiss = never apply. Change later under 'FFB tuning from a different wheel model'.)"/>
+                                      ToolTip="{loc:T Settings_CrossWheelFfbRemember_Tip}"/>
                             <StackPanel Orientation="Horizontal">
-                                <Button x:Name="CrossWheelFfbApplyBtn" Content="Apply anyway"
+                                <Button x:Name="CrossWheelFfbApplyBtn" Content="{loc:T Settings_CrossWheelFfbApply}"
                                         Padding="10,3" Height="24" Click="CrossWheelFfbApply_Click"
-                                        ToolTip="Apply the held-back FFB tuning to this PC anyway."/>
-                                <Button x:Name="CrossWheelFfbDismissBtn" Content="Dismiss"
+                                        ToolTip="{loc:T Settings_CrossWheelFfbApply_Tip}"/>
+                                <Button x:Name="CrossWheelFfbDismissBtn" Content="{loc:T Settings_CrossWheelFfbDismiss}"
                                         Margin="8,0,0,0" Padding="10,3" Height="24" Click="CrossWheelFfbDismiss_Click"
-                                        ToolTip="Keep this PC's own FFB tuning and discard the held-back tuning."/>
+                                        ToolTip="{loc:T Settings_CrossWheelFfbDismiss_Tip}"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <Button x:Name="BackupNowBtn" Content="Back up now"
+                        <Button x:Name="BackupNowBtn" Content="{loc:T Settings_BackupNow}"
                                 Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
                                 Click="BackupNow_Click"
-                                ToolTip="Upload your current setup to the cloud now."/>
-                        <Button x:Name="RestoreFromCloudBtn" Content="Restore from cloud"
+                                ToolTip="{loc:T Settings_BackupNow_Tip}"/>
+                        <Button x:Name="RestoreFromCloudBtn" Content="{loc:T Settings_RestoreFromCloud}"
                                 Margin="8,0,0,0" Padding="10,3,10,3" Height="24" VerticalAlignment="Center"
                                 Click="RestoreFromCloud_Click"
-                                ToolTip="Download your cloud backup and apply it to this PC (your local-only presets are kept)."/>
+                                ToolTip="{loc:T Settings_RestoreFromCloud_Tip}"/>
                         <TextBlock x:Name="BackupStatusText" Margin="10,0,0,0" VerticalAlignment="Center"
                                    FontSize="11" Foreground="#FFC0C0C0" TextWrapping="Wrap" MaxWidth="220"/>
                     </StackPanel>
@@ -5493,24 +5493,24 @@
 
                     <!-- Local file backup: bundle everything into one portable archive. -->
                     <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,12,0,8">
-                        <TextBlock Text="Backup to file" Style="{StaticResource SectionHeaderText}"/>
+                        <TextBlock Text="{loc:T Settings_BackupToFile}" Style="{StaticResource SectionHeaderText}"/>
                     </Border>
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="Bundle your full setup into one archive for moving to a new machine. To share individual presets or car tunings, use Import / Export in the Preset Manager instead."/>
+                               Text="{loc:T Settings_BackupBundleYourFullSetup}"/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <Button x:Name="BackupButton" Content="Backup…" Width="140" Height="28" Margin="0,0,8,0" Click="Backup_Click"
-                                ToolTip="Save settings + every user preset + every default + every car tuning to a single .zip you can carry to another machine."/>
-                        <Button x:Name="RestoreButton" Content="Restore…" Width="140" Height="28" Click="Restore_Click"
-                                ToolTip="Replace all current Trueforce For All settings, presets, defaults, and car tunings with a backup archive's contents. Destructive: confirm before running."/>
+                        <Button x:Name="BackupButton" Content="{loc:T Settings_Backup}" Width="140" Height="28" Margin="0,0,8,0" Click="Backup_Click"
+                                ToolTip="{loc:T Settings_Backup_Tip}"/>
+                        <Button x:Name="RestoreButton" Content="{loc:T Settings_Restore}" Width="140" Height="28" Click="Restore_Click"
+                                ToolTip="{loc:T Settings_Restore_Tip}"/>
                     </StackPanel>
                     <TextBlock x:Name="BackupFileStatus" FontSize="11" Foreground="#FFB0B0B0"
                                Margin="0,0,0,4" TextWrapping="Wrap" Text=""/>
                     <!-- Dev-only: backup round-trip + classification self-test. Lives with the
                          backup tools it validates. Hidden unless DevModeUnlocked (ApplyDevModeVisibility). -->
-                    <Button x:Name="BackupSelfTestButton" Content="Run backup self-test (dev)"
+                    <Button x:Name="BackupSelfTestButton" Content="{loc:T Settings_BackupSelfTest}"
                             HorizontalAlignment="Left" Margin="0,4,0,0" Padding="10,3"
                             Visibility="Collapsed" Click="BackupSelfTest_Click"
-                            ToolTip="Dev only: runs the backup round-trip + the classification audit (flags any unclassified TrueforceSettings field) and shows the result."/>
+                            ToolTip="{loc:T Settings_BackupSelfTest_Tip}"/>
                 </StackPanel>
             </Expander>
 
@@ -5525,17 +5525,17 @@
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                        Text="In iRacing you disable native Trueforce, which also switches the wheel's rev lights off. Click Test to check the plugin can light them up."/>
+                        Text="{loc:T Settings_RpmLedSectionInIRacingYouDisable}"/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                        <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="RpmLedTest_Click"/>
+                        <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="RpmLedTest_Click"/>
                     </StackPanel>
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="LED status:" Style="{StaticResource LabelText}"/>
-                        <TextBlock Grid.Column="1" x:Name="RpmLedStatusText" Text="(idle)" FontSize="11" Opacity="0.85"/>
+                        <TextBlock Grid.Column="0" Text="{loc:T Settings_RpmLedSectionLedStatus}" Style="{StaticResource LabelText}"/>
+                        <TextBlock Grid.Column="1" x:Name="RpmLedStatusText" Text="{loc:T Settings_RpmLedStatus}" FontSize="11" Opacity="0.85"/>
                     </Grid>
                 </StackPanel>
             </Expander> <!-- /RpmLedSection (iRacing) -->
@@ -5555,15 +5555,15 @@
                  support). Export logs sits next to it because a report
                  without logs usually turns into a request for logs. -->
             <TextBlock Style="{StaticResource HelpText}" Margin="0,18,0,8" FontSize="12"
-                Text="Found a bug, weird behavior, or have a feature request? Open an issue on GitHub."/>
+                Text="{loc:T Settings_FoundABugWeirdBehavior}"/>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <Button x:Name="ReportIssueButton" Content="Report an issue…" Width="160" Height="26"
+                <Button x:Name="ReportIssueButton" Content="{loc:T Settings_ReportIssue}" Width="160" Height="26"
                         Click="ReportIssue_Click" Margin="0,0,8,0"
-                        ToolTip="Opens a new GitHub issue. Pre-fills plugin version and active game so you don't have to type it."/>
-                <Button x:Name="ExportLogsButton" Content="Export logs…" Width="120" Height="26"
+                        ToolTip="{loc:T Settings_ReportIssue_Tip}"/>
+                <Button x:Name="ExportLogsButton" Content="{loc:T Settings_ExportLogs}" Width="120" Height="26"
                         Click="ExportLogs_Click" Margin="0,0,8,0"
-                        ToolTip="Zips your SimHub logs + TF4ALL settings to your Desktop. Attach the zip to your GitHub issue so I can debug what's happening on your machine. The zip includes your settings file (username, game list, tuning); skim it before posting it publicly."/>
-                <Button x:Name="OpenRepoButton" Content="Open project on GitHub" Width="180" Height="26"
+                        ToolTip="{loc:T Settings_ExportLogs_Tip}"/>
+                <Button x:Name="OpenRepoButton" Content="{loc:T Settings_OpenRepo}" Width="180" Height="26"
                         Click="OpenRepo_Click"
                         ToolTip="github.com/Mhytee/Trueforce-For-All"/>
             </StackPanel>
@@ -5572,12 +5572,12 @@
                      (The old TEST unlock is retired; that section
                      is permanently hidden above.) -->
                 <StackPanel Orientation="Horizontal" Margin="0,18,0,2">
-                    <TextBlock Text="Access code:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{loc:T Settings_AccessCode}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                     <TextBox x:Name="AccessCodeBox" Width="120" Height="24" Margin="8,0,0,0"
                              VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="4,0"
                              Background="#FF2D2D30" Foreground="White" CaretBrush="White"
                              BorderBrush="#FF7A7A7A" BorderThickness="1"
-                             ToolTip="Enter a code to unlock test or recovery features. Type HELP to list valid codes."
+                             ToolTip="{loc:T Settings_AccessCode_Tip}"
                              LostFocus="AccessCode_Changed" KeyDown="AccessCode_KeyDown"/>
                     <TextBlock x:Name="AccessCodeStatus" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"/>
                 </StackPanel>

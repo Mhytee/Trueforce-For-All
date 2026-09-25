@@ -617,6 +617,11 @@ namespace TrueforceForAll.Core.Tests
             // Followed immediately by the Hyperlink "Lovely Sim Racing" in the
             // light-pattern credit line on the LIGHTSYNC and Telemetry FFB tabs.
             { "Lightsync_LightPatternsPerCar", "runs into the Lovely Sim Racing hyperlink" },
+            // The two help lines under the usage-statistics and community
+            // checkboxes on the Settings tab. Each is a Run followed by the
+            // "Privacy policy" Hyperlink in the same sentence.
+            { "Settings_DiagnosticsHelpsDecideWhatTo", "runs into the Privacy policy hyperlink" },
+            { "Settings_NetworkSignInIsOnlyNeeded", "runs into the Privacy policy hyperlink" },
         };
 
         [Fact]

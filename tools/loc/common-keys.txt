@@ -36,3 +36,10 @@ Shared by
 Car ID
 Game
 Name
+# approved 2026-09-25 during the Settings slice. Both already exist under
+# Account_ and Settings_ keys from the Account and Settings conversions, which
+# ran before this list carried them; a future converter pass that can repoint a
+# binding consolidates those. Listing them now caps the count where it is
+# rather than letting the next slice mint a fourth.
+Privacy policy
+Opens PRIVACY.md on GitHub.

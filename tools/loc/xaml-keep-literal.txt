@@ -26,3 +26,14 @@ github.com/Mhytee/Trueforce-For-All
 # verbatim in both copies of that credit line, on the Telemetry FFB tab and on
 # the LIGHTSYNC tab.
 Lovely Sim Racing
+# Proper nouns that read as English but are never translated: the plugin's own
+# name, the name of its phone dashboard, the third-party arcade loader whose
+# leaderboard rows the shop and online boards can show, and the game the
+# rev-light section on the Settings tab is about. Each appears as a whole
+# attribute value, so keeping it literal costs nothing and no translator is
+# handed a brand to render. The two board-source combo items carry Tag values
+# (Community, TeknoParrot), so the selection is never read from the text.
+Trueforce For All
+TF4ALL Dash
+TeknoParrot
+iRacing
