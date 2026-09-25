@@ -540,6 +540,20 @@ Decided 2026-09-24:
    precision tool for reviewers. Both follow the remaining tab conversions;
    the server side (Phase 3b) is designed together with the page.
 
+Decided 2026-09-25:
+
+7. **`UseCommunityTranslations` ships on, and an English install never
+   notices.** The owner's condition, in his words, is that it "shouldn't
+   effect english users, just people who are using another language", which
+   is what the design already does: the fetch is gated on
+   `ActiveTag != "en"`, so an English install makes no request and writes no
+   file, and the setting's row hides itself while English is active. On a
+   non-English install the toggle is the kill switch. This is a deliberate
+   exception to the default-off baseline for a new setting, and it is what
+   makes the daily fetch default behavior, so `PRIVACY.md` carries it in the
+   defaults list and `LegalRevision` moves to `"7"` in the release that
+   first ships the fetch.
+
 ## Companion change: telemetry language field
 
 Implemented 2026-09-24 as `supabase/migrations/0134_telemetry_language.sql`

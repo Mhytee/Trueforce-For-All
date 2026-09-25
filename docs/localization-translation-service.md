@@ -1227,9 +1227,14 @@ Phase 3b adds to that window:
 - **Send**: chunks at 50, `p_source = 'plugin'` with the build version,
   shows each `P0001` sentence verbatim. Signed out it offers "Sign in and
   send" or the folder plus a prefilled issue.
-- **One setting**: `UseCommunityTranslations`, default true, gated by
-  `CommunityEnabled`, its row hidden when the active tag is `en`, with
-  one `BackupProjection.Portable` line. `UiLanguage` and its own Portable
+- **One setting**: `UseCommunityTranslations`, default true (owner, 2026-09-25),
+  gated by `CommunityEnabled`, its row hidden when the active tag is `en`,
+  with one `BackupProjection.Portable` line. Default-on is an exception to
+  the default-off baseline, granted on one condition: an English install
+  must not notice. It does not, and the gate is what guarantees it rather
+  than the default's wording. With `en` active the fetch makes no request,
+  writes no file and adds no layer, so on an English install the setting is
+  inert and invisible. `UiLanguage` and its own Portable
   line are Phase 2's.
 
 Phase 2 is a hard predecessor for this half, and it ships the `TRANSLATE`
