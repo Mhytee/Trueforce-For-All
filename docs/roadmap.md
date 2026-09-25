@@ -7,46 +7,39 @@ learn more.
 New features land on the beta update channel first, and the beta is open to
 everyone: switch channels in the plugin's settings to try things early.
 
-*Last updated: August 2026.*
+*Last updated: September 2026.*
 
 ---
 
-## On the beta channel now
+## How the plugin reaches a game
 
-The 0.3 line is on the beta channel now: v0.3.0 added full iRacing and
-Assetto Corsa support, the LIGHTSYNC tab and the in-app guides on top of
-everything the 0.2 line proved through the summer. Bug reports on the older
-features have slowed a lot; the newest ones now get the same time in the
-wild before the move to stable.
+Nearly everything below depends on how much a game gives the plugin to work
+with, so it is worth naming the three cases up front.
 
-What it carries:
+- **Games the plugin reads directly.** iRacing, Assetto Corsa, RaceRoom, Le Mans
+  Ultimate, and the Forza and Farming Simulator titles. The plugin talks to the
+  game itself instead of inferring from the outside, so it knows things no
+  amount of guessing would give it: whether the car is off the ground, in
+  Assetto Corsa, the Forza titles and Farming Simulator, or the steering torque
+  the physics engine computed, in the others.
+  In most of them it sends the wheel the steering force as well, with the
+  effects on top, and that is the best case there is: nothing else is writing to
+  the wheel, so the rev lights and the wheel's screen are free while you drive.
+- **Games the plugin reads over USB.** Everything else that has force feedback
+  of its own. The plugin watches the force the game sends the wheel and adds its
+  effects to it. The effects work, but the game is writing to the wheel too, so
+  the rev lights and the screen are what suffer. The exception is a game that
+  ships Trueforce of its own: there the plugin steps aside to the wheel's
+  patterns and colors, leaving the rev lights and the screen to the game,
+  unless the game lets you switch its Trueforce off.
+- **Games read through SimHub's generic telemetry.** Anything SimHub supports.
+  The plugin gets speed, revs, gear and the rest, enough for the effects built
+  from telemetry, but it has no direct knowledge of the game.
 
-- **iRacing support.** The sim's own steering force carried to the wheel with
-  TF4ALL's effects layered on top, and the rev lights and wheel screen working
-  at the same time.
-- **Assetto Corsa support** through the TF4ALL CSP Bridge: the game's finished
-  force handed over directly, with the screen and pattern switching free.
-- **Telemetry Based FFB** for the Forza titles and Farming Simulator 22 and 25:
-  the steering force built entirely from telemetry, with Auto strength to land
-  every car at the heaviness you set. The Farming Simulator side comes with an
-  Enhanced Telemetry mod the plugin installs for you.
-- **The wheel's OLED screen** (G PRO and RS50), with ready-made screens or a
-  layout of your own.
-- **LIGHTSYNC.** A tab for the wheel's lights: a pattern library bigger than
-  the wheel's five slots, and colors that match the car you are driving.
-- **Lightsync only mode, and the step-aside.** A middle position on the master
-  switch that leaves a game's force feedback alone and only drives the lights,
-  and a plugin that notices a game's own Trueforce streaming beside it and
-  steps aside by itself instead of whining.
-- **TF4ALL Dash.** A phone or tablet dashboard that also controls the plugin
-  while you drive.
-- **Guides in the app.** Setup for the games that need it and answers to the
-  questions people ask most, behind the ? in the header.
-- **Community and accounts.** Community car facts, preset sharing, accounts
-  with Patreon and Discord linking, achievements, and cloud backup and sync for
-  supporters.
-- **Mappable gain** and the **home-screen gain widget**, for changing strength
-  without opening the app.
+Moving a game up that list is most of what the work below is about.
+
+For what the plugin does today, feature by feature, the release notes are the
+current list.
 
 ---
 
@@ -54,7 +47,7 @@ What it carries:
 
 ### Support for more wheels
 
-*Status: direction set. First steps underway.*
+*Status: planned. Groundwork underway, no second wheel supported yet.*
 
 Bring TF4ALL to wheels beyond Logitech's Trueforce range.
 
@@ -68,8 +61,10 @@ plugin is limited to those wheels. The plan has three parts:
 - **Wheels without a haptic channel.** The G29 and G920, Thrustmaster, Moza
   and the rest take force feedback through DirectInput. Those wheels get
   lower-frequency versions of our effects, built from the spring, damper,
-  constant force and rumble that channel offers. Community work on a G29/G920
-  backend has already started.
+  constant force and rumble that channel offers. Some of the groundwork is
+  already in: the effects engine that shipped in v0.4.0 models those same effect
+  types in order to render what a game sends, so the vocabulary those wheels
+  need is written. Community work on a G29/G920 backend has already started.
 - **Telemetry Based FFB on all of them.** Where TF4ALL builds the whole
   steering force from telemetry, the wheel only needs a way to receive force.
   Farming Simulator is the obvious first stop: TF4ALL is the only force
@@ -82,8 +77,7 @@ rebrand comes once that support is real, not before.
 
 ### Telemetry Based FFB in more games
 
-*Status: on the beta channel for Forza and Farming Simulator. More games
-planned.*
+*Status: shipping for Forza and Farming Simulator. More games to come.*
 
 Real force feedback for games whose own is thin or missing.
 
@@ -93,23 +87,27 @@ Simulator's centering spring with weight, ground texture and implement load,
 and it is an opt-in replacement for the Forza titles' own force. The engine is
 game-agnostic with a small per-game piece, so each new game is mostly a
 question of what its telemetry offers. Games with basic or absent force
-feedback are the first candidates.
+feedback are the first candidates, and we would rather hear which ones those
+are from the people playing them than guess.
 
-### Force feedback detection that just works
+### More effects, and better ones
 
-*Status: in progress, validating on hardware.*
+*Status: shipping, and never closed.*
 
-Your wheel's force feedback should be found automatically, with no hidden switch
-to flip.
+The list of things you can feel through the wheel keeps growing, and the ones
+already there keep getting closer to the real thing.
 
-For most people it already just works. Some still have to switch on experimental
-detection before their force feedback is picked up. More testing should let us
-retire that toggle and make detection automatic for everyone.
+The effects are what the plugin adds on top of whatever force reaches the
+wheel, and they are never really finished. Some of the work is new sensations
+the wheel has never given you. Most of it is quieter: an effect that fires in
+the wrong place, or feels like the idea of something rather than the thing
+itself, being reworked until it reads correctly. Every game the plugin learns
+to read directly feeds this, because an effect grounded in what the car is
+actually doing beats one inferred from the little a game gives away.
 
 ### Airborne and traction-loss feel, consistent across games
 
-*Status: in progress. Live on the beta channel in Assetto Corsa, the Forza
-titles and Farming Simulator.*
+*Status: in progress. Shipping in Assetto Corsa, the Forza titles and Farming Simulator.*
 
 The car going light over a crest, or breaking grip in a slide, should
 feel the same no matter which game you are driving in.
@@ -126,7 +124,8 @@ in every game, with per-game tuning only where a title genuinely needs it.
 
 ### Force feedback from the sim's own torque telemetry
 
-*Status: live for iRacing. More games planned.*
+*Status: shipping for iRacing, RaceRoom and Le Mans Ultimate. Any sim that
+publishes its steering torque can follow.*
 
 The sim's own force, with TF4ALL's effects on top and the wheel's lights and
 screen free to work.
@@ -134,12 +133,17 @@ screen free to work.
 Some sims publish the force they want the wheel to hold as part of their
 telemetry. iRacing does: each 60hz packet carries several torque samples, 360hz
 of force in all, and TF4ALL carries that to the wheel with the effects on top,
-adding nothing the sim does not already provide. Other games publish their
-force targets the same way, and support for those is planned.
+adding nothing the sim does not already provide. RaceRoom publishes its
+steering torque in its telemetry, and Le Mans Ultimate publishes it in the
+shared memory its developers document, so both are carried the same way now.
+Others expose the same thing: if a sim you play publishes the torque it wants
+the wheel to hold, and either ships no Trueforce of its own or lets you switch
+it off, it can join this list, and telling us is the fastest way to get it
+looked at.
 
 ### Richer force feedback from telemetry
 
-*Status: early experiment. Long-term.*
+*Status: exploring. Long-term.*
 
 Some games send force feedback slower than the wheel can use it, so it feels
 coarser than the car really is.
@@ -162,7 +166,7 @@ keeps the game's own force feedback and fills in the detail between its updates.
 
 ### Make it easier to diagnose and fix problems on your own
 
-*Status: mostly on the beta channel.*
+*Status: in progress. What is built is shipping.*
 
 When something is not working, the app should help you find out why
 and fix it, without needing to ask anyone.
@@ -191,17 +195,17 @@ the lighting side, was the first piece.
 
 ### Advanced EQ (rig resonance control)
 
-*Status: planned. Designed in concept, not started.*
+*Status: in progress. Built, reaching the beta channel next.*
 
 Kill the specific buzz or rattle your rig makes at certain
 frequencies, without dulling the detail you actually want to feel.
 
 Some frequencies make a wheelbase or rig resonate, causing unwanted tones and rattling. A
 parametric EQ lets you pull those problem bands down (frequency, width, and amount
-per band) while leaving the rest of the feel intact. We would ship default curves
-per wheelbase and let you fine-tune for your own rig on top. Since the resonances
-are mostly a wheelbase trait, your EQ settings would travel in cloud backup and
-could be shared like presets.
+per band) while leaving the rest of the feel intact. That editor is built, and
+since the resonances are mostly a wheelbase trait, your EQ settings already
+travel in cloud backup. Default curves per wheelbase, and sharing a curve the
+way presets are shared, are what is still ahead.
 
 ### Localization
 
@@ -215,8 +219,8 @@ likely be community-contributed, with the app built to swap languages cleanly.
 
 ### Rev lights in games without native LED support
 
-*Status: on the beta channel wherever TF4ALL carries the force. The driver
-brings it to everyone.*
+*Status: shipping wherever TF4ALL carries the force. The driver brings it to
+everyone else.*
 
 Your wheel's rev lights driven from telemetry, in games that never lit them.
 
@@ -225,40 +229,52 @@ creation and per-car colors already work in every game. Some games light the
 wheel's rev strip natively. In the ones that do not, TF4ALL can drive the
 lights from telemetry, but writing lights and force feedback to the wheel at
 once contends at the firmware and can cut the force out, which is why it hasn't
-worked broadly. Today it works wherever the plugin is the only thing talking to
-the wheel: with Telemetry Based FFB, and in iRacing, where TF4ALL carries the
-sim's force. Games that drive the wheel's force themselves, Assetto Corsa among
-them, need the FFB router driver (below) to make that true no matter where the
-force comes from.
+worked broadly. It works wherever the plugin is the only thing talking to the
+wheel, which is now most of the games it reads directly: Telemetry Based FFB,
+iRacing, RaceRoom, Le Mans Ultimate, and Assetto Corsa, where the plugin took
+the lights over outright and fills them from the car's own shift light data.
+What is left is the games the plugin reads over USB without carrying the force
+itself, and that set shrinks with every release: each game the plugin learns to
+read directly takes its lights with it. The FFB router driver (below) is how the
+rest get there in one go.
 
 ### Working in games that already have Trueforce
 
-*Status: iRacing first, live on the beta channel. The rest via the FFB router
-driver.*
+*Status: shipping for iRacing and Le Mans Ultimate. The rest via the FFB
+router driver.*
 
 Use the plugin in games that already have their own Trueforce.
 
-iRacing is the first: its Trueforce is switched off in the sim's own config,
-and TF4ALL carries the sim's force instead, with the effects on top. Other
-titles offer no such switch, so we step aside in them today rather than fight
-the game for the wheel. The FFB router driver (below) lets us take the game's
+iRacing was the first: its Trueforce is switched off in the sim's own config,
+and TF4ALL carries the sim's force instead, with the effects on top. Le Mans
+Ultimate followed, through its own Vendor Specific Force Feedback switch, and
+Dirt Rally 2.0, GRID (2019) and Automobilista 2 have a real off switch too. The
+titles that give you a slider and no off switch are the ones we step aside in
+today, rather than fight the game for the wheel. The FFB router driver (below) lets us take the game's
 Trueforce over cleanly in those, to layer your effects on top or replace it.
 
 ### FFB Router Driver
 
-*Status: built and signed on our side. Waiting on Microsoft.*
+*Status: in progress. Works on hardware, not yet signed for general use.*
 
 A Windows filter driver that sits between the game and the wheel, never touching
 the game itself. It turns our passive read of the game's force feedback into an
 active one, diverting the game's signals before they reach the wheel so we become
 the only thing writing to it. That is what makes the rev lights and native-Trueforce work above possible.
 
-The core loop is confirmed on hardware (a G923 in Assetto Corsa). The driver is
-signed with our own certificate (about $400 a year, paid out of pocket), but
-loading on an ordinary PC needs Microsoft's countersignature, and that requires
-admission to the Microsoft hardware partner program. The application is in,
-and it is the last gate before the driver can go out. Validation on more wheels
-and games follows once it can be installed normally.
+It is not the only road to that result. Every game the plugin learns to read
+directly gets there without any driver at all, which is how Assetto Corsa,
+RaceRoom and Le Mans Ultimate got their lights back. The driver is the general
+answer: one mechanism that works whatever the game does, instead of one game at
+a time.
+
+The core loop is confirmed on hardware (a G923 in Assetto Corsa). What stands
+between that and something you could install is signing. Loading a driver on an
+ordinary PC needs Microsoft's countersignature, which goes through the Microsoft
+hardware partner program. We hold our own EV code signing certificate for the
+project (about $400 a year, paid out of pocket), so that side is in place, but
+the driver itself has not been through the process yet. Validation on more
+wheels and games follows once it can be installed normally.
 
 ---
 
