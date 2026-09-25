@@ -4597,11 +4597,12 @@ namespace TrueforceForAll.Plugin
             InstallBuiltinPresetsIfMissing();
 
             // Per-car file store, rooted at the cars/ subfolder of the user
-            // library (TrueforceForAll-Library). LoadAndMigrateCarPresets loads
-            // files into Settings.CarOverrides (file wins on conflict) then
-            // writes any Settings.CarOverrides / preset.CarOverrides lacking a
-            // file. Files are canonical; Settings.CarOverrides is an in-memory
-            // cache only. Built-in cars live in BuiltinPresets and merge in there.
+            // library (PluginsData/Common/TrueforceForAll/user).
+            // LoadAndMigrateCarPresets loads files into Settings.CarOverrides
+            // (file wins on conflict) then writes any Settings.CarOverrides /
+            // preset.CarOverrides lacking a file. Files are canonical;
+            // Settings.CarOverrides is an in-memory cache only. Built-in cars
+            // live in BuiltinPresets and merge in there.
             _carStore = new CarPresetStore(
                 () => UserPresets.CurrentFolder,
                 msg => SimHub.Logging.Current.Info(msg));
@@ -13166,7 +13167,8 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Nudge the ACTIVE car's applied R3E max (persisted), like
         /// iRacing's Max Force nudge. steps &gt; 0 STRENGTHENS (lowers the max),
-        /// &lt; 0 weakens; ~7% per step. Bound to R3EStrengthUp/Down.</summary>
+        /// &lt; 0 weakens; ~7% per step. Driven by the Peak force up/down
+        /// bindings (IRacingMaxForceUp/Down), which retarget here in RaceRoom.</summary>
         public void NudgeR3EStrength(int steps)
         {
             if (steps == 0) return;
@@ -18846,8 +18848,8 @@ namespace TrueforceForAll.Plugin
 
                 // No argument => simple on/off toggle. Default ON = forza-speed
                 // (~60 Hz resend), the worst-case FFB test (same rate
-                // forza-wheel-leds writes at); type F8SLOW to compare against our
-                // paced write-on-change footprint.
+                // forza-wheel-leds writes at); type "F8SWEEP SLOW" to compare
+                // against our paced write-on-change footprint.
                 if (!resendMs.HasValue)
                 {
                     if (_f8Leds.IsSweeping)
@@ -18862,7 +18864,7 @@ namespace TrueforceForAll.Plugin
                     return "F8 sweep couldn't open the wheel's gamepad collection (see SimHub log).";
 
                 return "F8 sweep running " + _f8Leds.ModeLabel + " on " + _f8Leds.ResolvedInfo
-                     + ". Drive a sim, watch LEDs + FFB. F8SWEEP stops; F8FAST/F8SLOW switch rate.";
+                     + ". Drive a sim, watch LEDs + FFB. F8SWEEP stops; 'F8SWEEP FAST' / 'F8SWEEP SLOW' switch rate.";
             }
             catch (Exception ex)
             {

@@ -2,7 +2,7 @@
 //
 // Layout, mirroring the built-in car folder (BuiltinPresets cars/ subfolder):
 //   <user library root>/cars/<GameName>/<carId>/<PresetName>.json
-// (e.g. PluginsData/Common/TrueforceForAll-Library/cars/AssettoCorsa/ks_audi_r8/Stock setup.json)
+// (e.g. PluginsData/Common/TrueforceForAll/user/cars/AssettoCorsa/ks_audi_r8/Stock setup.json)
 //
 // Each file holds a CarPresetFile (CarId, PresetName, IsBuiltin=false,
 // GameName, Override). Identical on-disk shape to the built-in car files so

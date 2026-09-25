@@ -651,8 +651,9 @@ namespace TrueforceForAll.Plugin
         public string AnalyticsAnonId { get; set; } = "";
 
         // Master switch for the anonymous usage statistics: the once-a-day
-        // telemetry ping (plugin version, wheel, current game, and a scalar
-        // settings snapshot). Default on; off means nothing is ever sent.
+        // telemetry ping (plugin version, wheel, current game, a scalar
+        // settings snapshot, games played, per-game presets, and two language
+        // codes). Default on; off means nothing is ever sent.
         // Independent of CommunityEnabled. Travels in backups (a privacy choice,
         // like the community toggles).
         public bool ShareUsageStats { get; set; } = true;
@@ -1776,22 +1777,25 @@ namespace TrueforceForAll.Plugin
         // are called is a property of this machine, not of the user's tuning.
         public ArcadeSettings Arcade { get; set; } = new ArcadeSettings();
 
-        // Built-in preset source folder. Blank = use the shipped default next
-        // to the plugin DLL (<dll>\TrueforceForAll-Presets). A user can point this at
-        // a moved folder (repair) or a shared "preset pack" to swap the seed
-        // set. Machine-local, survives preset switches. See BuiltinPresets.
+        // Built-in preset source folder. Blank = use the shipped default, the
+        // factory subfolder of the shared root
+        // (<SimHub>\PluginsData\Common\TrueforceForAll\factory). A user can
+        // point this at a moved folder (repair) or a shared "preset pack" to
+        // swap the seed set. Machine-local, survives preset switches. See
+        // BuiltinPresets.
         public string BuiltinPresetsFolder { get; set; } = "";
 
         // User-imports folder. Drop community / shared preset files here and
         // they get auto-imported into the library as USER presets on next
         // plugin start, then moved to an 'imported' archive subfolder. Blank =
-        // default beside the plugin DLL (<dll>\TrueforceForAll-Imports).
+        // default inside the user folder
+        // (<SimHub>\PluginsData\Common\TrueforceForAll\user\import).
         public string UserImportsFolder { get; set; } = "";
 
         // User-library folder. Holds the user's own (non-builtin) presets as
         // files, mirroring the built-in folder layout (games/, cars/<game>/,
         // game-defaults.json, car-defaults.json). Blank = default at
-        // <SimHub>\PluginsData\Common\TrueforceForAll-Library. The previous
+        // <SimHub>\PluginsData\Common\TrueforceForAll\user. The previous
         // model kept user presets inside the Presets dict below; this folder
         // replaces that, with a one-time migration on first launch.
         public string UserLibraryFolder { get; set; } = "";

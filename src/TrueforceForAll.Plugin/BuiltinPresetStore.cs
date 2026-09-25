@@ -1,5 +1,5 @@
 ﻿// File-based built-in preset store. Built-in presets ship as plain JSON files
-// in a folder (default: <plugin dll dir>\TrueforceForAll-Presets) and are
+// in a folder (default: <SimHub>\PluginsData\Common\TrueforceForAll\factory) and are
 // discovered by directory scan, so dropping a file in makes it a built-in with
 // no manifest to maintain. This replaces the old C# string consts: presets are
 // data now, exportable / importable / reseedable / repairable without a

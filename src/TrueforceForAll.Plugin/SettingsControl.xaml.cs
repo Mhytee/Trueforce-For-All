@@ -1209,10 +1209,10 @@ namespace TrueforceForAll.Plugin
                               "change the feel while SimHub runs; leaving it on just keeps native " +
                               "FFB as a fallback when SimHub is closed."
                             : reshapeGame
-                            ? "The plugin takes force feedback over from iRacing rather than inventing " +
-                              "its own: it reads the forces iRacing computes and delivers them over " +
-                              "Trueforce, so the car still feels like the car and your rev lights and " +
-                              "wheel screen work again. The two setup switches are in the note below."
+                            ? $"The plugin takes force feedback over from {ModeBGameDisplayName(mbGame)} rather " +
+                              "than inventing its own: it reads the forces the sim computes and delivers " +
+                              "them over Trueforce, so the car still feels like the car and your rev " +
+                              "lights and wheel screen work again. The setup steps are in the note below."
                             : "The wheel's steering force is built from telemetry instead of the game's " +
                               "own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. " +
                               "Set the game's force feedback and vibration to 0 so this is the only " +
@@ -3359,7 +3359,7 @@ namespace TrueforceForAll.Plugin
                 + $"- Plugin: {version}\n"
                 + $"- Capture: {fp}\n\n"
                 + "Anything else worth noting (other games tested, what wasn't working before): \n\n"
-                + "(Optional but very helpful: use Settings > Diagnostics > Export logs and drag the zip in here.)\n";
+                + "(Optional but very helpful: use the Export logs button at the bottom of the Settings tab and drag the zip in here.)\n";
 
             string url = FfbReportDiscussionsBase
                        + "&title=" + Uri.EscapeDataString(title)
@@ -4853,7 +4853,7 @@ namespace TrueforceForAll.Plugin
             if (!_plugin.AuthIsSignedIn)
             {
                 if (CommunityVoteStatus != null)
-                    CommunityVoteStatus.Text = "Sign in (Settings) to vote.";
+                    CommunityVoteStatus.Text = "Sign in (Account tab) to vote.";
                 return;
             }
 

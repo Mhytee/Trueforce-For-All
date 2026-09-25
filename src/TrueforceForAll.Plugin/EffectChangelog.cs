@@ -6,10 +6,12 @@
 //     On fresh install (or first run on a pre-feature settings file) the
 //     plugin pre-marks every one as already seen, so existing users don't
 //     get a wall of badges for effects they've already been tuning.
-//   - Versions is an append-only, chronologically-ordered list. The banner
-//     shows everything strictly newer than the user's LastSeenVersion;
-//     dismissing stamps LastSeenVersion to the running build so the same
-//     entries don't pop up twice.
+//   - Versions is an append-only list. File order is not significant (the
+//     0.1.x block is not in version order); the what's-new modal sorts by
+//     version before it draws, and shows everything strictly newer than the
+//     user's LastSeenVersion; dismissing stamps LastSeenVersion to the running
+//     build so the same entries don't pop up twice. The banner's own
+//     visibility comes from HasUnseenChangelog.
 //
 // To ship a new effect:
 //   1. Add its stable ID string to KnownEffectIds.
@@ -59,7 +61,8 @@ namespace TrueforceForAll.Plugin
             "ImplementThud", "TrueforceEq",
         };
 
-        // Ordered oldest -> newest. Append-only.
+        // Append-only: add new versions at the tail. File order otherwise
+        // isn't significant, the what's-new modal sorts by version.
         public static readonly IReadOnlyList<ChangelogVersion> Versions = new ChangelogVersion[]
         {
             new ChangelogVersion {

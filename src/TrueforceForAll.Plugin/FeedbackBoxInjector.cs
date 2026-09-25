@@ -18,7 +18,7 @@
 //     in sync with the settings panel and preset loads
 //
 // Enabled by default (TrueforceSettings.ShowFeedbackBox = true); the checkbox
-// under Settings > Extras toggles it live. Failure is cosmetic:
+// under Settings > Widgets & Display toggles it live. Failure is cosmetic:
 // the tile simply doesn't appear and never throws into SimHub. Note FindFeedbackGrid
 // uses a "most SHSubTitledBox children" heuristic that could mis-target if a future
 // SimHub home layout nests more such tiles elsewhere (cosmetic risk only).
@@ -76,7 +76,7 @@ namespace TrueforceForAll.Plugin
             SetEnabled(_plugin?.Settings?.ShowFeedbackBox == true);
         }
 
-        // Toggle the feature on/off live (the Settings > Extras checkbox).
+        // Toggle the feature on/off live (the Settings > Widgets & Display checkbox).
         public void SetEnabled(bool on)
         {
             _enabled = on;

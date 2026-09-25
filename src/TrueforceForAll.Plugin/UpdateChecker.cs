@@ -8,8 +8,9 @@
 // and then ShellExecutes the resulting .exe.
 //
 // Design notes:
-//   - Version comes from the plugin assembly (csproj <Version>), so each
-//     release just bumps that and the runtime stays in sync.
+//   - Version comes from the plugin assembly, whose <Version> is set once in
+//     src/Directory.Build.props and shared by Core, Engine and Plugin (CI
+//     overrides it with -p:Version=X.Y.Z), so the runtime stays in sync.
 //   - GitHub's API requires a User-Agent header; we send "TrueforceForAll/X.Y".
 //   - Network failures are silent, no banner if we can't reach GitHub.
 //     LastError is exposed for diagnostics but not surfaced in the UI.

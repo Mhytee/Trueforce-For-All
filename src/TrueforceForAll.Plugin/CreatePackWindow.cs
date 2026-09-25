@@ -216,7 +216,7 @@ namespace TrueforceForAll.Plugin
                 if (!_plugin.AuthIsSignedIn)
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Sign in first (Settings -> Account).";
+                    statusText.Text = "Sign in first (Account tab).";
                     return;
                 }
 

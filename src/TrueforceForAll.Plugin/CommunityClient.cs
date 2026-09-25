@@ -241,9 +241,10 @@ namespace TrueforceForAll.Plugin
                 BuildSubmitBody(game, carId, "engine_layout", payload, variantSignature));
         }
 
-        /// <summary>Submit a User-source car-name fact. The official in-game
-        /// name, keyed per language so an English plurality can't bury the
-        /// correct name in another language.</summary>
+        /// <summary>Submit a User-source car-name fact: the official in-game
+        /// name, chassis-level, one global consensus per car.
+        /// variant_signature carries the legacy constant "lang=en" (see
+        /// CommunityNameLocaleSig); it is not a live per-language bucket.</summary>
         public void SubmitCarNameAsync(string game, string carId, string name,
             string variantSignature = "")
         {
