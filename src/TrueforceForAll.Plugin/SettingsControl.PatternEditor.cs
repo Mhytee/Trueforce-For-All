@@ -16,6 +16,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -774,7 +775,10 @@ namespace TrueforceForAll.Plugin
                     ? new SolidColorBrush(Color.FromRgb(0xFF, 0xC0, 0x40))
                     : Brushes.Transparent;
 
-            if (PatternSelectedLedText != null) PatternSelectedLedText.Text = "LED " + (_selectedLed + 1);
+            // The number is data, the word around it is not, so the label goes
+            // through a format key rather than a concatenation.
+            if (PatternSelectedLedText != null)
+                PatternSelectedLedText.Text = Loc.F("Lightsync_PatternSelectedLed_Fmt", _selectedLed + 1);
 
             byte[] rgb = _editing?.Rgb();
             if (rgb == null || rgb.Length < (_selectedLed + 1) * 3) return;
@@ -790,6 +794,23 @@ namespace TrueforceForAll.Plugin
                 UpdateColorReadouts(r, g, b);
             }
             finally { _patternUiLoading = false; }
+        }
+
+        /// <summary>Re-apply the LIGHTSYNC tab's one code-assigned label after a
+        /// language change. Every other label on the tab is bound through
+        /// {loc:T} and re-renders itself; only the selected-LED caption is
+        /// written from code. Reads nothing but the selection already in hand:
+        /// no store load, no fetch, nothing that could raise the event again.
+        /// The guard mirrors SelectLed, so a panel whose strip has never been
+        /// built keeps its binding and re-renders on its own. Writing the
+        /// caption directly rather than calling SelectLed keeps the hex box and
+        /// the three sliders untouched, which matters while someone is typing
+        /// in them.</summary>
+        private void RelabelLightsyncTab()
+        {
+            if (_ledCells == null || _ledCells.Length == 0) return;
+            if (PatternSelectedLedText != null)
+                PatternSelectedLedText.Text = Loc.F("Lightsync_PatternSelectedLed_Fmt", _selectedLed + 1);
         }
 
         private void UpdateColorReadouts(byte r, byte g, byte b)

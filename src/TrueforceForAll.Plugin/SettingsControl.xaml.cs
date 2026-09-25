@@ -10273,12 +10273,14 @@ namespace TrueforceForAll.Plugin
         // The bound labels re-render on their own when the language table
         // reloads. Labels assigned in code are re-run here: the Account tab's
         // through RelabelAccountTab, from cached state and without a fetch;
-        // the supporters wall status through RefreshSupportersWallAsync, and
-        // only while the Support tab is showing: every entry to that tab
-        // refreshes it anyway, and the method's generation counter drops a
-        // fetch still in flight. LocStore raises the event on the UI thread
-        // (the folder watcher dispatches its reload, the access codes run from
-        // the panel), and the CheckAccess guard covers any other raiser.
+        // the LIGHTSYNC tab's selected-LED caption through RelabelLightsyncTab,
+        // from the selection already in hand; the supporters wall status
+        // through RefreshSupportersWallAsync, and only while the Support tab is
+        // showing: every entry to that tab refreshes it anyway, and the
+        // method's generation counter drops a fetch still in flight. LocStore
+        // raises the event on the UI thread (the folder watcher dispatches its
+        // reload, the access codes run from the panel), and the CheckAccess
+        // guard covers any other raiser.
         private void OnLanguageChanged(object sender, EventArgs e)
         {
             if (!Dispatcher.CheckAccess())
@@ -10290,6 +10292,8 @@ namespace TrueforceForAll.Plugin
             // never skips another's, and the Warn names the pass that failed.
             try { RelabelAccountTab(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Account tab language relabel failed: " + ex.Message); }
+            try { RelabelLightsyncTab(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] LIGHTSYNC tab language relabel failed: " + ex.Message); }
             try
             {
                 // IsLoaded: SimHub builds a new panel on every page open, and a

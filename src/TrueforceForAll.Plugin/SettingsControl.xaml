@@ -4093,7 +4093,7 @@
                  This tab owns no controls of its own. On unlock the code-behind
                  moves the live WheelLightsBlock into LightsyncTabHost, so the tab is
                  empty in the XAML by design. -->
-            <sh:SHTabItem x:Name="LightsyncTab" Header="LIGHTSYNC &amp; OLED" Visibility="Collapsed">
+            <sh:SHTabItem x:Name="LightsyncTab" Header="{loc:T Lightsync_LightsyncTab_Header}" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
                         <!-- One-time hint about the cycle binding. The library's whole
@@ -4117,14 +4117,14 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
                                     <TextBlock FontWeight="SemiBold" FontSize="13" TextWrapping="Wrap"
-                                               Text="Your wheel holds five patterns. This holds as many as you like."/>
+                                               Text="{loc:T Lightsync_LightsyncCycleYourWheelHoldsFive}"/>
                                     <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,8" TextWrapping="Wrap"
-                                               Text="The extras are swapped into one slot as you go, so a button press walks the whole library without taking your hands off the wheel. Set that button here and you never need this tab mid-race."/>
+                                               Text="{loc:T Lightsync_LightsyncCycleTheExtrasAreSwapped}"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Next pattern" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Lightsync_LightsyncCycleNextPattern}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                                         <shui:ControlsEditor Grid.Column="1" ActionName="TrueforcePlugin.RevLightPatternNext"
-                                                             FriendlyName="TF4ALL: rev-light pattern next"/>
+                                                             FriendlyName="{loc:T Controls_ControlsTabHostTf4allRevLightPatternNext_FriendlyName}"/>
                                     </Grid>
                                 </StackPanel>
                                 <Button Grid.Column="1" x:Name="LightsyncCycleHintDismiss"
@@ -4132,7 +4132,7 @@
                                         VerticalAlignment="Top"
                                         Click="LightsyncCycleHintDismiss_Click"
                                         Background="Transparent" BorderBrush="Transparent" BorderThickness="0"
-                                        Cursor="Hand" ToolTip="Don't show this again. Rev pattern next is on the Controls tab whenever you want it."/>
+                                        Cursor="Hand" ToolTip="{loc:T Lightsync_LightsyncCycleHintDismiss_Tip}"/>
                             </Grid>
                         </Border>
 
@@ -4152,19 +4152,19 @@
                              anything. Attribution is a licence condition, not
                              decoration: do not remove the credit. -->
                         <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,20,0,10">
-                            <TextBlock Text="Light patterns from car data" Style="{StaticResource SectionHeaderText}"/>
+                            <TextBlock Text="{loc:T Lightsync_LightPatternsFromCar}" Style="{StaticResource SectionHeaderText}"/>
                         </Border>
                         <!-- Sits with the other per-car lighting behaviour rather than
                              beside the pattern list, because it is about what happens
                              when you PICK a pattern, not about the library itself. -->
-                        <CheckBox x:Name="AlwaysRememberPatternCheck" Content="Remember my pick for each car automatically"
+                        <CheckBox x:Name="AlwaysRememberPatternCheck" Content="{loc:T Lightsync_AlwaysRememberPattern}"
                                   Margin="0,0,0,2" Checked="AlwaysRememberPattern_Changed" Unchecked="AlwaysRememberPattern_Changed"
-                                  ToolTip="Off by default, so flicking through patterns to look at them does not pin whichever one you stopped on."/>
+                                  ToolTip="{loc:T Lightsync_AlwaysRememberPattern_Tip}"/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,10" TextWrapping="Wrap"
-                                   Text="Pick a pattern while you are in a car and it becomes that car's pattern, with no need to press Remember. Only deliberate picks count."/>
-                        <CheckBox x:Name="LovelyCarDataCheck" Content="Match my wheel to the car I'm driving"
+                                   Text="{loc:T Lightsync_PickAPatternWhile}"/>
+                        <CheckBox x:Name="LovelyCarDataCheck" Content="{loc:T Lightsync_LovelyCarData}"
                                   Margin="0,0,0,2" Checked="LovelyCarData_Changed" Unchecked="LovelyCarData_Changed"
-                                  ToolTip="Works even in games that light the wheel themselves, because the colors are set once as the car loads and the game drives the lights from there. Needs community features, which is where the car data comes from."/>
+                                  ToolTip="{loc:T Lightsync_LovelyCarData_Tip}"/>
                         <!-- Shown only when community features are off, because the
                              box above is then dead and nothing else on this tab
                              would tell the user why. The DATA half of this dataset
@@ -4173,9 +4173,9 @@
                              on a wheel that never sees this tab. -->
                         <TextBlock x:Name="LovelyNeedsCommunityNote" Style="{StaticResource HelpText}"
                                    Margin="22,0,0,6" TextWrapping="Wrap" Visibility="Collapsed"
-                                   Text="Turn on community features in the Settings tab to use this. The car data is fetched from there."/>
+                                   Text="{loc:T Lightsync_LovelyNeedsCommunityNote}"/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,6" TextWrapping="Wrap"
-                                   Text="Gives your wheel the car's own colors and fill direction as you get in it, lighting each LED at the RPM the real car does."/>
+                                   Text="{loc:T Lightsync_GivesYourWheelThe}"/>
                         <!-- The credit stays here and stays visible: the licence
                              requires it, so it is a condition of using the data
                              rather than decoration. What moved into the guide is
@@ -4186,10 +4186,10 @@
                              engine data, the redline consensus). Precise, worth
                              saying, and far too much text under one checkbox. -->
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,10" TextWrapping="Wrap">
-                            <Run Text="Light patterns, per-car redlines and blink rates by "/><Hyperlink Click="LovelyCredit_Click"
-                                    ToolTip="Opens the lovely-car-data project on GitHub.">Lovely Sim Racing</Hyperlink><Run Text=", CC BY-NC-SA 4.0. "/><Hyperlink
+                            <Run Text="{loc:T Lightsync_LightPatternsPerCar}"/><Hyperlink Click="LovelyCredit_Click"
+                                    ToolTip="{loc:T Lightsync_OpensTheLovelyCar_Tip}">Lovely Sim Racing</Hyperlink><Run Text=", CC BY-NC-SA 4.0. "/><Hyperlink
                                     Click="LovelyGuide_Click"
-                                    ToolTip="What the dataset covers, and what comes from our own car facts.">What this covers</Hyperlink>
+                                    ToolTip="{loc:T Lightsync_WhatTheDatasetCovers_Tip}"><Run Text="{loc:T Lightsync_WhatThisCovers}"/></Hyperlink>
                         </TextBlock>
 
 
@@ -4202,11 +4202,11 @@
                              there with no mental flip. -->
                         <Expander x:Name="PatternMakerExpander" IsExpanded="False" Margin="0,16,0,4">
                             <Expander.Header>
-                                <TextBlock Text="Pattern Editor" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{loc:T Lightsync_PatternMakerPatternEditor}" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             </Expander.Header>
                             <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
-                                   Text="Make your own wheel light patterns. The wheel only stores five, so Trueforce For All keeps as many as you like and swaps them into one slot you lend it. Bind Rev pattern next on the Controls tab to step through them while you drive."/>
+                                   Text="{loc:T Lightsync_PatternMakerMakeYourOwnWheel}"/>
 
                         <!-- No slot picker on purpose. Which of the five slots gets
                              borrowed is plumbing: the plugin takes the first slot
@@ -4224,29 +4224,29 @@
 
                             <!-- Library: order here is cycle order. -->
                             <StackPanel Grid.Column="0" Margin="0,0,14,0">
-                                <TextBlock Text="Your patterns" Style="{StaticResource LabelText}" Margin="0,0,0,4"/>
+                                <TextBlock Text="{loc:T Lightsync_PatternMakerYourPatterns}" Style="{StaticResource LabelText}" Margin="0,0,0,4"/>
                                 <ListBox x:Name="PatternList" Height="300" SelectionChanged="PatternList_SelectionChanged"
                                          HorizontalContentAlignment="Stretch"
                                          MouseDoubleClick="PatternList_MouseDoubleClick"
-                                         ToolTip="Double-click a name to rename it. The bracketed ones live on the wheel; the rest are swapped in as needed, so they need SimHub running."/>
+                                         ToolTip="{loc:T Lightsync_PatternList_Tip}"/>
                                 <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
-                                           Text="The blue bracket marks what is stored on the wheel itself. Everything below it is swapped in as needed."/>
+                                           Text="{loc:T Lightsync_PatternMakerTheBlueBracketMarks}"/>
                                 <UniformGrid Columns="3" Margin="0,6,0,0">
-                                    <Button x:Name="PatternUpBtn" Content="Up" Margin="0,0,3,3" Padding="0,3" Click="PatternMove_Click" Tag="-1"/>
-                                    <Button x:Name="PatternDownBtn" Content="Down" Margin="0,0,3,3" Padding="0,3" Click="PatternMove_Click" Tag="1"/>
-                                    <Button x:Name="PatternNewBtn" Content="New" Margin="0,0,0,3" Padding="0,3" Click="PatternNew_Click"/>
-                                    <Button x:Name="PatternCopyBtn" Content="Copy" Margin="0,0,3,0" Padding="0,3" Click="PatternCopy_Click"
-                                            ToolTip="Duplicate this pattern, so a shipped one can be used as a starting point."/>
-                                    <Button x:Name="PatternResetBtn" Content="Reset" Margin="0,0,3,0" Padding="0,3" Click="PatternReset_Click"
-                                            ToolTip="Put a shipped pattern back the way it came."/>
+                                    <Button x:Name="PatternUpBtn" Content="{loc:T Lightsync_PatternUp}" Margin="0,0,3,3" Padding="0,3" Click="PatternMove_Click" Tag="-1"/>
+                                    <Button x:Name="PatternDownBtn" Content="{loc:T Lightsync_PatternDown}" Margin="0,0,3,3" Padding="0,3" Click="PatternMove_Click" Tag="1"/>
+                                    <Button x:Name="PatternNewBtn" Content="{loc:T Lightsync_PatternNew}" Margin="0,0,0,3" Padding="0,3" Click="PatternNew_Click"/>
+                                    <Button x:Name="PatternCopyBtn" Content="{loc:T Lightsync_PatternCopy}" Margin="0,0,3,0" Padding="0,3" Click="PatternCopy_Click"
+                                            ToolTip="{loc:T Lightsync_PatternCopy_Tip}"/>
+                                    <Button x:Name="PatternResetBtn" Content="{loc:T Common_Reset}" Margin="0,0,3,0" Padding="0,3" Click="PatternReset_Click"
+                                            ToolTip="{loc:T Lightsync_PatternReset_Tip}"/>
                                     <!-- Red because it is the one action here that
                                          destroys something and cannot be undone. -->
-                                    <Button x:Name="PatternDeleteBtn" Content="Delete" Padding="0,3" Click="PatternDelete_Click"
+                                    <Button x:Name="PatternDeleteBtn" Content="{loc:T Common_Delete}" Padding="0,3" Click="PatternDelete_Click"
                                             Background="#FF8B2E2E" Foreground="White"/>
                                 </UniformGrid>
 
                                 <TextBlock Style="{StaticResource HelpText}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
-                                           Text="Up and Down decide where a pattern lives. The top five are the wheel's own slots: move one up into them and it goes onto the wheel, move it down and it comes off."/>
+                                           Text="{loc:T Lightsync_PatternMakerUpAndDownDecideWhere}"/>
                             </StackPanel>
 
                             <!-- Editor -->
@@ -4256,22 +4256,22 @@
                                         <ColumnDefinition Width="56"/><ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="46"/><ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Name:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="0" Text="{loc:T Lightsync_PatternMakerName}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                                     <TextBox Grid.Column="1" x:Name="PatternNameBox" MaxLength="40" VerticalAlignment="Center" Margin="0,0,12,0"
                                              LostFocus="PatternName_Committed" KeyDown="PatternName_KeyDown"/>
-                                    <TextBlock Grid.Column="2" Text="Fills:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="{loc:T Lightsync_PatternMakerFills}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                                     <ComboBox Grid.Column="3" x:Name="PatternDirectionCombo" VerticalAlignment="Center"
                                               SelectionChanged="PatternDirection_Changed"
-                                              ToolTip="Which way the lights come up as the revs climb."/>
+                                              ToolTip="{loc:T Lightsync_PatternDirection_Tip}"/>
                                 </Grid>
 
                                 <CheckBox x:Name="PatternApplyTrimBox" Margin="0,0,0,6"
-                                          Content="Apply LED color tuning"
+                                          Content="{loc:T Lightsync_PatternApplyTrim}"
                                           Checked="PatternApplyTrim_Changed" Unchecked="PatternApplyTrim_Changed"
-                                          ToolTip="On for colors you picked on screen, so they come out on the wheel looking like they do here. Off for a pattern you took off the wheel or tuned by eye on the rim: the tuning is already baked into those colors, and applying it again would shift them."/>
+                                          ToolTip="{loc:T Lightsync_PatternApplyTrim_Tip}"/>
 
                                 <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,5"
-                                           Text="Click an LED to select it. Left here is left on the wheel, and the wheel shows the whole pattern while you work."/>
+                                           Text="{loc:T Lightsync_PatternMakerClickAnLedToSelect}"/>
                                 <ItemsControl x:Name="PatternLedStrip" Margin="0,0,0,12">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
@@ -4288,34 +4288,34 @@
                                         </Grid.ColumnDefinitions>
 
                                         <StackPanel Grid.Column="0" Margin="0,0,14,0">
-                                            <TextBlock x:Name="PatternSelectedLedText" Text="LED 1" FontSize="11"
+                                            <TextBlock x:Name="PatternSelectedLedText" Text="{loc:T Lightsync_PatternSelectedLed}" FontSize="11"
                                                        Opacity="0.8" HorizontalAlignment="Center" Margin="0,0,0,4"/>
                                             <Border x:Name="PatternCurrentSwatch" Width="74" Height="74" CornerRadius="4"
                                                     BorderThickness="1" BorderBrush="#60FFFFFF" Background="Black"/>
                                             <TextBox x:Name="PatternHexBox" Width="74" MaxLength="7" Margin="0,6,0,0"
                                                      HorizontalContentAlignment="Center"
                                                      LostFocus="PatternHex_Committed" KeyDown="PatternHex_KeyDown"
-                                                     ToolTip="RRGGBB for the selected LED."/>
+                                                     ToolTip="{loc:T Lightsync_PatternHex_Tip}"/>
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="1">
                                             <Grid Margin="0,0,0,3">
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="R" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="0" Text="{loc:T Lightsync_PatternChannelRed}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                                                 <Slider Grid.Column="1" x:Name="PatternRSlider" Minimum="0" Maximum="255" SmallChange="1" LargeChange="16"
                                                         VerticalAlignment="Center" ValueChanged="PatternRgbSlider_Changed"/>
                                                 <Border Visibility="{Binding Visibility, ElementName=PatternRText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="PatternRText" Text="0" FontSize="11"/></Border>
                                             </Grid>
                                             <Grid Margin="0,0,0,3">
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="G" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="0" Text="{loc:T Lightsync_PatternChannelGreen}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                                                 <Slider Grid.Column="1" x:Name="PatternGSlider" Minimum="0" Maximum="255" SmallChange="1" LargeChange="16"
                                                         VerticalAlignment="Center" ValueChanged="PatternRgbSlider_Changed"/>
                                                 <Border Visibility="{Binding Visibility, ElementName=PatternGText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="PatternGText" Text="0" FontSize="11"/></Border>
                                             </Grid>
                                             <Grid Margin="0,0,0,8">
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="B" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="0" Text="{loc:T Lightsync_PatternChannelBlue}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                                                 <Slider Grid.Column="1" x:Name="PatternBSlider" Minimum="0" Maximum="255" SmallChange="1" LargeChange="16"
                                                         VerticalAlignment="Center" ValueChanged="PatternRgbSlider_Changed"/>
                                                 <Border Visibility="{Binding Visibility, ElementName=PatternBText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="PatternBText" Text="0" FontSize="11"/></Border>
@@ -4331,14 +4331,14 @@
                                 </Border>
 
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                    <Button x:Name="PatternPreviewBtn" Content="Play pattern" Padding="14,5" Click="PatternPreview_Click"
-                                            ToolTip="Sweeps the strip so you can watch which way it fills."/>
-                                    <Button x:Name="PatternFillAllBtn" Content="Fill all" Margin="8,0,0,0" Padding="10,5"
-                                            Click="PatternFillAll_Click" ToolTip="Set every LED to the current color."/>
-                                    <Button x:Name="PatternMirrorBtn" Content="Mirror" Margin="6,0,0,0" Padding="10,5"
-                                            Click="PatternMirror_Click" ToolTip="Copy the LED you have selected onto the one opposite it, so LED 2 pairs with LED 9. For the fills that work in pairs."/>
-                                    <Button x:Name="PatternReverseBtn" Content="Reverse" Margin="6,0,0,0" Padding="10,5"
-                                            Click="PatternReverse_Click" ToolTip="Turn the whole strip back to front, so the first LED takes the last one's color. For a ramp built from the wrong end."/>
+                                    <Button x:Name="PatternPreviewBtn" Content="{loc:T Lightsync_PatternPreview}" Padding="14,5" Click="PatternPreview_Click"
+                                            ToolTip="{loc:T Lightsync_PatternPreview_Tip}"/>
+                                    <Button x:Name="PatternFillAllBtn" Content="{loc:T Lightsync_PatternFillAll}" Margin="8,0,0,0" Padding="10,5"
+                                            Click="PatternFillAll_Click" ToolTip="{loc:T Lightsync_PatternFillAll_Tip}"/>
+                                    <Button x:Name="PatternMirrorBtn" Content="{loc:T Lightsync_PatternMirror}" Margin="6,0,0,0" Padding="10,5"
+                                            Click="PatternMirror_Click" ToolTip="{loc:T Lightsync_PatternMirror_Tip}"/>
+                                    <Button x:Name="PatternReverseBtn" Content="{loc:T Lightsync_PatternReverse}" Margin="6,0,0,0" Padding="10,5"
+                                            Click="PatternReverse_Click" ToolTip="{loc:T Lightsync_PatternReverse_Tip}"/>
                                 </StackPanel>
                                 <TextBlock x:Name="PatternStatusText" FontSize="11" Opacity="0.8" TextWrapping="Wrap"/>
 
@@ -4355,11 +4355,11 @@
                                      other two come down to meet it. -->
                         <Expander x:Name="LedTrimExpander" IsExpanded="False" Margin="0,10,0,0">
                             <Expander.Header>
-                                <TextBlock Text="Color Trim" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{loc:T Lightsync_LedTrimColorTrim}" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             </Expander.Header>
                             <StackPanel x:Name="LedTrimPanel" Margin="0,8,0,0">
                                     <TextBlock FontSize="11" Opacity="0.75" TextWrapping="Wrap" Margin="0,2,0,6"
-                                               Text="Your wheel's LEDs are not equally bright per color, and this makes up the difference. Yellow looking green? Bring green down. White looking blue? Bring blue down. Judge it on the rim, not on screen, and move in small steps. Set it once and leave it."/>
+                                               Text="{loc:T Lightsync_LedTrimYourWheelSLEDsAre}"/>
                                     <!-- The invariant, stated because the sliders do
                                          not behave the way three independent
                                          brightness controls would: only the RATIO
@@ -4370,50 +4370,50 @@
                                          dimming that channel, and levelling all
                                          three switches it off entirely. -->
                                     <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,8"
-                                               Text="Only the gap between the sliders matters. The highest one is the reference and keeps its color as authored; the others are cut relative to it. Three equal sliders means no correction at all, whatever the number."/>
+                                               Text="{loc:T Lightsync_LedTrimOnlyTheGapBetween}"/>
                                     <Grid Margin="0,2,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Red:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Lightsync_LedTrimRed}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                                         <Slider Grid.Column="1" x:Name="LedTrimRSlider" Minimum="10" Maximum="100"
                                                 SmallChange="1" LargeChange="10" VerticalAlignment="Center"
                                                 ValueChanged="LedTrim_Changed"
-                                                ToolTip="Normally left at 100. Red is usually the dimmest of the three, so there is nothing to gain by cutting it further."/>
+                                                ToolTip="{loc:T Lightsync_LedTrimR_Tip}"/>
                                         <Border Visibility="{Binding Visibility, ElementName=LedTrimRText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="LedTrimRText" Text="100%" FontSize="11"/></Border>
                                     </Grid>
                                     <Grid Margin="0,4,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Green:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Lightsync_LedTrimGreen}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                                         <Slider Grid.Column="1" x:Name="LedTrimGSlider" Minimum="10" Maximum="100"
                                                 SmallChange="1" LargeChange="10" VerticalAlignment="Center"
                                                 ValueChanged="LedTrim_Changed"
-                                                ToolTip="Show yellow, then bring this down until it stops looking green."/>
+                                                ToolTip="{loc:T Lightsync_LedTrimG_Tip}"/>
                                         <Border Visibility="{Binding Visibility, ElementName=LedTrimGText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="LedTrimGText" Text="100%" FontSize="11"/></Border>
                                     </Grid>
                                     <Grid Margin="0,4,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Blue:" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Lightsync_LedTrimBlue}" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
                                         <Slider Grid.Column="1" x:Name="LedTrimBSlider" Minimum="10" Maximum="100"
                                                 SmallChange="1" LargeChange="10" VerticalAlignment="Center"
                                                 ValueChanged="LedTrim_Changed"
-                                                ToolTip="Show white, then bring this down until the strip looks neutral rather than tinted."/>
+                                                ToolTip="{loc:T Lightsync_LedTrimB_Tip}"/>
                                         <Border Visibility="{Binding Visibility, ElementName=LedTrimBText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="LedTrimBText" Text="100%" FontSize="11"/></Border>
                                     </Grid>
                                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                        <Button x:Name="LedTrimYellowBtn" Content="Show yellow" Padding="10,5"
+                                        <Button x:Name="LedTrimYellowBtn" Content="{loc:T Lightsync_LedTrimYellow}" Padding="10,5"
                                                 Click="LedTrimYellow_Click"
-                                                ToolTip="Light all ten in plain yellow, the color that shows a green imbalance most clearly."/>
-                                        <Button x:Name="LedTrimWhiteBtn" Content="Show white" Margin="6,0,0,0" Padding="10,5"
+                                                ToolTip="{loc:T Lightsync_LedTrimYellow_Tip}"/>
+                                        <Button x:Name="LedTrimWhiteBtn" Content="{loc:T Lightsync_LedTrimWhite}" Margin="6,0,0,0" Padding="10,5"
                                                 Click="LedTrimWhite_Click"
-                                                ToolTip="Light all ten in plain white. Hold a sheet of paper next to it and trim until they agree."/>
-                                        <Button x:Name="LedTrimResetBtn" Content="Reset" Margin="6,0,0,0" Padding="10,5"
+                                                ToolTip="{loc:T Lightsync_LedTrimWhite_Tip}"/>
+                                        <Button x:Name="LedTrimResetBtn" Content="{loc:T Common_Reset}" Margin="6,0,0,0" Padding="10,5"
                                                 Click="LedTrimReset_Click"
-                                                ToolTip="Put the trim back to the tuning this wheel ships with."/>
+                                                ToolTip="{loc:T Lightsync_LedTrimReset_Tip}"/>
                                     </StackPanel>
                                 </StackPanel>
                         </Expander>
@@ -4429,7 +4429,7 @@
                                 <!-- Logitech's own name for the panel. "Wheel screen"
                                      was descriptive but anonymous; the branded name
                                      is what the wheel's box and G HUB call it. -->
-                                <TextBlock Text="Dynamic OLED" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{loc:T Lightsync_LightsyncScreenDynamicOled}" Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
                             </Expander.Header>
                             <StackPanel x:Name="LightsyncScreenHost" Margin="0,8,0,0"/>
                         </Expander>

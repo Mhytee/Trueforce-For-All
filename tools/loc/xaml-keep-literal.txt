@@ -20,3 +20,9 @@ RAMP
 # with the comma and its trailing space is part of it).
 github.com/Mhytee/Trueforce-For-All
 , CC BY-NC-SA 4.0. 
+# The dataset's own name, in the same credit line as the license tag above and
+# under the same condition: CC BY-NC-SA 4.0 asks for the creator's name to be
+# kept, so it is a proper noun rather than text to translate. It appears
+# verbatim in both copies of that credit line, on the Telemetry FFB tab and on
+# the LIGHTSYNC tab.
+Lovely Sim Racing
