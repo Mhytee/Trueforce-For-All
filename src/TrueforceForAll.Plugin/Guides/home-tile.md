@@ -1,4 +1,4 @@
-The **Trueforce** widget in SimHub's home-screen **Feedback** section.
+The **Trueforce** widget in SimHub's home-screen **Feedback** section: two switches and two gain sliders.
 
 **Master** switches the Trueforce effects on and off, and the slider sets their overall strength. It is not your wheel's force feedback strength.
 

@@ -19,7 +19,7 @@ Your wheel holds five patterns and the library holds as many as you like, so **R
 ## The rest of the list
 
 - **Telemetry FFB up / down.** The strength of the force the plugin builds itself, for the games where it does. ([What that is](telemetry-ffb.md).)
-- **Auto force.** Runs the current game's own force calibration from the rim, one press and no settings trip. Where the sim hands its force over, it takes this car's maximum from the peak it has watched. Where the plugin builds the force from telemetry, it resets the learner so the strength re-levels. Anywhere else there is nothing to calibrate, so the press changes nothing you can feel.
+- **Auto force.** Runs the current game's auto force calibration from the rim: in iRacing and Le Mans Ultimate it sets the max force from the learned peak, in RaceRoom it sets the car's max from the peak it has watched that car push, and in Forza it resets the auto-strength learner so the strength re-levels for the car. One press, no settings trip.
 - **Wheel OLED next / back.** Step through the wheel screen's pages.
 - **Dash tab next / back.** Step through the phone dash's tabs, so it can be driven from a button rather than reached for.
 - **Peak force up / down.** The full-scale force in iRacing and Le Mans Ultimate: raise it if the wheel is clipping, lower it if the car feels weak. In RaceRoom the same pair moves the car's max, which runs the other way, so up leans the car harder on the wheel and down makes it lighter. ([iRacing setup](iracing-setup.md), [Le Mans Ultimate setup](lmu-setup.md), [RaceRoom setup](raceroom-setup.md).)

@@ -8,7 +8,7 @@ Because Forza only sends to one place, pointing it at the plugin means the telem
 
 Forwarding is what gives that back. The plugin relays every packet it receives straight on to SimHub, so you end up with the direct feed **and** everything SimHub was doing before.
 
-One thing is not a straight copy. Forza blanks its packets during replays, rewinds and menu blips, and SimHub reads that as the game disconnecting: dashboards reset and ShakeIt rebuilds itself mid-session. So for short gaps the plugin holds the last known car and engine details in place on the forwarded copy, and SimHub carries on as though nothing happened. A long stay in the menus still reads as leaving the game, which is what it is.
+One thing is not a straight copy. Forza blanks its packets during replays, rewinds and menu blips, and SimHub reads that as the game disconnecting: dashboards reset and ShakeIt rebuilds itself mid-session. So for gaps shorter than fifteen seconds the plugin holds the last known car and engine details in place on the forwarded copy, and SimHub carries on as though nothing happened.
 
 1. In SimHub, click **Home** at the top of the left sidebar. It should show Forza as the active game; if not, click **Change game**. Open **Game config** and note the UDP port it shows, often `8000`. Read it only, change nothing.
 2. Tick **Also forward to SimHub** in the plugin's UDP telemetry settings, set the forward host to `127.0.0.1`, and set the forward port to that number.

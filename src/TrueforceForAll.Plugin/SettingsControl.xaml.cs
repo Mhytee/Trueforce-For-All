@@ -1214,8 +1214,10 @@ namespace TrueforceForAll.Plugin
                               "them over Trueforce, so the car still feels like the car and your rev " +
                               "lights and wheel screen work again. The setup steps are in the note below."
                             : "The wheel's steering force is built from telemetry instead of the game's " +
-                              "own FFB. Set the game's force feedback and vibration to 0 so this is the " +
-                              "only force on the wheel.";
+                              "own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. " +
+                              "Set the game's force feedback and vibration to 0 so this is the only " +
+                              "force on the wheel. Farming Simulator 22 and 25 are supported too, " +
+                              "through the spring option below.";
                         // The other-games coverage line moved off the visible intro
                         // and into a tooltip, and only the Farming Simulator variant
                         // carries it, so it is set beside the text it belongs to.

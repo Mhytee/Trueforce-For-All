@@ -16,7 +16,7 @@ The three colors inside an LED are not equally bright, so a color that looks rig
 
 ## Tuning it for your wheel
 
-The [Color Trim](tab:color-trim) section has **Show yellow** and **Show white** buttons that light the whole strip in the two colors that give a tint away soonest. Judge it on the rim rather than on screen, and move a few percent at a time.
+The [Color Trim](tab:color-trim) section has **Show yellow** and **Show white** buttons that light all ten LEDs in the two colors that give a tint away soonest. Judge it on the rim rather than on screen, and move a few percent at a time.
 
 1. Press **Show yellow**. Looking green or lime? Bring the **green** slider down until it reads as yellow.
 2. Press **Show white**. Hold a sheet of paper next to the rim and compare.

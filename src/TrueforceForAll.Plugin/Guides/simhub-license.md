@@ -7,6 +7,6 @@ Assetto Corsa, the Forza titles and Farming Simulator can be read directly by th
 - Forza only sends its telemetry once [Data Out is switched on and pointed at the plugin](guide:forza-setup). Until then the plugin falls back to SimHub's feed, license rate and all.
 - Farming Simulator needs [the TF4ALL Enhanced Telemetry mod](guide:farming-sim) installed, for the same reason.
 
-Assetto Corsa needs nothing: it is read directly as soon as the game starts.
+Assetto Corsa needs nothing for this: it is read directly as soon as the game starts.
 
 iRacing sits in between. The steering force it hands over reaches the plugin from the sim's own published torque, so the handover and the effects on top of it work either way. The rest of its numbers still arrive through SimHub, so a license lifts those exactly as it does anywhere else. The same is true of RaceRoom and Le Mans Ultimate.

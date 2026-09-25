@@ -6,9 +6,9 @@ The little screen in the middle of the wheel can carry your speed, gear and lap 
 
 ## Your driving screen
 
-The ready-made screens cover the usual combinations: speed over gear, gear over speed, either one on its own, labelled or plain, and versions carrying the lap delta. Speed reads in km/h or mph.
+Eleven ready-made screens cover the usual combinations: speed over gear, gear over speed, either one on its own, labelled or plain, and versions carrying the lap delta. Speed reads in km/h or mph.
 
-**Build my own** opens the screen up. Pick a layout first, since the wheel decides how big each slot is drawn and where it sits: two side by side with one huge, two stacked, four rows, or the meter layouts. Then fill each slot from its own list: a text slot takes a readout like gear, speed or lap delta, or text of your own, and a meter slot takes anything that runs from empty to full, such as the pedals, the revs, grip, or force output.
+**Build my own** opens the screen up. Pick a layout first, since the wheel decides how big each slot is drawn and where it sits: two side by side with one huge, two stacked, four rows, or the meter layouts. Then fill each slot with gear, speed, lap delta, position, lap of total, last lap time, or text of your own. A meter slot can show throttle, brake, clutch, handbrake, revs, force output, Trueforce texture, front or rear grip, or steering.
 
 **Nothing** keeps the wheel's own display while you drive, and lets everything below still have its moment.
 

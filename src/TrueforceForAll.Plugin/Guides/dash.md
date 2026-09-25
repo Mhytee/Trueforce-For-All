@@ -28,6 +28,6 @@ Flags appear as a colored band across whichever tab is open, and a spotter bar r
 
 ## The rest
 
-The dash comes with a choice of themes, picked under **Settings** > **TF4ALL Dash** and applied live, so you can customize it to fit your style.
+The dash has eight themes, so you can customize it to fit your style.
 
 The idle card replaces an empty dashboard with your name and number when no game is running, or once the car has sat still long enough during one. How long, and what it looks like, are yours to set.
