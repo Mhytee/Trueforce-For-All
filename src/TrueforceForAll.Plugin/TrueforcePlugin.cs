@@ -759,7 +759,18 @@ namespace TrueforceForAll.Plugin
         // look for. NEVER cleared: it anchors "is that title still up?".
         private volatile string _lastNamedGame;
         private Thread _capturePollThread;
-        private string _captureStatus = "Idle (no game running)";
+        // The capture status line as the composer that renders it rather than
+        // as a finished sentence. CaptureTick's fast path returns without
+        // touching this field for as long as the captured game stays alive, so
+        // a stored sentence would hold the previous language on screen for a
+        // whole race after a language change; rendering on read makes the next
+        // meter tick pick the new one up. Volatile because the capture poll
+        // thread publishes a closure over its own locals and the UI thread
+        // reads it: the field it replaces held an immutable string, where a
+        // plain reference assignment was enough. Lazy also keeps it clear of
+        // Loc.Initialize: a field initializer runs before the language table
+        // is loaded.
+        private volatile Func<string> _captureStatus = () => Loc.T("Effects_CaptureIdleNoGame");
 
         // Status surfaced to the SettingsControl.
         public string WheelStatus    { get; private set; } = "Not detected";
@@ -780,7 +791,7 @@ namespace TrueforceForAll.Plugin
                 return _streamStatus;
             }
         }
-        public string CaptureStatus  => _captureStatus;
+        public string CaptureStatus  => _captureStatus();
         public string FfbTapStatus =>
             AcForceStatusPrefix()
             + (_ffbTap?.Status ?? "Not started")
@@ -36951,7 +36962,7 @@ namespace TrueforceForAll.Plugin
 
                 if (keep == null)
                 {
-                    _captureStatus = "Idle (no supported game running)";
+                    _captureStatus = () => Loc.T("Effects_CaptureIdleNoSupportedGame");
                     return;
                 }
 
@@ -36964,7 +36975,7 @@ namespace TrueforceForAll.Plugin
                 if (keepExited)
                 {
                     try { keep.Dispose(); } catch { }
-                    _captureStatus = "Idle (no supported game running)";
+                    _captureStatus = () => Loc.T("Effects_CaptureIdleNoSupportedGame");
                     return;
                 }
 
@@ -36972,12 +36983,19 @@ namespace TrueforceForAll.Plugin
                 _audio.Start(keep.Id);
                 _helperHost?.SetTargetPid(keep.Id);
                 EnterStreamingGcMode();
-                _captureStatus = $"Capturing {label} (PID {keep.Id})";
-                SimHub.Logging.Current.Info($"[TF4ALL] {_captureStatus}.");
+                // Snapshotted into locals so the composer neither holds the
+                // Process nor reads a handle this thread may later release. The
+                // log line keeps its own English copy: a log is identity, read
+                // back in issue reports, and never translated.
+                string capturedLabel = label;
+                int capturedPid = keep.Id;
+                _captureStatus = () => Loc.F("Effects_CaptureCapturing_Fmt", capturedLabel, capturedPid);
+                SimHub.Logging.Current.Info($"[TF4ALL] Capturing {capturedLabel} (PID {capturedPid}).");
             }
             catch (Exception ex)
             {
-                _captureStatus = $"Capture error: {ex.Message}";
+                string capturedError = ex.Message;
+                _captureStatus = () => Loc.F("Effects_CaptureError_Fmt", capturedError);
                 SimHub.Logging.Current.Error("[TF4ALL] Capture retarget failed", ex);
             }
         }

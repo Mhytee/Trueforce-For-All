@@ -622,6 +622,11 @@ namespace TrueforceForAll.Core.Tests
             // "Privacy policy" Hyperlink in the same sentence.
             { "Settings_DiagnosticsHelpsDecideWhatTo", "runs into the Privacy policy hyperlink" },
             { "Settings_NetworkSignInIsOnlyNeeded", "runs into the Privacy policy hyperlink" },
+            // The two indented sub-option labels under the Engine pulse
+            // checkboxes on the Effects tab. Two leading spaces put each
+            // slider label under the checkbox it belongs to.
+            { "Effects_EngineStrength", "two leading spaces indent it under the Low-end body checkbox" },
+            { "Effects_EngineAmount", "two leading spaces indent it under the High-RPM boost checkbox" },
         };
 
         [Fact]

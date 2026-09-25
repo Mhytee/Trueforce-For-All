@@ -1113,7 +1113,7 @@ namespace TrueforceForAll.Plugin
                         // so presets carry one block either way.
                         ShowEffect(KerbThumpExpander,    !springGame);
                         if (SlipEnabledCheck != null)
-                            SlipEnabledCheck.Content = springGame ? "Terrain texture" : "Road bumps & curbs";
+                            SlipEnabledCheck.Content = SlipEnabledLabel(springGame);
                         if (BumpsLeadingEdgePanel != null)
                             BumpsLeadingEdgePanel.Visibility = springGame
                                 ? System.Windows.Visibility.Visible
@@ -10286,12 +10286,14 @@ namespace TrueforceForAll.Plugin
         // the LIGHTSYNC tab's selected-LED caption through RelabelLightsyncTab,
         // from the selection already in hand; the Settings tab's four status
         // lines through RelabelSettingsTab, read back from the plugin; the
-        // supporters wall status through RefreshSupportersWallAsync, and only
-        // while the Support tab is showing: every entry to that tab refreshes
-        // it anyway, and the method's generation counter drops a fetch still
-        // in flight. LocStore raises the event on the UI thread (the folder
-        // watcher dispatches its reload, the access codes run from the panel),
-        // and the CheckAccess guard covers any other raiser.
+        // Effects tab's road-bumps caption and capture-status line through
+        // RelabelEffectsTab, from the active game and the plugin's capture
+        // state; the supporters wall status through RefreshSupportersWallAsync,
+        // and only while the Support tab is showing: every entry to that tab
+        // refreshes it anyway, and the method's generation counter drops a
+        // fetch still in flight. LocStore raises the event on the UI thread
+        // (the folder watcher dispatches its reload, the access codes run from
+        // the panel), and the CheckAccess guard covers any other raiser.
         private void OnLanguageChanged(object sender, EventArgs e)
         {
             if (!Dispatcher.CheckAccess())
@@ -10307,6 +10309,8 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] LIGHTSYNC tab language relabel failed: " + ex.Message); }
             try { RelabelSettingsTab(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Settings tab language relabel failed: " + ex.Message); }
+            try { RelabelEffectsTab(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Effects tab language relabel failed: " + ex.Message); }
             try
             {
                 // IsLoaded: SimHub builds a new panel on every page open, and a
@@ -10376,6 +10380,46 @@ namespace TrueforceForAll.Plugin
             if (RpmLedStatusText != null) RpmLedStatusText.Text = _plugin.RpmLedStatus;
             if (TelemetrySourceText != null && _plugin.TelemetrySource == null)
                 TelemetrySourceText.Text = Loc.T("Settings_TelemetrySource");
+        }
+
+        // The Road bumps card's own caption. Farming Simulator has no curbs, so
+        // the section reads "Terrain texture" there (owner call 2026-08-08)
+        // while the KerbThump settings identity stays shared. One method, so
+        // RefreshFromPlugin and the language relabel below cannot drift apart.
+        private static string SlipEnabledLabel(bool springGame)
+            => springGame
+                ? Loc.T("Effects_SlipEnabledTerrainTexture")
+                : Loc.T("Effects_SlipEnabled");
+
+        // Language pass over the Effects tab's two code-written labels.
+        //
+        // The Road bumps caption is written inside RefreshFromPlugin, which
+        // this event must not call (it is long and it starts a community
+        // fetch), so without this pass it would keep the previous language
+        // until the panel was rebuilt. The spring-game test is the plugin's own
+        // IsSpringModeGame, the same predicate RefreshFromPlugin uses, rather
+        // than a second copy of the game-name rule.
+        //
+        // The capture status line is rewritten by the 60 Hz meter tick, but
+        // only while an audio capture source exists; re-reading it here costs
+        // one field read and makes the switch land while the tick is stopped,
+        // which it is whenever the panel is unloaded. With no source the tick
+        // never writes the line at all, so the XAML default is written in the
+        // new language instead: the plugin's own idle sentence is a different,
+        // longer text, and a first write detaches the {loc:T} binding for good.
+        //
+        // Every read below is a field or a small string build: nothing fetches,
+        // loads a store or raises LanguageChanged, so the pass cannot loop.
+        private void RelabelEffectsTab()
+        {
+            if (_plugin == null) return;
+            if (SlipEnabledCheck != null)
+                SlipEnabledCheck.Content =
+                    SlipEnabledLabel(TrueforcePlugin.IsSpringModeGame(_plugin.ActiveGame));
+            if (CaptureStatusText != null)
+                CaptureStatusText.Text = _plugin.AudioCapture != null
+                    ? _plugin.CaptureStatus
+                    : Loc.T("Effects_CaptureStatus");
         }
 
         private int _supportersWallGen;
