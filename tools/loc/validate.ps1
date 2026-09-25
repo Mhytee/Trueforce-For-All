@@ -6,7 +6,8 @@
 #          Loc.T/F/N("Key") in C# exists in en.json, no unreferenced en.json
 #          key (Effect_*_Name and EngineLayout_* are dynamic and exempt), Loc.F
 #          and Loc.N arity match the {n} placeholders, placeholder parity
-#          between each translation and English, and no letter-bearing literal
+#          between each translation and English, the same leading and
+#          trailing whitespace as English per key, and no letter-bearing literal
 #          left in the converted scopes of the files converted-files.txt lists
 #          (a bare path is the whole file, 'path|spec,spec' only those scopes)
 #          unless xaml-keep-literal.txt allows it, and no XAML file carrying
@@ -311,20 +312,24 @@ foreach ($k in $en.Keys) {
 }
 Write-Host ('en.json: {0} unreferenced key(s)' -f $unreferenced)
 
-# ---- 5. placeholder parity per translation
+# ---- 5. placeholder and edge-whitespace parity per translation
 foreach ($culture in @($langs.Keys | Sort-Object)) {
     if ($culture -eq 'en') { continue }
     $d = $langs[$culture]
     $missing = 0
     $unknown = 0
     $bad = 0
+    $space = 0
     foreach ($k in $d.Keys) {
         if ($k -eq '_meta') { continue }
         if (-not $en.Contains($k)) { $unknown++; $fails.Add("$culture.json: '$k' is not an English key"); continue }
         if ((Get-LocPlaceholders ([string]$d[$k])) -ne (Get-LocPlaceholders ([string]$en[$k]))) { $bad++; $fails.Add("$culture.json: '$k' placeholders differ from English") }
+        $want = Get-LocEdgeSpace ([string]$en[$k])
+        $got = Get-LocEdgeSpace ([string]$d[$k])
+        if ($want -ne $got) { $space++; $fails.Add("$culture.json: '$k' leading and trailing whitespace differs from English (English $want, translation $got)") }
     }
     foreach ($k in $en.Keys) { if ($k -ne '_meta' -and -not $d.Contains($k)) { $missing++ } }
-    Write-Host ('{0}.json: {1} missing (falls back to English), {2} unknown, {3} placeholder mismatch' -f $culture, $missing, $unknown, $bad)
+    Write-Host ('{0}.json: {1} missing (falls back to English), {2} unknown, {3} placeholder mismatch, {4} whitespace mismatch' -f $culture, $missing, $unknown, $bad, $space)
 }
 
 # ---- 6. no literals left in the converted scopes of converted XAML files

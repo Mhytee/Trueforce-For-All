@@ -601,6 +601,186 @@ namespace TrueforceForAll.Core.Tests
         }
 
         // ==================================================================
+        // 8. Edge whitespace is deliberate in English and preserved in
+        //    translations. A value that ends in a space sits against its
+        //    neighbor in one sentence, so a translation that trims it renders
+        //    two words joined, and nothing else in the pipeline can see that:
+        //    the pseudo-locale pads every value, and placeholder parity does
+        //    not look at whitespace.
+        // ==================================================================
+
+        // English keys whose leading or trailing whitespace carries meaning.
+        // Add one only after checking that the space belongs to the value
+        // rather than to sloppy XAML, and say what it butts against.
+        private static readonly Dictionary<string, string> EdgeSpaceKeys = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            // Followed immediately by the Hyperlink "Lovely Sim Racing" in the
+            // light-pattern credit line on the LIGHTSYNC and Telemetry FFB tabs.
+            { "Lightsync_LightPatternsPerCar", "runs into the Lovely Sim Racing hyperlink" },
+        };
+
+        [Fact]
+        public void LocEdgeWhitespaceIsDeliberateAndPreserved()
+        {
+            string repo = RepoRoot();
+            var en = LoadEnglish(repo, out List<string> enWarns);
+            var failures = new List<string>(enWarns.Select(w => "en.json: " + w));
+
+            foreach (var kv in en)
+            {
+                if (kv.Key == LocStore.MetaMember) continue;
+                if (kv.Value == null || kv.Value == kv.Value.Trim()) continue;
+                if (EdgeSpaceKeys.ContainsKey(kv.Key)) continue;
+                failures.Add("en.json: '" + kv.Key + "' begins or ends with whitespace: [" + kv.Value
+                    + "]. A translator cannot see that space and a JSON editor may trim it. Either fold the space"
+                    + " into the surrounding XAML, or add the key to EdgeSpaceKeys with a note saying what it runs into.");
+            }
+            foreach (var kv in EdgeSpaceKeys)
+            {
+                if (!en.TryGetValue(kv.Key, out string text))
+                {
+                    failures.Add("EdgeSpaceKeys names '" + kv.Key + "' (" + kv.Value + "), which en.json no longer holds");
+                    continue;
+                }
+                if (text == text.Trim())
+                    failures.Add("EdgeSpaceKeys names '" + kv.Key + "' (" + kv.Value
+                        + "), whose value no longer carries edge whitespace; drop the entry");
+            }
+
+            foreach (var lang in LanguageFiles(repo))
+            {
+                if (lang.Tag == LocStore.EnglishTag) continue;
+                foreach (var kv in lang.Table)
+                {
+                    if (kv.Key == LocStore.MetaMember) continue;
+                    if (!en.TryGetValue(kv.Key, out string english)) continue;   // the validator reports unknown keys
+                    string want = EdgeSpace(english);
+                    string got = EdgeSpace(kv.Value);
+                    if (want != got)
+                        failures.Add(lang.Tag + ".json: '" + kv.Key + "' leading and trailing whitespace differs from English: English "
+                            + want + ", translation " + got + ". English [" + english + "], translation [" + kv.Value + "]");
+                }
+            }
+            AssertNoFailures(failures);
+        }
+
+        // ==================================================================
+        // 9. A caption that exists as both a plain key and a _Fmt sibling must
+        //    read the same in every language. The plain key is the XAML default
+        //    the panel shows before code writes the caption, the _Fmt key is
+        //    what code writes afterwards, so a translation that renders them
+        //    differently changes the wording of one label mid-session.
+        // ==================================================================
+
+        // plain key, format key, and the arguments that reproduce the plain
+        // English text through the format string.
+        private static readonly object[][] PairedCaptions =
+        {
+            new object[] { "Lightsync_PatternSelectedLed", "Lightsync_PatternSelectedLed_Fmt", new object[] { 1 } },
+        };
+
+        [Fact]
+        public void LocPairedCaptionsAgree()
+        {
+            string repo = RepoRoot();
+            var en = LoadEnglish(repo, out List<string> enWarns);
+            var failures = new List<string>(enWarns.Select(w => "en.json: " + w));
+
+            var listed = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var pair in PairedCaptions) listed.Add((string)pair[0]);
+            foreach (var kv in en)
+            {
+                if (kv.Key == LocStore.MetaMember || kv.Key.EndsWith("_Fmt", StringComparison.Ordinal)) continue;
+                if (!en.ContainsKey(kv.Key + "_Fmt") || listed.Contains(kv.Key)) continue;
+                failures.Add("en.json: '" + kv.Key + "' and '" + kv.Key + "_Fmt' are one caption under two keys, which no"
+                    + " other check ties together. Add it to PairedCaptions with the arguments that reproduce the plain text,"
+                    + " or give the label a single key.");
+            }
+
+            var cultures = new List<LanguageFile>(LanguageFiles(repo));
+            foreach (var pair in PairedCaptions)
+            {
+                string plainKey = (string)pair[0];
+                string fmtKey = (string)pair[1];
+                var args = (object[])pair[2];
+                foreach (var lang in cultures)
+                {
+                    string plain = Resolve(lang, en, plainKey);
+                    string fmt = Resolve(lang, en, fmtKey);
+                    if (plain == null) { failures.Add(lang.Tag + ".json: PairedCaptions names '" + plainKey + "', which nothing defines"); continue; }
+                    if (fmt == null) { failures.Add(lang.Tag + ".json: PairedCaptions names '" + fmtKey + "', which nothing defines"); continue; }
+                    string rendered;
+                    try
+                    {
+                        rendered = string.Format(CultureInfo.GetCultureInfo("en-US"), fmt, args);
+                    }
+                    catch (FormatException ex)
+                    {
+                        failures.Add(lang.Tag + ".json: '" + fmtKey + "' does not format: [" + fmt + "] " + ex.Message);
+                        continue;
+                    }
+                    if (!string.Equals(plain, rendered, StringComparison.Ordinal))
+                        failures.Add(lang.Tag + ".json: '" + plainKey + "' reads [" + plain + "] but '" + fmtKey
+                            + "' renders [" + rendered + "]. They are one label, so they must agree.");
+                }
+            }
+            AssertNoFailures(failures);
+        }
+
+        // ==================================================================
+        // Helpers: language files
+        // ==================================================================
+
+        private sealed class LanguageFile
+        {
+            public string Tag;
+            public Dictionary<string, string> Table;
+        }
+
+        // Every Languages\*.json in the plugin, English included. Only the
+        // files themselves: a value a file leaves out falls back to English
+        // here, as LocStore does, but a parent-culture chain (es-MX over es)
+        // is not walked, so a pair split across a parent and its child is
+        // outside what these two tests can see.
+        private static IEnumerable<LanguageFile> LanguageFiles(string repo)
+        {
+            string dir = Path.Combine(repo, PluginRel.Replace('/', Path.DirectorySeparatorChar), "Languages");
+            if (!Directory.Exists(dir)) yield break;
+            foreach (string path in Directory.GetFiles(dir, "*.json").OrderBy(p => p, StringComparer.Ordinal))
+            {
+                string tag = Path.GetFileNameWithoutExtension(path);
+                Dictionary<string, string> table;
+                try
+                {
+                    table = LocStore.ParseLanguageJson(ReadUtf8(path), out _, _ => { });
+                }
+                catch (JsonException)
+                {
+                    continue;   // LocStore's own parse test owns malformed files
+                }
+                yield return new LanguageFile { Tag = tag, Table = table };
+            }
+        }
+
+        private static string Resolve(LanguageFile lang, Dictionary<string, string> en, string key)
+        {
+            if (lang.Table.TryGetValue(key, out string v) && !string.IsNullOrEmpty(v)) return v;
+            return en.TryGetValue(key, out string e) ? e : null;
+        }
+
+        // The leading and trailing whitespace of a value, printed so a failure
+        // message can show what is otherwise invisible.
+        private static string EdgeSpace(string text)
+        {
+            if (text == null) return "(null)";
+            int lead = 0;
+            while (lead < text.Length && char.IsWhiteSpace(text[lead])) lead++;
+            int trail = 0;
+            while (trail < text.Length - lead && char.IsWhiteSpace(text[text.Length - 1 - trail])) trail++;
+            return "lead " + Inv(lead) + ", trail " + Inv(trail);
+        }
+
+        // ==================================================================
         // Helpers: repo files
         // ==================================================================
 

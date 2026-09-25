@@ -894,6 +894,19 @@ function Get-LocPlaceholders([string]$Value) {
     return ($arr -join '|')
 }
 
+function Get-LocEdgeSpace([string]$Value) {
+    # The leading and trailing whitespace of a value, as counts, so a value
+    # whose space is load-bearing (a Run that butts against its neighbor in
+    # one sentence) can be compared across languages. Invisible in an editor
+    # and easy for a translator to drop, so it is checked rather than trusted.
+    if ($null -eq $Value) { return 'null' }
+    $lead = 0
+    while ($lead -lt $Value.Length -and [char]::IsWhiteSpace($Value[$lead])) { $lead++ }
+    $trail = 0
+    while ($trail -lt ($Value.Length - $lead) -and [char]::IsWhiteSpace($Value[$Value.Length - 1 - $trail])) { $trail++ }
+    return ('lead {0}, trail {1}' -f $lead, $trail)
+}
+
 function Get-LocMaxPlaceholderIndex([string]$Value) {
     $max = -1
     foreach ($m in [regex]::Matches($Value, '\{(\d+)(?::[^{}]*)?\}')) {
