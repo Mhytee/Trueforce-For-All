@@ -34,7 +34,7 @@
 ; the user agreed to; on a later update it skips the GPL info + EULA + privacy
 ; pages only while the stored revision still matches (see ShouldSkipPage).
 ; Forgetting to bump it would let a changed notice go un-reshown on update.
-#define LegalRevision  "5"
+#define LegalRevision  "6"
 
 [Setup]
 ; AppId is what registers our uninstall entry. Don't change once published.
@@ -820,8 +820,9 @@ begin
     begin
       PrivacyPage := CreateOutputMsgMemoPage(wpLicense,
         'Privacy Policy',
-        'How the optional online features handle your data.',
-        'The plugin is fully offline until you opt in to the online features. '
+        'How the online features handle your data.',
+        'Community features and anonymous usage statistics are on by default, and each has its own off switch in Settings. '
+          + 'Anything tied to an account stays opt-in. '
           + 'This copy is also installed as PRIVACY.md and published in the GitHub repository.',
         MarkdownToPlainText(Raw));
     end;

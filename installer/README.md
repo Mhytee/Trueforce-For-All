@@ -11,10 +11,20 @@ A single setup `.exe` that:
    with fallbacks (registry `DisplayName` scan, then default install path).
    No SimHub on this PC → dialog with link to `https://www.simhubdash.com/`,
    abort install.
-2. Copies the plugin DLL, helper exe, and shared deps into SimHub's install dir.
+2. Copies the three plugin DLLs (`User.TrueforceForAll.dll`,
+   `TrueforceForAll.Core.dll`, `TrueforceForAll.Engine.dll`), the
+   LoopbackHelper exe, the LICENSE / EULA / privacy policy, the factory
+   presets and the TF4ALL Dash into SimHub's install dir. No third-party
+   dependency DLLs are copied, the conditional HidSharp repair copy aside
+   (see What's bundled).
 3. If USBPcap isn't already installed, runs the bundled `USBPcapSetup.exe`
    silently, then registers the `NonStandardHWIDs` key (`USBPcapCMD -I`) so
    USB 3.0 ports are captured too.
+4. Runs two PowerShell helpers: `RegisterPlugin.ps1` registers the plugin in
+   SimHub's `PluginsActivation.json` so a fresh install lands enabled and
+   pinned to the sidebar (it respects an existing entry, so a disable or a
+   hide survives an upgrade), and `PrepareVisibleLaunch.ps1` turns SimHub's
+   "Start minimized" off for the post-install launch so SimHub opens visibly.
 
 The user never picks an install path. It's locked to wherever SimHub lives.
 
@@ -48,9 +58,16 @@ Output goes to `installer\output\TrueforceForAll-Setup.exe`.
 
 | Component | Source | License |
 |---|---|---|
-| Plugin DLL + helper exe | This repo | GPL-2.0 (see [../LICENSE](../LICENSE)) |
-| HidSharp, NAudio | NuGet, copied from plugin build output | (Apache 2.0 / MIT) |
+| Plugin DLLs, helper exe, factory presets, TF4ALL Dash | This repo | GPL-2.0 (see [../LICENSE](../LICENSE)) |
+| HidSharp 2.6.4 (repair copy only) | `installer/repair/HidSharp.dll`, written only when the broken 2.1.0 an old installer shipped is still on disk (issue #11) | Apache-2.0 (see [HidSharp-LICENSE.txt](HidSharp-LICENSE.txt)) |
 | USBPcap setup | `installer/vendor/USBPcapSetup.exe`, built by Tomasz Moń | BSD 2-Clause (see [USBPcap-LICENSE.txt](USBPcap-LICENSE.txt)) |
+
+Neither HidSharp nor NAudio is bundled as a runtime dependency. Both are
+compile-only references: at runtime the net48 plugin binds to SimHub's own
+copies in its install root. The one exception is the conditional HidSharp
+repair copy in the table above. The net8 LoopbackHelper needs neither, because
+it captures through the Windows API and emits raw buffers itself; it publishes
+as a single self-contained exe.
 
 The bundled USBPcap version is pinned per release; we don't track upstream
 USBPcap releases. USBPcap is a low-churn project and the user-mode CLI we
