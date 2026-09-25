@@ -1840,7 +1840,7 @@
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Front pitch (Hz):" Style="{StaticResource LabelText}"
-                                       ToolTip="Center of the front scrub tone (default 200). Lower = smoother rub, higher = sharper hiss. The tone still climbs as the front tires reach the limit."/>
+                                       ToolTip="Center of the front scrub tone. Lower = smoother rub, higher = sharper hiss. The tone still climbs as the front tires reach the limit."/>
                             <Slider     Grid.Column="1" x:Name="AxleSlipFrontPitchSlider" Minimum="100" Maximum="350" SmallChange="5" LargeChange="25"
                                         TickFrequency="25" ValueChanged="AxleSlipFrontPitchSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AxleSlipFrontPitchText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AxleSlipFrontPitchText" Text="200"/></Border>
@@ -1848,7 +1848,7 @@
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Rear pitch (Hz):" Style="{StaticResource LabelText}"
-                                       ToolTip="Center of the rear thump (default 55). Lower = heavier, slower thud. Also the floor for the wheelspin-locked pulse."/>
+                                       ToolTip="Center of the rear thump. Lower = heavier, slower thud. Also the floor for the wheelspin-locked pulse."/>
                             <Slider     Grid.Column="1" x:Name="AxleSlipRearPitchSlider" Minimum="25" Maximum="90" SmallChange="1" LargeChange="5"
                                         TickFrequency="5" ValueChanged="AxleSlipRearPitchSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AxleSlipRearPitchText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AxleSlipRearPitchText" Text="35"/></Border>
@@ -1916,7 +1916,7 @@
                         <Grid Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"
-                                       ToolTip="Lower = deeper whack. 30 Hz default keeps it below the gear-shift thud."/>
+                                       ToolTip="Lower = deeper whack. Keep it below the gear-shift thud so the two read as separate hits."/>
                             <Slider     Grid.Column="1" x:Name="KerbThumpFreqSlider" Minimum="15" Maximum="60" SmallChange="1" LargeChange="5"
                                         TickFrequency="5" ValueChanged="KerbThumpFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=KerbThumpFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="KerbThumpFreqText" Text="30"/></Border>
@@ -2111,7 +2111,7 @@
                             <Button Content="Test" Style="{StaticResource EffectTestButton}" Click="AbsTest_Click"/>
                             <TextBlock x:Name="AbsUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
                                        Text="not sent by Forza telemetry"
-                                       ToolTip="Forza Horizon's Data Out telemetry doesn't include ABS pump activity, so this effect will stay silent in FH4/FH5/FH6 regardless of the values you set here."/>
+                                       ToolTip="Forza's Data Out telemetry doesn't carry ABS pump activity, so this effect stays silent in Forza whatever you set."/>
                             <Button x:Name="AbsRevertBtn" Content="↶" Tag="Abs" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="AbsSaveBtn"   Content="Save…" Tag="Abs" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -2373,7 +2373,7 @@
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Frequency (Hz):" Style="{StaticResource LabelText}"
-                                       ToolTip="Lower = deeper thud. 50 Hz default."/>
+                                       ToolTip="Lower = deeper thud."/>
                             <Slider     Grid.Column="1" x:Name="CollisionFreqSlider" Minimum="20" Maximum="120" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="CollisionFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=CollisionFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="CollisionFreqText" Text="50"/></Border>
@@ -2846,7 +2846,7 @@
                  spring-mode game (Farming Simulator) is active, so each game's
                  player reads only the sentence that applies to them. -->
             <TextBlock x:Name="ModeBIntroText" Style="{StaticResource HelpText}" Margin="0,0,0,10" TextWrapping="Wrap"
-                       Text="The wheel's steering force is built from telemetry instead of the game's own FFB. Works in Forza Motorsport (2023) and Forza Horizon 4, 5, and 6. Set the game's force feedback and vibration to 0 so this is the only force on the wheel. Farming Simulator 22 and 25 are supported too, through the spring option below."/>
+                       Text="The wheel's steering force is built from telemetry instead of the game's own FFB. Set the game's force feedback and vibration to 0 so this is the only force on the wheel."/>
             <!-- The way back to the introduction dialog, which fires once when a
                  supported game first opens this tab and is gone for good after
                  that. Its steps outlive it. Visibility from RefreshFromPlugin. -->
@@ -3500,7 +3500,7 @@
                                       Content="Stationary spring"
                                       FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
                                       Checked="StationarySpring_Changed" Unchecked="StationarySpring_Changed"
-                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game and off until you tick it, in Assetto Corsa, RaceRoom, Le Mans Ultimate or Forza with Telemetry Based FFB. Ignored for iRacing (the sim already weights the wheel)."/>
+                                      ToolTip="A parked car sends almost no force feedback, so the wheel feels limp. This adds a centering weight that fades out as you start moving and never fights the game's own FFB. It is set per game and off until you tick it. When it can't run, the badge beside it says why."/>
                             <TextBlock x:Name="StationarySpringUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
                                        Text="not used in Forza"
                                        ToolTip="Skipped in Forza, where it can fight the game's own force feedback around pauses and drag the wheel hard to one side. Your tuning still applies in other games."/>
@@ -4537,9 +4537,11 @@
                                                  FriendlyName="{loc:T Controls_ControlsTabHostTf4allMaxForceDown_FriendlyName}"/>
                         </Grid>
                         <!-- One press runs the active game's auto force calibration
-                             (iRacing adopts the learned max force, Forza re-levels the
-                             auto strength). The mapping shipped in 0.3.0 without this
-                             row, so it was only reachable from SimHub's own list. -->
+                             (iRacing and Le Mans Ultimate adopt the learned max force,
+                             RaceRoom applies this car's learned strength, Forza and the
+                             other Telemetry Based FFB games re-level the auto strength).
+                             The mapping shipped in 0.3.0 without this row, so it was
+                             only reachable from SimHub's own list. -->
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Controls_ControlsTabHostAutoForce}" Style="{StaticResource LabelText}"
@@ -5049,7 +5051,7 @@
                              escape hatch (owner call 2026-09-14). -->
                         <CheckBox x:Name="StopStreamOnPauseCheck" Content="Hand the wheel back to the game while paused"
                                   Margin="0,4,0,2" Checked="StopStreamOnPause_Changed" Unchecked="StopStreamOnPause_Changed"
-                                  ToolTip="Off by default. When the game pauses (menu, fast travel, race start) the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center instead of holding the last force. Turn it off if you prefer the plugin to keep hold of the wheel while paused."/>
+                                  ToolTip="Off by default. Turn it on and, when the game pauses (menu, fast travel, race start), the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center. Leave it off and the plugin keeps hold of the wheel while paused. It only bites where the game's own force feedback is what the wheel would fall back to, so it does nothing while the plugin is building or carrying the whole steering force."/>
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
                                    Text="If the wheel misbehaves around pauses or fast travel, try flipping this."/>
 
@@ -5121,7 +5123,7 @@
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Audio ring:" VerticalAlignment="Center" Opacity="0.7"
-                                       ToolTip="Sample buffer between WASAPI loopback and the audio mixer. 16 is the safe default; 8 needs an unusually fast audio driver and can click. If you set 8 and hear continuous clicks, the auto-ratchet (Auto mode) will bump you back up."/>
+                                       ToolTip="Sample buffer between WASAPI loopback and the audio mixer. It starts at the smallest, which is the lowest latency; if you hear continuous clicks, raise it, or let the auto-ratchet (Auto mode) raise it for you."/>
                             <Slider     Grid.Column="1" x:Name="PerfAudioRingSlider"
                                         Minimum="16" Maximum="128" SmallChange="16" LargeChange="16"
                                         TickFrequency="16" IsSnapToTickEnabled="True"
@@ -5584,9 +5586,10 @@
                 </ScrollViewer>
             </sh:SHTabItem>
 
-            <!-- Account tab. Relocated out of Settings so identity, supporter status,
-                 cloud backup and Discord live in one place, with the Support card
-                 (Patreon / Ko-fi + the Patreon-sourced supporters wall) on top. -->
+            <!-- Account tab. Relocated out of Settings so identity, supporter status
+                 and Discord live in one place. Giving and the supporters wall live
+                 on the separate Support tab below, and cloud backup now sits under
+                 Settings > Backup and Sync. -->
             <sh:SHTabItem x:Name="AccountTab" Header="{loc:T Account_AccountTab_Header}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
@@ -5594,7 +5597,7 @@
             <!-- Account tab content (no outer expander; the tab name says Account). Identity at
                  top, external-account links under Connections, stats, then a collapsed Account
                  details section for the rarely-needed sessions + data export/delete. The community
-                 toggles + cloud backup moved to Settings > Network. -->
+                 toggles moved to Settings > Community and cloud backup to Settings > Backup & Sync. -->
 
             <!-- Sign-in status + button -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
