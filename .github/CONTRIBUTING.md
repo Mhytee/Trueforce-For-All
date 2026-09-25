@@ -6,10 +6,12 @@ the conventions below are guidance, not rules.
 ## Reporting bugs
 
 Hardware-dependent bugs are nearly impossible to debug without context. The
-easiest way to provide it: in the plugin, open the **Feedback** section, click
-**Report an issue**, then **Export Logs**, and attach the zip to your GitHub
-issue. It bundles your logs, the plugin's settings, your wheel / game / SimHub
-versions, and the USB / telemetry status automatically.
+easiest way to provide it: in the plugin, open the **Settings** tab and press
+**Report an issue...** at the bottom. It offers to zip your logs to your
+Desktop, then opens a pre-filled issue carrying the plugin and SimHub
+versions, your wheel, the active game and car, and the USB / telemetry
+status; drag the zip in afterwards. **Export logs...** sits beside it if you
+only want the zip.
 
 If you'd rather file manually, include:
 
@@ -54,7 +56,12 @@ Effects are small synth voices mixed into the haptic stream. Adding one
 touches several files; the quickest path is to copy an existing effect end
 to end. `RevLimiterEffect` is a good template (telemetry-driven, with its own
 settings section). Grep the codebase for `RevLimiter` to find every spot you
-need to mirror, it currently appears in roughly eight files. The steps:
+need to mirror; it spans Core, Engine and Plugin, though some of those hits
+are its own math and car-data files rather than wiring you have to repeat. A
+new effect touches about a dozen files: `ImplementThud`, the most recent one,
+touches fourteen (eleven under `src/`, plus a built-in preset, the dash
+generator and the djson it regenerates). Note the dash calls it `ImplThud`, so
+grepping the effect's full name alone will miss those. The steps:
 
 1. **Effect class** in `src/TrueforceForAll.Engine/Effects/` (effects live in
    the Engine assembly now, not the Plugin). Extend `TelemetryEffect`,
@@ -70,24 +77,36 @@ need to mirror, it currently appears in roughly eight files. The steps:
    default per effect (default-off is the safe baseline since it won't change
    wheel feel on upgrade until the user sees the badge; broadly-wanted effects
    can ship on).
-3. **Wire it into the plugin** (`TrueforcePlugin.cs`): construct the effect and
+3. **Classify it for backup** in `BackupProjection.cs`: add the settings
+   block's name to the per-effect portable list. The projection is an
+   allowlist, so a top-level settings field nobody classifies is quietly left
+   out of cloud backup and sync, and the startup audit that would catch it
+   only runs with dev mode unlocked.
+4. **Wire it into the plugin** (`TrueforcePlugin.cs`): construct the effect and
    add it to the `_effects` array (it is then fanned out for `OnTelemetry` and
    mixed automatically); add an `ActiveXxx` accessor
    (`GetActiveCarOverride()?.Xxx ?? Settings.Xxx`); copy settings into the live
    effect where the other effects are applied; and add it to the clone and
    equality/dirty helpers so Save / Revert track it.
-4. **UI section** in `SettingsControl.xaml` plus handlers in the `.cs`: a
+5. **UI section** in `SettingsControl.xaml` plus handlers in the `.cs`: a
    collapsible section bound in `RefreshFromPlugin` and written back on change.
    Copy the RevLimiter section.
-5. **Register the three enums** (keep them in sync, this is the easy step to
+6. **Register the three enums** (keep them in sync, this is the easy step to
    miss): `EffectKind` in `SettingsControl.xaml.cs`, and `EffectField` plus
    `SectionKind` in `TrueforcePlugin.cs`.
-6. **Badge and changelog**: add the effect ID to
+7. **Badge and changelog**: add the effect ID to
    `EffectChangelog.KnownEffectIds`, that alone fires the per-section NEW badge
    on upgrade. Optionally mirror the release notes into a `ChangelogVersion`
    for the offline changelog, setting `EffectId` on the new-effect entry (see
    [RELEASING.md](../docs/RELEASING.md) step 3).
-7. **Ducking (optional)**: if the airborne coordinator or sidechain should
+8. **Dash and preset preview**: add a `DashFx` row in
+   `TrueforcePlugin.DashRemote.cs`, plus its key in `DashFxDisplayOrder` and
+   the per-game `DashFxSupported` switch, so the effect reaches the TF4ALL
+   dash (the dash's own row list lives in `dashboards/make-tf4all-dash.ps1`,
+   which generates the djson; edit the script, never the djson). Then add an
+   `AddSection` line in `PresetPreviewWindow.cs` so the effect shows when
+   someone previews a preset.
+9. **Ducking (optional)**: if the airborne coordinator or sidechain should
    affect it, add a `DuckXxx` flag to `AirborneSettings` and honor it where the
    other voices are ducked.
 

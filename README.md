@@ -67,6 +67,8 @@ Synthesized from live game data and played over the Trueforce protocol.
   stays open.
 - **Road bumps**: rough ground rumbles through the wheel, read per tire in
   Forza for a sharper surface.
+- **Curb thump**: the whack as a wheel first meets a curb, separate from the
+  rumble that follows while you ride it.
 - **Implement thud**: the hydraulic hum as an implement or loader arm
   moves, and the thump as it lands. (Farming Simulator.)
 - **Traction loss**: tire screech when grip breaks, sharpest where the game
@@ -134,6 +136,13 @@ the rev lights and the wheel's screen come with it.
 - **Each car's max force, learned.** The plugin watches what a car really
   pushes; drive a clean lap, and once the reading holds steady, one press
   takes it. Nudge any car heavier or lighter from there.
+- **Curb strikes and rumble strips, softened.** iRacing reports each wheel's
+  suspension speed beside the torque, so only the instants a curb lands are
+  eased; cornering load and weight transfer pass through untouched. On by
+  default, with a slider for how much to take out.
+- **A stop where the car's steering stops.** A soft lock built from the sim's
+  own steering position and lock, so the wheel no longer turns on past the
+  car's lock to its hard stop. On by default.
 - **Incident points, announced.** The dash shows your count against the
   session's limit, and the wheel's screen flashes what each new one cost.
 - **Engines sound like themselves.** iRacing states each car's cylinder
@@ -495,13 +504,18 @@ full rate regardless of license.)
 <details>
 <summary><b>Is this anti-cheat safe?</b></summary>
 
-Yes. The plugin operates entirely outside the game. It never injects code,
-reads or modifies game memory, or hooks the game in any way. It only talks
-to the wheel over USB (via USBPcap), reads telemetry the game already
-broadcasts (SimHub, shared memory, or UDP), and captures game audio through
-Windows' own loopback. Switching off a game's native Trueforce is done by
-editing a config file or flipping an in-game setting before launch, never by
-touching the running game.
+Yes. For every sim TF4ALL supports, the plugin never injects code into a
+running game, never reads or modifies game memory, and never hooks the game in
+any way. It talks to the wheel over USB (via USBPcap), reads telemetry the game
+publishes (SimHub, shared memory, UDP, or a named pipe), and captures game
+audio through Windows' own loopback. Switching off a game's native Trueforce is
+done by editing a config file or flipping an in-game setting before launch,
+never by touching the running game.
+
+Two games load a TF4ALL component the normal way they load any mod: the
+Assetto Corsa bridge is a Custom Shaders Patch script, and the Farming
+Simulator telemetry mod is a mod you tick in the game's own mod list. The game
+loads each one; the plugin never reaches into a running process.
 
 </details>
 
