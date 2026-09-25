@@ -658,11 +658,11 @@
                            VerticalAlignment="Bottom" Margin="8,0,0,3"/>
                 <!-- "Check for updates" link. Hidden when an update is available;
                      the UpdateAvailableButton takes its place. -->
-                <Button x:Name="CheckForUpdatesButton" Content="Check for updates"
+                <Button x:Name="CheckForUpdatesButton" Content="{loc:T Header_CheckForUpdates}"
                         Style="{StaticResource LinkButton}" Margin="12,0,0,3"
                         VerticalAlignment="Bottom"
                         Click="CheckForUpdatesButton_Click"
-                        ToolTip="Re-poll GitHub for a newer release. The plugin also checks once automatically on startup."/>
+                        ToolTip="{loc:T Header_CheckForUpdates_Tip}"/>
                 <TextBlock x:Name="CheckForUpdatesStatus" Text="" FontSize="11" Opacity="0.6"
                            VerticalAlignment="Bottom" Margin="8,0,0,3"/>
                 <!-- Community-preset update checking moved into the Preset browser; the
@@ -676,16 +676,16 @@
                         Style="{StaticResource UpdateCtaButton}"
                         Margin="12,0,0,3" VerticalAlignment="Bottom"
                         Click="UpdateAvailableButton_Click"
-                        ToolTip="Open the update dialog (release notes + Update now button).">
-                    <TextBlock x:Name="UpdateAvailableButtonText" Text="Update available"/>
+                        ToolTip="{loc:T Header_UpdateAvailable_Tip}">
+                    <TextBlock x:Name="UpdateAvailableButtonText" Text="{loc:T Header_UpdateAvailableButton}"/>
                 </Button>
             </StackPanel>
-            <TextBlock Text="The ultimate companion for a Trueforce-enabled Logitech wheel."
+            <TextBlock Text="{loc:T Header_TheUltimateCompanionFor}"
                        FontSize="13" Opacity="0.7" Margin="0,0,0,2" TextWrapping="Wrap"/>
             <!-- The only place the app says this. It is not in the EULA or the privacy
                  policy, and the UI uses the Trueforce name throughout, so keep it
                  somewhere visible even when the line above gets rewritten. -->
-            <TextBlock Text="Unofficial. Not affiliated with Logitech."
+            <TextBlock Text="{loc:T Header_UnofficialNotAffiliatedWith}"
                        FontSize="11" Opacity="0.45" Margin="0,0,0,12" TextWrapping="Wrap"/>
 
             <!-- "What's new" banner. Shown when the running build's version
@@ -703,9 +703,9 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" x:Name="WhatsNewBannerText" Foreground="White"
                                FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"
-                               Text="What's new"/>
+                               Text="{loc:T Header_WhatsNewBanner}"/>
                     <TextBlock Grid.Column="1" Foreground="White" Opacity="0.85"
-                               FontSize="12" VerticalAlignment="Center" Text="View →"/>
+                               FontSize="12" VerticalAlignment="Center" Text="{loc:T Header_WhatsNewBannerView}"/>
                 </Grid>
             </Border>
 
@@ -727,16 +727,16 @@
                     <TextBlock Grid.Column="0" Foreground="White"
                                FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"
                                TextWrapping="Wrap"
-                               Text="Wheel feeling alive in a game that never had Trueforce? Help another driver find TF4ALL."/>
+                               Text="{loc:T Header_ShareCtaBannerWheelFeelingAliveIn}"/>
                     <TextBlock Grid.Column="1" Foreground="White" Opacity="0.85"
                                FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0"
-                               Text="Share →"/>
+                               Text="{loc:T Header_ShareCtaBannerShare}"/>
                     <Button Grid.Column="2" x:Name="ShareCtaDismiss"
                             Content="✕" Width="22" Height="22" Margin="10,0,0,0"
                             Click="ShareCtaDismiss_Click"
                             Background="Transparent" Foreground="White"
                             BorderBrush="Transparent" BorderThickness="0"
-                            Cursor="Hand" ToolTip="Don't show this again"/>
+                            Cursor="Hand" ToolTip="{loc:T Header_ShareCtaDismiss_Tip}"/>
                 </Grid>
             </Border>
 
@@ -756,15 +756,15 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                         <TextBlock x:Name="OfflineEditTitle" Foreground="White" FontWeight="SemiBold"
-                                   FontSize="13" Text="Editing preset"/>
+                                   FontSize="13" Text="{loc:T Header_OfflineEditTitle}"/>
                         <TextBlock x:Name="OfflineEditHint" Foreground="White" Opacity="0.85" FontSize="11"
                                    Margin="0,2,0,0" TextWrapping="Wrap"
-                                   Text="Game defaults are shown for reference and can't be edited here; only the per-car effects are editable."/>
+                                   Text="{loc:T Header_OfflineEditHint}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
-                        <Button x:Name="OfflineEditDoneBtn" Content="Done" Width="84" Height="26"
+                        <Button x:Name="OfflineEditDoneBtn" Content="{loc:T Header_OfflineEditDone}" Width="84" Height="26"
                                 Click="OfflineEditDone_Click"
-                                ToolTip="Finish editing: keep what you've saved, drop the live edit overlay, and return to your running game/car."/>
+                                ToolTip="{loc:T Header_OfflineEditDone_Tip}"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -787,12 +787,12 @@
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Grid.Column="1" x:Name="UdpSetupBannerText" Foreground="#222"
                                FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Text=""/>
-                    <Button Grid.Column="2" x:Name="UdpSetupBannerButton" Content="Set up…"
+                    <Button Grid.Column="2" x:Name="UdpSetupBannerButton" Content="{loc:T Header_UdpSetupBannerSetUp}"
                             Width="90" Height="28" Margin="10,0,0,0"
                             Click="UdpSetupBannerButton_Click"
                             Background="#222" Foreground="#FFC107"
                             BorderBrush="#222" BorderThickness="1" Cursor="Hand"
-                            ToolTip="Jump to the UDP telemetry setup for this game."/>
+                            ToolTip="{loc:T Header_UdpSetupBannerSetUp_Tip}"/>
                 </Grid>
             </Border>
 
@@ -818,12 +818,12 @@
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Grid.Column="1" x:Name="ForzaFallbackBannerText" Foreground="White"
                                FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
-                               Text="Force feedback is working, but the plugin is reading Forza's telemetry secondhand from SimHub, which carries less detail than Forza's own feed. Point Forza's Data Out at the plugin for more precise road texture and airborne feel, and to use Telemetry Based FFB, which needs the direct feed."/>
-                    <Button Grid.Column="2" x:Name="ForzaFallbackBannerButton" Content="Set up…"
+                               Text="{loc:T Header_ForzaFallbackBanner}"/>
+                    <Button Grid.Column="2" x:Name="ForzaFallbackBannerButton" Content="{loc:T Header_ForzaFallbackBannerSetUp}"
                             Style="{StaticResource InfoBannerButton}"
                             Width="90" Height="28" Margin="10,0,0,0"
                             Click="ForzaFallbackBannerButton_Click"
-                            ToolTip="Jump to the Forza telemetry setup."/>
+                            ToolTip="{loc:T Header_ForzaFallbackBannerSetUp_Tip}"/>
                 </Grid>
             </Border>
 
@@ -843,20 +843,20 @@
                              force", and leaving that behaviour to fall out of
                              "disabled" made the plugin do things nobody asked for. -->
                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="Mode" FontSize="14" FontWeight="SemiBold"
+                            <TextBlock Text="{loc:T Header_Mode}" FontSize="14" FontWeight="SemiBold"
                                        VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <ComboBox x:Name="MasterModeCombo" Width="150" VerticalAlignment="Center"
                                       SelectionChanged="MasterMode_Changed"
-                                      ToolTip="Normal: force feedback, effects, rev lights and the wheel's screen. Use this in most games. Lightsync only: turns off the plugin's effects and force feedback, for games with native Trueforce support or when you only want the light patterns and screen. Off: disables the plugin for the game you are in.">
+                                      ToolTip="{loc:T Header_MasterMode_Tip}">
                                 <!-- Tagged with their mode because the list is built
                                      per wheel: the Lightsync only item is removed for a
                                      wheel whose lights are one fixed look, where it does
                                      nothing. Position arithmetic would then quietly mean
                                      the wrong mode, so the Tag is the mapping. -->
-                                <ComboBoxItem Content="Normal" Tag="Normal"/>
+                                <ComboBoxItem Content="{loc:T Header_MasterModeNormal}" Tag="Normal"/>
                                 <ComboBoxItem x:Name="MasterModeLightsyncItem"
-                                              Content="Lightsync only" Tag="LightsyncOnly"/>
-                                <ComboBoxItem Content="Off" Tag="Off"/>
+                                              Content="{loc:T Header_MasterModeLightsyncItem}" Tag="LightsyncOnly"/>
+                                <ComboBoxItem Content="{loc:T Header_MasterModeOff}" Tag="Off"/>
                             </ComboBox>
                         </StackPanel>
                         <!-- Live status pill, moved up beside the on/off toggle so the
@@ -868,13 +868,13 @@
                             <Border x:Name="StatusPill" CornerRadius="10" Padding="10,3" Background="#3D8B40">
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse x:Name="StatusPillDot" Width="8" Height="8" Fill="#A5D6A7" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                    <TextBlock x:Name="StatusPillText" Text="Idle" Foreground="White" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="StatusPillText" Text="{loc:T Header_StatusPill}" Foreground="White" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
                             <Border x:Name="EnhancedBadge" CornerRadius="10" Padding="10,3" Background="#FFB300"
                                     Margin="6,0,0,0" Visibility="Collapsed"
-                                    ToolTip="Per-game enhanced telemetry source. Higher rate and more physics signals than the standard SimHub data pipe.">
-                                <TextBlock x:Name="EnhancedBadgeText" Text="✨ Enhanced" Foreground="#1A1A1A" FontSize="12" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    ToolTip="{loc:T Header_EnhancedBadge_Tip}">
+                                <TextBlock x:Name="EnhancedBadgeText" Text="{loc:T Header_EnhancedBadge}" Foreground="#1A1A1A" FontSize="12" FontWeight="Bold" VerticalAlignment="Center"/>
                             </Border>
                         </StackPanel>
                         <!-- Account chip. Always visible: a lightweight, persistent
@@ -900,7 +900,7 @@
                             <Button x:Name="HelpGuidesHeaderButton"
                                     Height="26" Padding="6,0" Margin="0,0,4,0" Cursor="Hand"
                                     Click="HelpGuides_Click"
-                                    ToolTip="Guides and walkthroughs."
+                                    ToolTip="{loc:T Header_HelpGuidesHeader_Tip}"
                                     ToolTipService.InitialShowDelay="150">
                                 <TextBlock Text="❔" FontSize="13" VerticalAlignment="Center"/>
                             </Button>
@@ -914,7 +914,7 @@
                             <Button x:Name="DashPhoneHeaderButton"
                                     Height="26" Padding="6,0" Margin="0,0,4,0" Cursor="Hand"
                                     Click="DashPhoneAccess_Click"
-                                    ToolTip="Control effects from your phone or tablet. Shows a QR code that opens TF4ALL Dash."
+                                    ToolTip="{loc:T Header_DashPhoneHeader_Tip}"
                                     ToolTipService.InitialShowDelay="150">
                                 <TextBlock Text="📱" FontSize="13" VerticalAlignment="Center"/>
                             </Button>
@@ -922,7 +922,7 @@
                                  in; click opens the Achievements tracker and clears the dot. -->
                             <Button x:Name="AchievementCrownButton" Visibility="Collapsed"
                                     Height="26" Padding="6,0" Margin="0,0,4,0" Cursor="Hand"
-                                    Click="AchievementCrown_Click" ToolTip="Achievements">
+                                    Click="AchievementCrown_Click" ToolTip="{loc:T Header_AchievementCrown_Tip}">
                                 <Grid>
                                     <TextBlock x:Name="AchievementCrownIcon" Text="👑" FontSize="13"
                                                VerticalAlignment="Center"/>
@@ -935,14 +935,14 @@
                             <Button x:Name="AccountChipButton"
                                     VerticalAlignment="Center" Height="26" Padding="10,0" Cursor="Hand"
                                     Click="AccountChip_Click"
-                                    ToolTip="Sign in to share presets and use community car data.">
+                                    ToolTip="{loc:T Header_AccountChip_Tip}">
                                 <StackPanel Orientation="Horizontal">
                                     <!-- Connection dot. Drawn as an Ellipse (not a text
                                          glyph) so green-filled and grey-hollow are exactly
                                          the same size. Fill/Stroke set in ApplyAccountDot. -->
                                     <Ellipse x:Name="AccountChipIcon" Width="11" Height="11"
                                              VerticalAlignment="Center" Margin="0,0,6,0" Visibility="Collapsed"/>
-                                    <TextBlock x:Name="AccountChipText" Text="Sign in" FontSize="12"
+                                    <TextBlock x:Name="AccountChipText" Text="{loc:T Header_AccountChip}" FontSize="12"
                                                FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     <TextBlock x:Name="AccountChipCaret" Text="▾" FontSize="10"
                                                VerticalAlignment="Center" Margin="5,0,0,0" Visibility="Collapsed"/>
@@ -966,12 +966,12 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Game" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="1" x:Name="HeaderGameText" Text="(none)" FontSize="12"
+                        <TextBlock Grid.Column="0" Text="{loc:T Common_Game}" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" x:Name="HeaderGameText" Text="{loc:T Header_HeaderGame}" FontSize="12"
                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                        <TextBlock Grid.Column="2" Text="Car" FontSize="12" Opacity="0.6" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Grid.Column="2" Text="{loc:T Header_Car}" FontSize="12" Opacity="0.6" VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock x:Name="HeaderCarText" Text="(none)" FontSize="12"
+                            <TextBlock x:Name="HeaderCarText" Text="{loc:T Header_HeaderCar}" FontSize="12"
                                        TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                             <!-- The header "Rename…" button was removed: car naming lives in
                                  the Car facts panel right below (Name box + Save), which runs
@@ -993,22 +993,22 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Game preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:T Header_GamePreset}" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
                         <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
                             <ComboBox x:Name="HeaderPresetCombo" SelectionChanged="HeaderPresetCombo_Changed"
                                       MinWidth="220" MaxWidth="340" VerticalAlignment="Center"
                                       MaxDropDownHeight="420" IsTextSearchEnabled="True"
-                                      ToolTip="The active game preset."/>
-                            <Button x:Name="HeaderGameSaveAllBtn" Content="★ Save"
+                                      ToolTip="{loc:T Header_HeaderPreset_Tip}"/>
+                            <Button x:Name="HeaderGameSaveAllBtn" Content="{loc:T Header_HeaderGameSaveAll}"
                                     Style="{StaticResource HeaderSaveAllButton}" Click="HeaderGameSaveAll_Click"
-                                    ToolTip="Save your current tuning to this game's preset."/>
+                                    ToolTip="{loc:T Header_HeaderGameSaveAll_Tip}"/>
                             <!-- Conditional: shown alongside ★ Save all (i.e.
                                  when there's unsaved tuning), see
                                  UpdateGlobalDirtyFromEffects. -->
-                            <Button x:Name="HeaderSaveAsNewBtn" Content="Save as new…" Visibility="Collapsed"
+                            <Button x:Name="HeaderSaveAsNewBtn" Content="{loc:T Header_HeaderSaveAsNew}" Visibility="Collapsed"
                                     Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
                                     Click="SaveAsPreset_Click"
-                                    ToolTip="Save current tuning under a new preset name (doesn't overwrite the active one)."/>
+                                    ToolTip="{loc:T Header_HeaderSaveAsNew_Tip}"/>
                             <!-- Conditional: visible when community is on AND the
                                  active preset is user-owned (not a built-in).
                                  Hidden in UpdateHeaderShareButtons. -->
@@ -1016,30 +1016,30 @@
                                     Style="{StaticResource HeaderShareIconButton}"
                                     Click="HeaderGameShare_Click"
                                     ToolTipService.ShowOnDisabled="True"
-                                    ToolTip="Share this game preset with the community."/>
+                                    ToolTip="{loc:T Header_HeaderGameShare_Tip}"/>
                             <!-- Transient "Saved ✓" flash after a header save, in place of
                                  the old blocking success dialog. Cleared on a timer. -->
                             <TextBlock x:Name="HeaderGameSaveStatus" Text="" FontSize="11"
                                        Foreground="#7FC77F" FontWeight="SemiBold"
                                        VerticalAlignment="Center" Margin="10,0,0,0"/>
                         </StackPanel>
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Car preset" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:T Header_CarPreset}" FontSize="12" Opacity="0.6" Margin="0,3,0,0" VerticalAlignment="Center"/>
                         <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,0">
                             <ComboBox x:Name="HeaderCarPresetCombo" SelectionChanged="HeaderCarPresetCombo_Changed"
                                       MinWidth="220" MaxWidth="340"
                                       VerticalAlignment="Center"
                                       MaxDropDownHeight="420" IsTextSearchEnabled="True"
-                                      ToolTip="The preset for the current car. Pick this car's preset, or another car's to load its tuning onto the current car. Save in the Active car section saves it to this car. Confirms first if you have unsaved tuning."/>
-                            <Button x:Name="HeaderCarSaveAllBtn" Content="★ Save"
+                                      ToolTip="{loc:T Header_HeaderCarPreset_Tip}"/>
+                            <Button x:Name="HeaderCarSaveAllBtn" Content="{loc:T Header_HeaderCarSaveAll}"
                                     Style="{StaticResource HeaderSaveAllButton}" Click="HeaderCarSaveAll_Click"
-                                    ToolTip="Save your current tuning to this car's preset."/>
+                                    ToolTip="{loc:T Header_HeaderCarSaveAll_Tip}"/>
                             <!-- Conditional: shown alongside the car ★ Save all
                                  (i.e. when this car has unsaved tuning), see
                                  UpdateGlobalDirtyFromEffects. -->
-                            <Button x:Name="HeaderCarSaveAsNewBtn" Content="Save as new…" Visibility="Collapsed"
+                            <Button x:Name="HeaderCarSaveAsNewBtn" Content="{loc:T Header_HeaderCarSaveAsNew}" Visibility="Collapsed"
                                     Style="{StaticResource LinkButton}" Margin="8,0,0,0" VerticalAlignment="Center"
                                     Click="CarSaveAsNew_Click"
-                                    ToolTip="Save this car's current tuning as a new car preset (doesn't overwrite the active one)."/>
+                                    ToolTip="{loc:T Header_HeaderCarSaveAsNew_Tip}"/>
                             <!-- Conditional: visible when community is on AND a
                                  real car preset is selected (not "(none)" /
                                  not a built-in). Hidden in
@@ -1048,7 +1048,7 @@
                                     Style="{StaticResource HeaderShareIconButton}"
                                     Click="HeaderCarShare_Click"
                                     ToolTipService.ShowOnDisabled="True"
-                                    ToolTip="Share this car preset with the community."/>
+                                    ToolTip="{loc:T Header_HeaderCarShare_Tip}"/>
                             <TextBlock x:Name="HeaderCarSaveStatus" Text="" FontSize="11"
                                        Foreground="#7FC77F" FontWeight="SemiBold"
                                        VerticalAlignment="Center" Margin="10,0,0,0"/>
@@ -1064,7 +1064,7 @@
                     <Border x:Name="CommunityVoteRow" Visibility="Collapsed"
                             Background="#22303030" CornerRadius="4" Padding="10,6" Margin="0,8,0,0">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="Rate this community preset:" FontSize="12"
+                            <TextBlock Text="{loc:T Header_CommunityVoteRowRateThisCommunityPreset}" FontSize="12"
                                        Opacity="0.7" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <!-- Chip-styled buttons (background + outline) so they
                                  read as obviously clickable. The arrow lives INSIDE
@@ -1075,7 +1075,7 @@
                                     BorderThickness="1" CornerRadius="3"
                                     Padding="6,1" Cursor="Hand"
                                     MouseLeftButtonUp="ActiveCardVoteUp_Click"
-                                    ToolTip="Good tune. Click again to undo your vote.">
+                                    ToolTip="{loc:T Header_CommunityVoteRowGoodTuneClickAgain_Tip}">
                                 <TextBlock x:Name="CommunityVoteUpArrow" Text="▲" FontSize="13"
                                            Foreground="#888888" VerticalAlignment="Center"
                                            HorizontalAlignment="Center"/>
@@ -1087,7 +1087,7 @@
                                     BorderThickness="1" CornerRadius="3"
                                     Padding="6,1" Cursor="Hand"
                                     MouseLeftButtonUp="ActiveCardVoteDown_Click"
-                                    ToolTip="Not for me. Click again to undo your vote.">
+                                    ToolTip="{loc:T Header_CommunityVoteRowNotForMeClickAgain_Tip}">
                                 <TextBlock x:Name="CommunityVoteDownArrow" Text="▼" FontSize="13"
                                            Foreground="#888888" VerticalAlignment="Center"
                                            HorizontalAlignment="Center"/>
@@ -1108,14 +1108,14 @@
                             <TextBlock x:Name="CommunityVoteNudgeText" FontSize="12"
                                        Foreground="#E8F5E9" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
-                                       Text="Rate the preset you've been running?"/>
-                            <Button x:Name="CommunityVoteNudgeGood" Content="▲ Good"
+                                       Text="{loc:T Header_CommunityVoteNudge}"/>
+                            <Button x:Name="CommunityVoteNudgeGood" Content="{loc:T Header_CommunityVoteNudgeGood}"
                                     Style="{StaticResource LinkButton}" Margin="14,0,0,0"
                                     Foreground="#A5D6A7" Click="ActiveCardNudgeGood_Click"/>
-                            <Button x:Name="CommunityVoteNudgeBad" Content="▼ Not for me"
+                            <Button x:Name="CommunityVoteNudgeBad" Content="{loc:T Header_CommunityVoteNudgeBad}"
                                     Style="{StaticResource LinkButton}" Margin="14,0,0,0"
                                     Foreground="#EF9A9A" Click="ActiveCardNudgeBad_Click"/>
-                            <Button x:Name="CommunityVoteNudgeLater" Content="Later"
+                            <Button x:Name="CommunityVoteNudgeLater" Content="{loc:T Header_CommunityVoteNudgeLater}"
                                     Style="{StaticResource LinkButton}" Margin="14,0,0,0"
                                     Click="ActiveCardNudgeLater_Click"/>
                         </StackPanel>
@@ -1133,27 +1133,27 @@
                          here); with no active car the body is just the hint
                          line. Populated by RefreshCarFactsPanel. -->
                     <Expander x:Name="CarFactsExpander" IsExpanded="True" Margin="0,10,0,0"
-                              ToolTip="What the plugin currently believes about the car you're driving. Correct anything that looks wrong.">
+                              ToolTip="{loc:T Header_CarFacts_Tip}">
                         <Expander.Header>
-                            <TextBlock Text="Car Facts" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                            <TextBlock Text="{loc:T Header_CarFacts}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
                         </Expander.Header>
                         <StackPanel Margin="0,8,0,0">
                             <!-- No-car placeholder: tells the user what will appear
                                  here and why they'd care, before they ever drive. -->
                             <TextBlock x:Name="CarFactsNoCarHint" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
-                                       Text="Once you're driving, the car's facts show here. If the redline buzz or the rev lights fire at the wrong RPM, this is where to fix it."/>
+                                       Text="{loc:T Header_CarFactsNoCar}"/>
                             <StackPanel x:Name="CarFactsRowsPanel">
                             <!-- Name -->
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Car name" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="0" Text="{loc:T Header_CarFactsRowsCarName}" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
                                 <TextBox  Grid.Column="1" x:Name="CarFactsNameBox" VerticalAlignment="Center" Margin="0,0,8,0"
                                           TextChanged="CarFactsNameBox_TextChanged"
                                           KeyDown="CarFactsName_KeyDown"/>
-                                <Button   Grid.Column="2" x:Name="CarFactsNameSaveBtn" Content="Save"
+                                <Button   Grid.Column="2" x:Name="CarFactsNameSaveBtn" Content="{loc:T Common_Save}"
                                           Style="{StaticResource EffectSaveButton}" Visibility="Collapsed"
                                           Click="CarFactsNameSave_Click"
-                                          ToolTip="Save a human-readable name for this car. Saved locally; also shared with the community when 'Enable community features (online)' is on."/>
+                                          ToolTip="{loc:T Header_CarFactsNameSave_Tip}"/>
                             </Grid>
                             <TextBlock x:Name="CarFactsCommunityNameText" FontSize="11" Opacity="0.55"
                                        Margin="64,0,0,6" Visibility="Collapsed"/>
@@ -1163,17 +1163,17 @@
                                  rev ceiling). -->
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Engine" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="0" Text="{loc:T Header_CarFactsRowsEngine}" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
                                 <ComboBox  Grid.Column="1" x:Name="CarFactsEngineCombo" SelectionChanged="CarFactsEngine_Changed"
                                            DropDownClosed="CarFactsEngine_DropDownClosed"
                                            LostKeyboardFocus="CarFactsEngine_LostKeyboardFocus"
                                            VerticalAlignment="Center" Margin="0,0,8,0"
-                                           ToolTip="The engine type used for the firing pattern. Correct it if the auto-detected type is wrong. The Engine pulse Test button can help you A/B two candidates."/>
+                                           ToolTip="{loc:T Header_CarFactsEngine_Tip}"/>
                                 <TextBlock Grid.Column="2" Style="{StaticResource HelpText}" VerticalAlignment="Center">
                                     <Hyperlink x:Name="CarFactsRefreshCommunityLink" Click="CarFactsRefreshCommunity_Click"
-                                               ToolTip="Refresh this car's community facts from the server now (they otherwise refresh at most weekly).">↻ Refresh</Hyperlink>
+                                               ToolTip="{loc:T Header_CarFactsRefreshCommunity_Tip}"><Run Text="{loc:T Header_CarFactsRefreshCommunity}"/></Hyperlink>
                                     <Run Text="   "/>
-                                    <Hyperlink x:Name="CarFactsManageVariantsLink" Click="CarFactsManageVariants_Click">Manage variants…</Hyperlink>
+                                    <Hyperlink x:Name="CarFactsManageVariantsLink" Click="CarFactsManageVariants_Click"><Run Text="{loc:T Header_CarFactsManageVariants}"/></Hyperlink>
                                 </TextBlock>
                             </Grid>
                             <!-- Auto-detect readout (max RPM rides its end) + community
@@ -1188,20 +1188,20 @@
                                     <ColumnDefinition Width="64"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Redline" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="0" Text="{loc:T Header_CarFactsRowsRedline}" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
                                 <TextBox   Grid.Column="1" x:Name="CarFactsRedlineBox" Width="70" VerticalAlignment="Center"
                                            KeyDown="CarFactsRedline_KeyDown"
-                                           ToolTip="The redline start: where the tachometer turns red and you should upshift."/>
-                                <TextBlock Grid.Column="2" Text="RPM" FontSize="11" Opacity="0.6" VerticalAlignment="Center" Margin="4,0,8,0"/>
-                                <Button    Grid.Column="3" x:Name="CarFactsRedlineSetBtn" Content="Set"
+                                           ToolTip="{loc:T Header_CarFactsRedline_Tip}"/>
+                                <TextBlock Grid.Column="2" Text="{loc:T Header_CarFactsRowsRpm}" FontSize="11" Opacity="0.6" VerticalAlignment="Center" Margin="4,0,8,0"/>
+                                <Button    Grid.Column="3" x:Name="CarFactsRedlineSetBtn" Content="{loc:T Header_CarFactsRedlineSet}"
                                            Style="{StaticResource EffectSaveButton}" Visibility="Visible"
                                            Click="CarFactsRedlineSet_Click"
-                                           ToolTip="Save the redline start for this variant (this tune)."/>
+                                           ToolTip="{loc:T Header_CarFactsRedlineSet_Tip}"/>
                                 <TextBlock Grid.Column="4" x:Name="CarFactsRedlineSourceText" FontSize="11" Opacity="0.6"
                                            VerticalAlignment="Center" Margin="2,0,0,0"/>
                             </Grid>
                             <TextBlock Margin="64,0,0,4" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
-                                       Text="Where the tachometer turns red and you upshift. This is not the rev limiter cutoff, which sits a little higher."/>
+                                       Text="{loc:T Header_CarFactsRowsWhereTheTachometerTurns}"/>
                             <!-- Factual note when no community redline exists yet. No share
                                  button: Set routes through the submit path by itself. -->
                             <TextBlock x:Name="CarFactsNoCommunityNudge" Margin="64,4,0,0" FontSize="11"
@@ -1216,13 +1216,13 @@
                                  (so stored data is never invisibly active). -->
                             <Expander x:Name="CarFactsPerGearExpander" IsExpanded="False" Margin="0,6,0,0" Visibility="Collapsed">
                                 <Expander.Header>
-                                    <TextBlock Text="Per-Gear Redlines" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{loc:T Header_CarFactsPerGearRedlines}" FontSize="12" Opacity="0.8" VerticalAlignment="Center"/>
                                 </Expander.Header>
                                 <StackPanel Margin="0,4,0,0">
                                     <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap" Margin="0,0,0,6"
-                                               Text="Set a different redline for specific gears, e.g. a lower 1st-gear shift point. Unlisted gears use the redline above."/>
+                                               Text="{loc:T Header_CarFactsPerGearSetADifferentRedline}"/>
                                     <StackPanel x:Name="CarFactsPerGearRows"/>
-                                    <Button x:Name="CarFactsAddGearBtn" Content="+ Add gear" HorizontalAlignment="Left"
+                                    <Button x:Name="CarFactsAddGearBtn" Content="{loc:T Header_CarFactsAddGear}" HorizontalAlignment="Left"
                                             Padding="10,2" Margin="0,2,0,0" Click="CarFactsAddGear_Click"/>
                                 </StackPanel>
                             </Expander>
@@ -1237,17 +1237,17 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="64"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Rev lights" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="0" Text="{loc:T Header_CarRevLightRowRevLights}" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
                                 <ComboBox Grid.Column="1" x:Name="CarRevLightCombo" Width="230"
                                           SelectionChanged="CarRevLight_Changed"/>
-                                <Button Grid.Column="2" x:Name="CarRevLightRememberBtn" Content="Remember for this car"
+                                <Button Grid.Column="2" x:Name="CarRevLightRememberBtn" Content="{loc:T Header_CarRevLightRemember}"
                                         Margin="8,0,0,0" Padding="10,2" VerticalAlignment="Center"
                                         Click="RevLightRemember_Click"/>
                                 <TextBlock Grid.Column="3" x:Name="CarRevLightRememberStatus" VerticalAlignment="Center"
-                                           Margin="10,0,0,0" FontSize="11" Opacity="0.7" Visibility="Collapsed"><Run x:Name="CarRevLightRememberRun"/> · <Hyperlink Click="RevLightForget_Click">Forget</Hyperlink></TextBlock>
+                                           Margin="10,0,0,0" FontSize="11" Opacity="0.7" Visibility="Collapsed"><Run x:Name="CarRevLightRememberRun"/> · <Hyperlink Click="RevLightForget_Click"><Run Text="{loc:T Header_CarRevLightRememberForget}"/></Hyperlink></TextBlock>
                             </Grid>
                             <TextBlock x:Name="CarRevLightRowHelp" Margin="64,0,0,4" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
-                                       Text="Remember re-applies the pattern whenever this car loads."/>
+                                       Text="{loc:T Header_CarRevLightRowHelp}"/>
                             </StackPanel>
                         </StackPanel>
                     </Expander>
@@ -1269,7 +1269,7 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="⚠" FontSize="14" Foreground="White" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Foreground="White" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
-                                       Text="Logitech G HUB is running. Close it, then restart SimHub (G HUB claims the wheel and blocks force feedback)."/>
+                                       Text="{loc:T Header_GHubWarningLogitechGHubIsRunning}"/>
                         </StackPanel>
                     </Border>
 
@@ -1284,7 +1284,7 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="⚠" FontSize="14" Foreground="White" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Foreground="White" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
-                                       Text="SimHub is not running as administrator. This is required for reliable force feedback (the USB capture that mirrors the game's FFB can fail without it). Easiest fix: turn on 'Run as administrator' in SimHub's Settings, then restart SimHub."/>
+                                       Text="{loc:T Header_AdminWarningSimHubIsNotRunning}"/>
                         </StackPanel>
                     </Border>
 
@@ -1322,7 +1322,7 @@
                                        VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Grid.Column="1" Foreground="#222"
                                        FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
-                                       Text="Your wheel is connected, but FFB pass-through can't find it on the USB bus, so your game's force feedback may feel wrong or be silenced. This is most often fixed by restarting your computer: the capture driver only loads at boot, so a fresh install needs one reboot. Replugging the wheel or moving it to a different USB port can also bring it back. If that doesn't fix it, please use Report an issue with a log attached."/>
+                                       Text="{loc:T Header_FfbTapPickerBannerYourWheelIsConnected}"/>
                             <!-- Manual-pick fallback is hidden by default
                                  (forgotten pins silently broke FFB after a
                                  replug; the report-an-issue path gives us the
@@ -1331,7 +1331,7 @@
                                  specific USBPcap-interface mismatch can flip
                                  it back on with MANUALPIN. -->
                             <Button Grid.Column="2" x:Name="FfbTapPickerBannerButton"
-                                    Content="Pick device manually…"
+                                    Content="{loc:T Header_FfbTapPickerBanner}"
                                     Width="170" Height="28" Margin="10,0,0,0"
                                     Visibility="Collapsed"
                                     Click="UsbPcapPickDevice_Click"
@@ -1373,7 +1373,7 @@
                             <TextBlock Grid.Column="1" x:Name="DefaultDroppedText" Foreground="White"
                                        FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
                                        Text=""/>
-                            <Button Grid.Column="2" Content="Dismiss" Padding="10,3" Margin="10,0,0,0"
+                            <Button Grid.Column="2" Content="{loc:T Header_DefaultDroppedBannerDismiss}" Padding="10,3" Margin="10,0,0,0"
                                     VerticalAlignment="Center" Click="DefaultDroppedDismiss_Click"/>
                         </Grid>
                     </Border>
@@ -1384,9 +1384,9 @@
                     <Border x:Name="MoreIssuesBar" Visibility="Collapsed" Cursor="Hand"
                             Background="#1FFFFFFF" CornerRadius="4" Padding="10,5" Margin="0,8,0,0"
                             MouseLeftButtonUp="MoreIssues_Click"
-                            ToolTip="Show the other active issues.">
+                            ToolTip="{loc:T Header_MoreIssuesBar_Tip}">
                         <TextBlock x:Name="MoreIssuesText" FontSize="12" Foreground="#E0E0E0"
-                                   Text="+1 more issue ▾"/>
+                                   Text="{loc:T Header_MoreIssues}"/>
                     </Border>
                     </StackPanel>
                 </StackPanel>

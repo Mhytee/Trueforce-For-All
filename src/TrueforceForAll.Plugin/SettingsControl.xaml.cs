@@ -1504,18 +1504,10 @@ namespace TrueforceForAll.Plugin
                     ForzaForwardPortBox.Text           = fz.ForwardPort > 0 ? fz.ForwardPort.ToString() : "";
                 }
 
-                // Header strip context. Prefer the resolver's DisplayName when
-                // available so opaque ordinals (Forza "Car_424") render as the
-                // actual car name ("1997 Mazda RX-7"). Falls back to carId for
-                // games whose carIds are already descriptive (AC) or for cars
-                // not in the catalog.
-                string game = _plugin.ActiveGame;
-                // Shown by its real title where there is one. An arcade cabinet's identity is
-                // TeknoParrot's short profile code ("Arcade ID8") because that string is the
-                // preset key and the car-folder name, and it cannot be prettied up without
-                // re-filing a user's tuning. The header is free to say the title instead.
-                HeaderGameText.Text = string.IsNullOrEmpty(game)
-                    ? "(none)" : _plugin.ArcadeDisplayName(game);
+                // Header strip context: the game and car readouts, in their own
+                // method so this refresh and the language pass write them the
+                // same way.
+                ApplyHeaderContextLabels();
                 // The iRacing notice now fires from the plugin on first sight of the
                 // game, so it reaches people who never open this panel. All this does
                 // is offer it a window to sit on when the panel IS open; the plugin's
@@ -1534,18 +1526,6 @@ namespace TrueforceForAll.Plugin
                 // home screen, stacked over the networked welcome. It now shows
                 // only when the user opens the Telemetry Based FFB tab
                 // (MainTabs_SelectionChanged), so it is always in context.
-                string headerCar =
-                    !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName) ? _plugin.ActiveCarDisplayName
-                    : !string.IsNullOrEmpty(_plugin.ActiveCarId)        ? _plugin.ActiveCarId
-                    : "(none)";
-                // Append the community alternative when the user has a
-                // local rename that disagrees - so a renamed car still
-                // surfaces the canonical community name as context.
-                string communityAlt = _plugin.ActiveCarCommunityDisplayName;
-                if (!string.IsNullOrEmpty(communityAlt))
-                    headerCar += $"   (community: {communityAlt})";
-                HeaderCarText.Text  = headerCar;
-
                 bool carDetected = !string.IsNullOrEmpty(_plugin.ActiveCarId);
 
                 // Discoverability surface: hide the count chip eagerly, then
@@ -1853,6 +1833,46 @@ namespace TrueforceForAll.Plugin
             UpdateOfflineEditBanner();
         }
 
+        /// <summary>The header card's two context readouts, and the only writer
+        /// of them.
+        ///
+        /// The car prefers the resolver's DisplayName so opaque ordinals (Forza
+        /// "Car_424") render as the actual car name ("1997 Mazda RX-7"), falling
+        /// back to the carId for games whose carIds are already descriptive (AC)
+        /// or for cars not in the catalog. The game is shown by its real title
+        /// where there is one: an arcade cabinet's identity is TeknoParrot's short
+        /// profile code ("Arcade ID8") because that string is the preset key and
+        /// the car-folder name, and it cannot be prettied up without re-filing a
+        /// user's tuning. The header is free to say the title instead.
+        ///
+        /// Both names are runtime data and stay unkeyed; only the "no game / no
+        /// car" placeholder and the community aside are text, and the placeholder
+        /// reuses the key the XAML declares. Nothing here fetches or loads
+        /// anything: the game title is memoized in the plugin and every other
+        /// read is a property.</summary>
+        private void ApplyHeaderContextLabels()
+        {
+            if (_plugin == null) return;
+            string game = _plugin.ActiveGame;
+            if (HeaderGameText != null)
+                HeaderGameText.Text = string.IsNullOrEmpty(game)
+                    ? Loc.T("Header_HeaderGame") : _plugin.ArcadeDisplayName(game);
+            if (HeaderCarText == null) return;
+            string headerCar =
+                !string.IsNullOrEmpty(_plugin.ActiveCarDisplayName) ? _plugin.ActiveCarDisplayName
+                : !string.IsNullOrEmpty(_plugin.ActiveCarId)        ? _plugin.ActiveCarId
+                : Loc.T("Header_HeaderCar");
+            // Name the community alternative when the user has a local rename
+            // that disagrees, so a renamed car still surfaces the canonical
+            // community name as context. One format around both names rather
+            // than an appended clause, so the aside is not a value that opens
+            // with three spaces a translator cannot see.
+            string communityAlt = _plugin.ActiveCarCommunityDisplayName;
+            HeaderCarText.Text = string.IsNullOrEmpty(communityAlt)
+                ? headerCar
+                : Loc.F("Header_HeaderCarCommunityAlt_Fmt", headerCar, communityAlt);
+        }
+
         // Toggle the offline-edit banner's visibility and title text based
         // on whether the plugin is currently in offline-edit mode. Called
         // from RefreshFromPlugin and whenever the mode transitions.
@@ -1870,9 +1890,10 @@ namespace TrueforceForAll.Plugin
             if (carEdit)
             {
                 OfflineEditBanner.Visibility = Visibility.Visible;
-                OfflineEditTitle.Text = $"Editing per-car settings for '{_plugin.OfflineEditingCarId}' (preset '{_plugin.OfflineEditingCarPresetName}')";
+                OfflineEditTitle.Text = Loc.F("Header_OfflineEditCarTitle_Fmt",
+                    _plugin.OfflineEditingCarId, _plugin.OfflineEditingCarPresetName);
                 if (OfflineEditHint != null)
-                    OfflineEditHint.Text = "Game defaults are locked for context; only the per-car effects are editable.";
+                    OfflineEditHint.Text = Loc.T("Header_OfflineEditCarHint");
                 return;
             }
 
@@ -1883,9 +1904,9 @@ namespace TrueforceForAll.Plugin
                 return;
             }
             OfflineEditBanner.Visibility = Visibility.Visible;
-            OfflineEditTitle.Text = $"Editing preset '{editing}'";
+            OfflineEditTitle.Text = Loc.F("Header_OfflineEditPresetTitle_Fmt", editing);
             if (OfflineEditHint != null)
-                OfflineEditHint.Text = "Save the usual way, or Revert a section to undo it.";
+                OfflineEditHint.Text = Loc.T("Header_OfflineEditPresetHint");
         }
 
         // While editing a car preset, only per-car effects are editable. Lock the
@@ -2119,6 +2140,24 @@ namespace TrueforceForAll.Plugin
             try { SyncPatternListToCurrent(); } catch { }
         }
 
+        /// <summary>The prominent update button's caption, and the only writer of
+        /// it. A method rather than a block inside the meter tick, so the tick and
+        /// the language pass render the same words from the same state. Reads the
+        /// update checker's finished result out of memory; nothing here polls
+        /// GitHub.</summary>
+        private void ApplyUpdateAvailableLabel()
+        {
+            var upd = _plugin?.UpdateChecker;
+            if (upd == null || !upd.IsUpdateAvailable || UpdateAvailableButtonText == null) return;
+            string desired = upd.IsDowngrade
+                ? Loc.F("Header_SwitchBackToVersion_Fmt", upd.LatestVersionDisplay)
+                : Loc.F("Header_UpdateToVersion_Fmt", upd.LatestVersionDisplay);
+            // Compared against what this same call would write, never against the
+            // XAML default, so the guard survives a language change: the new
+            // language's text differs from what is on screen and the write lands.
+            if (UpdateAvailableButtonText.Text != desired) UpdateAvailableButtonText.Text = desired;
+        }
+
         private void MeterTimer_Tick(object sender, EventArgs e)
         {
             FollowExternalLightSelection();
@@ -2301,13 +2340,7 @@ namespace TrueforceForAll.Plugin
                 {
                     var want = hasUpdate ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
                     if (UpdateAvailableButton.Visibility != want) UpdateAvailableButton.Visibility = want;
-                    if (hasUpdate && UpdateAvailableButtonText != null)
-                    {
-                        string desired = upd.IsDowngrade
-                            ? $"Switch back to v{upd.LatestVersionDisplay}  →"
-                            : $"Update to v{upd.LatestVersionDisplay}  →";
-                        if (UpdateAvailableButtonText.Text != desired) UpdateAvailableButtonText.Text = desired;
-                    }
+                    if (hasUpdate) ApplyUpdateAvailableLabel();
                 }
                 if (CheckForUpdatesButton != null)
                 {
@@ -2793,12 +2826,20 @@ namespace TrueforceForAll.Plugin
             _lastAccountDot = dot;
         }
 
+        // Three sentences, each its own key, joined with one space: a translator
+        // owns whole sentences instead of fragments, and the join stays here where
+        // the English it replaced put it. Composed on read, so the hover text is
+        // always in the language the panel is showing.
         private string BuildAccountChipTooltip(AccountDot dot)
         {
             string email = _plugin?.AuthSignedInEmail;
-            string who   = string.IsNullOrEmpty(email) ? "Signed in." : "Signed in as " + email + ".";
-            string state = dot == AccountDot.Grey ? " Community features are off." : " Connected.";
-            return who + state + " Click for account options.";
+            string who   = string.IsNullOrEmpty(email)
+                ? Loc.T("Header_AccountChipSignedIn")
+                : Loc.F("Header_AccountChipSignedInAs_Fmt", email);
+            string state = dot == AccountDot.Grey
+                ? Loc.T("Header_AccountChipCommunityOff")
+                : Loc.T("Header_AccountChipConnected");
+            return who + " " + state + " " + Loc.T("Header_AccountChipClickForOptions");
         }
 
         // Live recolor from the meter tick: flips green<->grey when the community
@@ -2846,13 +2887,15 @@ namespace TrueforceForAll.Plugin
             // "Stream stopped" and "Waiting for telemetry" are both TRUE and both
             // correct, and rendering either in amber would show a fault for exactly
             // the behaviour the user asked for.
+            // The lights-only state wears the mode selector's own key, so the pill
+            // and the row the user picked cannot end up naming one mode two ways.
             if (_plugin.MasterMode == TrueforceMasterMode.LightsyncOnly)
-                                                { text = wheelOk ? "Lightsync only" : "Wheel not detected";
+                                                { text = wheelOk ? Loc.T("Header_MasterModeLightsyncItem") : Loc.T("Header_StatusPillWheelNotDetected");
                                                   bg = wheelOk ? PillMutedBg : PillAmberBg;
                                                   dot = wheelOk ? PillMutedDot : PillAmberDot; }
-            else if (!enabled)                  { text = "Disabled";              bg = PillGreyBg;  dot = PillGreyDot;  }
-            else if (!wheelOk)                  { text = "Wheel not detected";    bg = PillAmberBg; dot = PillAmberDot; }
-            else if (!streamOk)                 { text = "Stream stopped";        bg = PillAmberBg; dot = PillAmberDot; }
+            else if (!enabled)                  { text = Loc.T("Header_StatusPillDisabled");         bg = PillGreyBg;  dot = PillGreyDot;  }
+            else if (!wheelOk)                  { text = Loc.T("Header_StatusPillWheelNotDetected"); bg = PillAmberBg; dot = PillAmberDot; }
+            else if (!streamOk)                 { text = Loc.T("Header_StatusPillStreamStopped");    bg = PillAmberBg; dot = PillAmberDot; }
             else if (!gameOn)
             {
                 // SimHub reports no telemetry-emitting game. Before falling back
@@ -2862,12 +2905,12 @@ namespace TrueforceForAll.Plugin
                 // while SimHub says otherwise. A live process means paused / in
                 // a menu, not back at the desktop.
                 if (_plugin.IsKnownGameProcessRunning(out _))
-                                                { text = "In menu / paused";      bg = PillAmberBg; dot = PillAmberDot; }
-                else                            { text = "Ready";                 bg = PillGreenBg; dot = PillGreenDot; }
+                                                { text = Loc.T("Header_StatusPillInMenu");           bg = PillAmberBg; dot = PillAmberDot; }
+                else                            { text = Loc.T("Header_StatusPillReady");            bg = PillGreenBg; dot = PillGreenDot; }
             }
-            else if (hz > 0 && useful)          { text = "Active";                bg = PillGreenBg; dot = PillGreenDot; }
-            else if (hz > 0)                    { text = "Audio only";            bg = PillMutedBg; dot = PillMutedDot; }
-            else                                { text = "Waiting for telemetry"; bg = PillAmberBg; dot = PillAmberDot; }
+            else if (hz > 0 && useful)          { text = Loc.T("Header_StatusPillActive");           bg = PillGreenBg; dot = PillGreenDot; }
+            else if (hz > 0)                    { text = Loc.T("Header_StatusPillAudioOnly");        bg = PillMutedBg; dot = PillMutedDot; }
+            else                                { text = Loc.T("Header_StatusPillWaiting");          bg = PillAmberBg; dot = PillAmberDot; }
 
             StatusPillText.Text   = text;
             StatusPill.Background = bg;
@@ -2879,7 +2922,7 @@ namespace TrueforceForAll.Plugin
             if (enabled && wheelOk && streamOk && isEnhanced && hz > 0)
             {
                 EnhancedBadge.Visibility = Visibility.Visible;
-                EnhancedBadgeText.Text   = $"✨ Enhanced · {hz:0} Hz";
+                EnhancedBadgeText.Text   = Loc.F("Header_EnhancedBadgeHz_Fmt", hz);
             }
             else
             {
@@ -2892,6 +2935,24 @@ namespace TrueforceForAll.Plugin
         // back to one (or zero), so a transient pile-up doesn't leave the card
         // stuck expanded.
         private bool _showAllIssues;
+
+        // How many card issues were active on the last coalesce. Kept because the
+        // bar's caption counts them and the language pass has no banner arrays to
+        // count from.
+        private int _issueActiveCount;
+
+        // The bar's caption, and the only writer of it: "Show fewer" while the
+        // stack is open, otherwise the count of the issues it is hiding. Loc.N so
+        // a language with more than two plural forms can say the count its own
+        // way; the count itself is data and is passed in, not keyed.
+        private void ApplyMoreIssuesLabel()
+        {
+            if (MoreIssuesText == null) return;
+            if (_showAllIssues) { MoreIssuesText.Text = Loc.T("Header_MoreIssuesShowFewer"); return; }
+            int more = _issueActiveCount - 1;
+            if (more < 1) return;
+            MoreIssuesText.Text = Loc.N("Header_MoreIssues", more, more);
+        }
 
         // Decide which card-issue banners want to show this tick (G HUB / admin
         // / wheel-quiet / FFB-tap / unverified), set their text, then hand the
@@ -3011,18 +3072,15 @@ namespace TrueforceForAll.Plugin
                 banners[i].Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             }
 
+            _issueActiveCount = activeCount;
             if (MoreIssuesBar != null)
             {
-                if (activeCount > 1 && !_showAllIssues)
+                if (activeCount > 1)
                 {
-                    int more = activeCount - 1;
-                    if (MoreIssuesText != null)
-                        MoreIssuesText.Text = more == 1 ? "+1 more issue ▾" : $"+{more} more issues ▾";
-                    MoreIssuesBar.Visibility = Visibility.Visible;
-                }
-                else if (activeCount > 1 && _showAllIssues)
-                {
-                    if (MoreIssuesText != null) MoreIssuesText.Text = "Show fewer ▴";
+                    // One writer for both the "+N more" and the "Show fewer"
+                    // captions, so the language pass can re-render the bar from
+                    // the count above without the banner arrays.
+                    ApplyMoreIssuesLabel();
                     MoreIssuesBar.Visibility = Visibility.Visible;
                 }
                 else
@@ -3229,7 +3287,9 @@ namespace TrueforceForAll.Plugin
                 var curr = _plugin.UpdateChecker?.CurrentVersion;
                 if (curr != null)
                 {
-                    string desired = "What's new in v" + curr.ToString(3);
+                    // Same shape as the update button: the guard compares against
+                    // what this call would write, so a language change still lands.
+                    string desired = Loc.F("Header_WhatsNewInVersion_Fmt", curr.ToString(3));
                     if (WhatsNewBannerText.Text != desired) WhatsNewBannerText.Text = desired;
                 }
             }
@@ -3662,17 +3722,21 @@ namespace TrueforceForAll.Plugin
             // exactly the point.
             bool carEdit = _plugin?.IsOfflineEditingCar == true;
             // "Save all" only when more than one section changed; a lone edit
-            // reads better as plain "Save" ("all" implies a batch).
-            string saveLabel = dirtyCount > 1 ? "★ Save all" : "★ Save";
+            // reads better as plain "Save" ("all" implies a batch). The batch
+            // caption is one key for both buttons, while each button's plain
+            // caption stays the key its own XAML declares.
+            bool saveAll = dirtyCount > 1;
             if (HeaderGameSaveAllBtn != null)
             {
                 HeaderGameSaveAllBtn.Visibility = (any && !carEdit) ? Visibility.Visible : Visibility.Collapsed;
-                HeaderGameSaveAllBtn.Content = saveLabel;
+                HeaderGameSaveAllBtn.Content = saveAll
+                    ? Loc.T("Header_HeaderSaveAll") : Loc.T("Header_HeaderGameSaveAll");
             }
             if (HeaderCarSaveAllBtn != null)
             {
                 HeaderCarSaveAllBtn.Visibility = carDirty ? Visibility.Visible : Visibility.Collapsed;
-                HeaderCarSaveAllBtn.Content = saveLabel;
+                HeaderCarSaveAllBtn.Content = saveAll
+                    ? Loc.T("Header_HeaderSaveAll") : Loc.T("Header_HeaderCarSaveAll");
             }
 
             // "Save as new…" mirrors its Save-all neighbour: it only makes sense
@@ -3736,15 +3800,17 @@ namespace TrueforceForAll.Plugin
                     HeaderGameShareBtn.Visibility = Visibility.Visible;
                     HeaderGameShareBtn.IsEnabled  = shareable;
                     if (isBuiltin)
-                        HeaderGameShareBtn.ToolTip = "This is a built-in preset and ships with the plugin. There's no need to re-share it.";
+                        HeaderGameShareBtn.ToolTip = Loc.T("Header_ShareGameBuiltin_Tip");
                     else if (isCommunity)
-                        HeaderGameShareBtn.ToolTip = "Shared by another driver. Duplicate to make your own version and share that.";
+                        HeaderGameShareBtn.ToolTip = Loc.T("Header_ShareCommunitySourced_Tip");
                     else if (headerGameMatchesUpload)
-                        HeaderGameShareBtn.ToolTip = $"This matches your last upload ({headerGameSnap.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                        HeaderGameShareBtn.ToolTip = Loc.F("Header_ShareMatchesUpload_Tip_Fmt",
+                            headerGameSnap.CommunityUploadedVersion ?? "v1");
                     else if (headerGameHasPriorUpload)
-                        HeaderGameShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                        HeaderGameShareBtn.ToolTip = Loc.T("Header_ShareUpdateOrNew_Tip");
                     else
-                        HeaderGameShareBtn.ToolTip = "Share this game preset with the community.";
+                        // The state the XAML declares, so it reuses that key.
+                        HeaderGameShareBtn.ToolTip = Loc.T("Header_HeaderGameShare_Tip");
                 }
                 else
                 {
@@ -3789,15 +3855,17 @@ namespace TrueforceForAll.Plugin
                     HeaderCarShareBtn.Visibility = Visibility.Visible;
                     HeaderCarShareBtn.IsEnabled  = shareable;
                     if (isBuiltin)
-                        HeaderCarShareBtn.ToolTip = "This is a built-in car preset and ships with the plugin. Duplicate it to make your own version, then share that.";
+                        HeaderCarShareBtn.ToolTip = Loc.T("Header_ShareCarBuiltin_Tip");
                     else if (isCommunity)
-                        HeaderCarShareBtn.ToolTip = "Shared by another driver. Duplicate to make your own version and share that.";
+                        // Word for word the game side's reason, so one key serves both.
+                        HeaderCarShareBtn.ToolTip = Loc.T("Header_ShareCommunitySourced_Tip");
                     else if (headerCarMatchesUpload)
-                        HeaderCarShareBtn.ToolTip = $"This matches your last upload ({headerCarOvr.CommunityUploadedVersion ?? "v1"}). Edit it to share an update.";
+                        HeaderCarShareBtn.ToolTip = Loc.F("Header_ShareMatchesUpload_Tip_Fmt",
+                            headerCarOvr.CommunityUploadedVersion ?? "v1");
                     else if (headerCarHasPriorUpload)
-                        HeaderCarShareBtn.ToolTip = "Update your last upload or share as new (click to choose).";
+                        HeaderCarShareBtn.ToolTip = Loc.T("Header_ShareUpdateOrNew_Tip");
                     else
-                        HeaderCarShareBtn.ToolTip = "Share this car preset with the community.";
+                        HeaderCarShareBtn.ToolTip = Loc.T("Header_HeaderCarShare_Tip");
                 }
                 else
                 {
@@ -4946,6 +5014,20 @@ namespace TrueforceForAll.Plugin
 
         // ----- One-time inline "rate it?" nudge -----
 
+        // The preset the nudge is asking about. Kept because the nudge fires once
+        // per preset behind several latches, so its sentence cannot be rebuilt by
+        // calling the shower again; the language pass renders it from this name.
+        private string _voteNudgePresetName;
+
+        // The nudge's question, rendered on read. The preset name is runtime data
+        // and stays out of the table.
+        private void ApplyVoteNudgeText()
+        {
+            if (CommunityVoteNudgeText == null || string.IsNullOrEmpty(_voteNudgePresetName)) return;
+            CommunityVoteNudgeText.Text =
+                Loc.F("Header_CommunityVoteNudgeRunning_Fmt", _voteNudgePresetName);
+        }
+
         // Evaluate + show the nudge for the given applied community preset.
         // All five gates must hold (see task spec). On fire: latch the
         // per-item flag + global cooldown clock, persist, and reveal the
@@ -4996,9 +5078,8 @@ namespace TrueforceForAll.Plugin
             // Fire: latch so it never returns for this item + start the
             // global cooldown, then show inline.
             _plugin.MarkVoteNudgeShown(communityId);
-            if (CommunityVoteNudgeText != null)
-                CommunityVoteNudgeText.Text =
-                    $"You've been running \"{rec.LocalPresetName}\". Rate it?";
+            _voteNudgePresetName = rec.LocalPresetName;
+            ApplyVoteNudgeText();
             CommunityVoteNudge.Visibility = Visibility.Visible;
         }
 
@@ -5270,6 +5351,26 @@ namespace TrueforceForAll.Plugin
         // what lets the combo follow too instead of showing the old mode.
         private TrueforceMasterMode? _lastShownEffectiveMode;
 
+        /// <summary>The mode selector's hover text, composed on read.
+        ///
+        /// It lists the modes actually on offer, so it does not promise a screen
+        /// to a wheel that has none and does not describe a row that is not
+        /// there. One sentence per key and a single space between them: the
+        /// fragments the English was assembled from would have left a translator
+        /// with half-sentences and a leading space nobody can see.</summary>
+        private string MasterModeTooltip()
+        {
+            bool lightsyncListed = MasterModeCombo != null && MasterModeLightsyncItem != null
+                                && MasterModeCombo.Items.Contains(MasterModeLightsyncItem);
+            string normal = (_plugin != null && _plugin.WheelHasOledScreen)
+                ? Loc.T("Header_MasterModeTipNormalScreen")
+                : Loc.T("Header_MasterModeTipNormal");
+            string off = Loc.T("Header_MasterModeTipOff");
+            return lightsyncListed
+                ? normal + " " + Loc.T("Header_MasterModeTipLightsync") + " " + off
+                : normal + " " + off;
+        }
+
         private void RefreshMasterModeUi()
         {
             if (_plugin == null) return;
@@ -5292,16 +5393,7 @@ namespace TrueforceForAll.Plugin
 
                 // The tooltip lists the modes, so it lists only the ones on offer,
                 // and does not promise a screen to a wheel that has none.
-                bool lightsyncListed = MasterModeLightsyncItem != null
-                                    && MasterModeCombo.Items.Contains(MasterModeLightsyncItem);
-                MasterModeCombo.ToolTip =
-                    "Normal: force feedback, effects, rev lights"
-                    + (_plugin.WheelHasOledScreen ? " and the wheel's screen" : "")
-                    + ". Use this in most games. "
-                    + (lightsyncListed
-                        ? "Lightsync only: disables the plugin's Trueforce effects and FFB tap, for games with native Trueforce support or when you only want our Lightsync patterns and features. "
-                        : "")
-                    + "Off: fully disables all plugin features for the game you are in.";
+                MasterModeCombo.ToolTip = MasterModeTooltip();
             }
 
             string game = _plugin.ActiveGame;
@@ -10350,6 +10442,8 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Effects tab language relabel failed: " + ex.Message); }
             try { RelabelTelemetryFfbTab(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Telemetry FFB tab language relabel failed: " + ex.Message); }
+            try { RelabelHeader(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Header card language relabel failed: " + ex.Message); }
             try
             {
                 // IsLoaded: SimHub builds a new panel on every page open, and a
@@ -10651,12 +10745,87 @@ namespace TrueforceForAll.Plugin
             if (OledStatusText != null)
                 OledStatusText.Text = _plugin.OledStatus;
 
+            // The Remember button's caption is written by the shared row helper,
+            // not by a binding, so it needs the same treatment as the header's
+            // Car Facts twin: sync it only in the state its own refresh syncs it
+            // in, with the combo filled and its dropdown closed. Without this the
+            // one button keeps the previous language until the row next syncs on a
+            // pattern pick or a tab refresh.
+            if (_plugin.WheelHasSelectableLightPattern && RevLightEffectCombo != null
+                && RevLightEffectCombo.Items.Count > 0 && !RevLightEffectCombo.IsDropDownOpen)
+                SyncRememberControls(RevLightEffectCombo, RevLightRememberBtn,
+                    RevLightRememberStatus, RevLightRememberRun,
+                    Loc.T("TelemetryFfb_RevLightRemember"));
+
             RefreshStationarySpringBadge();
             RefreshIRacingAutoReadiness();
             RefreshR3EAutoReadiness();
             FxUpdateTraceButton();
             if (FxTuneGainCaption != null)
                 FxTuneGainCaption.Text = FxGainFamilyCaption(FxSelectedKind());
+        }
+
+        // Language pass over the header card, the strip that stays on screen while
+        // the user works: the update button, the What's-new banner, the
+        // offline-edit banner, the mode selector's hover, the status pill and its
+        // Enhanced badge, the account chip, the game and car readouts, the two
+        // Save buttons with the Share hovers beside them, the rate-it nudge, the
+        // coalesced issue bar and the Car Facts Remember button.
+        //
+        // This event must not call RefreshFromPlugin (it is long and it starts a
+        // community fetch), so each writer is called on its own. Every one of them
+        // is the single writer of the label it owns, so the words here and the
+        // words a refresh writes come from the same place and cannot drift.
+        //
+        // Each call reads state already in memory: plugin properties and fields, a
+        // memoized game title, the update checker's finished result, the cached
+        // per-section dirty bits, and two fields kept for exactly this pass (the
+        // nudge's preset name, which is latched behind a once-per-preset gate, and
+        // the active issue count, which the bar counts and this pass has no banner
+        // arrays to recount). UpdateGlobalDirtyFromEffects only rebuilds the
+        // preset display when the dirty flag itself changes, which a language
+        // change never does, and it brings the Share hovers with it.
+        // UpdateStatusPill and the Remember row also run on the 60 Hz meter tick,
+        // so they would repaint by themselves 16 ms later while the panel is
+        // loaded; calling them costs a few property reads and makes the switch
+        // land while the tick is stopped, which it is whenever the panel is
+        // unloaded. The Remember row is synced only in the state its own refresh
+        // syncs it in, with the combo filled and its dropdown closed.
+        //
+        // Deliberately left to Phase 2, still English literals: the version
+        // readout has no words, and the Check-for-updates status line, the UDP
+        // setup banner, the mode note under the selector, the account chip's
+        // achievement row and the Car Facts status lines are pure C# strings.
+        //
+        // Nothing below makes a network request, opens a dialog, reloads the
+        // language store or raises LanguageChanged, so the pass cannot loop. One
+        // call is not purely in-memory: the Share hovers read the car's presets
+        // through GetCarPresets, which walks that car's folder. It stays because
+        // the hover text is built from what it finds, and a folder walk on a
+        // language change is cheaper than leaving two tooltips in the old words.
+        private void RelabelHeader()
+        {
+            if (_plugin == null) return;
+            // Order matters because OnLanguageChanged wraps this pass in one
+            // try/catch: the first throw skips everything after it. The writers
+            // that only read fields already in memory go first, so a failure in
+            // one of the three heavier ones below cannot cost the cheap labels.
+            ApplyHeaderContextLabels();
+            ApplyUpdateAvailableLabel();
+            RefreshChangelogBanner();
+            UpdateOfflineEditBanner();
+            if (MasterModeCombo != null) MasterModeCombo.ToolTip = MasterModeTooltip();
+            ApplyVoteNudgeText();
+            ApplyMoreIssuesLabel();
+            UpdateStatusPill();
+            RefreshAccountChip();
+            UpdateGlobalDirtyFromEffects();
+            if (CarRevLightRow != null && CarRevLightRow.Visibility == Visibility.Visible
+                && CarRevLightCombo != null && CarRevLightCombo.Items.Count > 0
+                && !CarRevLightCombo.IsDropDownOpen)
+                SyncRememberControls(CarRevLightCombo, CarRevLightRememberBtn,
+                    CarRevLightRememberStatus, CarRevLightRememberRun,
+                    Loc.T("Header_CarRevLightRemember"));
         }
 
         private int _supportersWallGen;
@@ -11537,7 +11706,7 @@ namespace TrueforceForAll.Plugin
                 string label = !string.IsNullOrEmpty(uname)
                     ? uname
                     : EmailPrefix(_plugin.AuthSignedInEmail);
-                if (string.IsNullOrEmpty(label)) label = "Account";
+                if (string.IsNullOrEmpty(label)) label = Loc.T("Header_AccountChipFallback");
                 if (AccountChipText  != null) AccountChipText.Text       = label;
                 if (AccountChipIcon  != null) AccountChipIcon.Visibility  = System.Windows.Visibility.Visible;
                 if (AccountChipCaret != null) AccountChipCaret.Visibility = System.Windows.Visibility.Visible;
@@ -11550,10 +11719,12 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                if (AccountChipText  != null) AccountChipText.Text       = "Sign in";
+                // The signed-out chip and its hover are exactly what the XAML
+                // declares, so both reuse the keys the panel was built with.
+                if (AccountChipText  != null) AccountChipText.Text       = Loc.T("Header_AccountChip");
                 if (AccountChipIcon  != null) AccountChipIcon.Visibility  = System.Windows.Visibility.Collapsed;
                 if (AccountChipCaret != null) AccountChipCaret.Visibility = System.Windows.Visibility.Collapsed;
-                AccountChipButton.ToolTip = "Sign in to share presets and use community car data.";
+                AccountChipButton.ToolTip = Loc.T("Header_AccountChip_Tip");
                 _lastAccountDot = null;
             }
             RefreshAchievementCrown();
@@ -14513,9 +14684,14 @@ namespace TrueforceForAll.Plugin
         /// <summary>Sync a row's Remember button + status line to the active
         /// car and the pattern the row's combo is showing (the combo, not
         /// the channel, so the state is right in the instant after a pick,
-        /// before the background write lands).</summary>
+        /// before the background write lands).
+        ///
+        /// Two rows share this helper and each declares the button's caption in
+        /// its own XAML, so the caller hands in the caption from its own key
+        /// rather than the helper putting one row's words on the other row's
+        /// button. Resolved at the call site, so both keys are visible there.</summary>
         private void SyncRememberControls(ComboBox combo, System.Windows.Controls.Button btn,
-            TextBlock status, System.Windows.Documents.Run run)
+            TextBlock status, System.Windows.Documents.Run run, string rememberCaption)
         {
             // Two kinds of thing can be remembered for a car now: one of the
             // wheel's own nine effects (an int tag) or a library pattern (a
@@ -14552,7 +14728,7 @@ namespace TrueforceForAll.Plugin
                     && (selPatternId != null || (selEffect >= 1 && selEffect <= 9));
                 btn.Visibility = offerable ? Visibility.Visible : Visibility.Collapsed;
                 btn.IsEnabled = offerable;
-                btn.Content = "Remember for this car";
+                btn.Content = rememberCaption;
                 btn.ToolTip = "Optional: re-apply this pattern whenever this car loads. "
                             + "Your pick is already on the wheel either way.";
             }
@@ -14874,7 +15050,8 @@ namespace TrueforceForAll.Plugin
                 }
                 SyncPatternCombo(RevLightEffectCombo);
                 SyncRememberControls(RevLightEffectCombo, RevLightRememberBtn,
-                    RevLightRememberStatus, RevLightRememberRun);
+                    RevLightRememberStatus, RevLightRememberRun,
+                    Loc.T("TelemetryFfb_RevLightRemember"));
             }
             finally { _suppressEvents = prev; }
 
@@ -14941,7 +15118,8 @@ namespace TrueforceForAll.Plugin
                 }
                 SyncPatternCombo(CarRevLightCombo);
                 SyncRememberControls(CarRevLightCombo, CarRevLightRememberBtn,
-                    CarRevLightRememberStatus, CarRevLightRememberRun);
+                    CarRevLightRememberStatus, CarRevLightRememberRun,
+                    Loc.T("Header_CarRevLightRemember"));
             }
             finally { _suppressEvents = prev; }
         }
@@ -14953,7 +15131,8 @@ namespace TrueforceForAll.Plugin
             if (!ApplyPickedComboItem(picked)) return;
             RefreshRevLightPicker();   // the other remote for the same selector
             SyncRememberControls(CarRevLightCombo, CarRevLightRememberBtn,
-                CarRevLightRememberStatus, CarRevLightRememberRun);
+                CarRevLightRememberStatus, CarRevLightRememberRun,
+                Loc.T("Header_CarRevLightRemember"));
         }
 
         private void CarRevLightItem_Clicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -15011,7 +15190,8 @@ namespace TrueforceForAll.Plugin
             if (!ApplyPickedComboItem(picked)) return;
             RefreshCarRevLightRow();
             SyncRememberControls(RevLightEffectCombo, RevLightRememberBtn,
-                RevLightRememberStatus, RevLightRememberRun);
+                RevLightRememberStatus, RevLightRememberRun,
+                Loc.T("TelemetryFfb_RevLightRemember"));
         }
 
         /// <summary>Act on whichever kind of entry was picked. Both pattern combos
