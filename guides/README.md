@@ -6,41 +6,38 @@ The same guides the plugin shows under the **?** in its panel.
 They are generated from the plugin's own copies, so they never
 drift from what you see in the app.
 
-## Setup
+## Game setup
 
 - [iRacing](iracing-setup.md)
 - [RaceRoom](raceroom-setup.md)
 - [Le Mans Ultimate](lmu-setup.md)
-- [Assetto Corsa](assetto-corsa-setup.md)
-- [The TF4ALL CSP Bridge](csp-bridge.md)
 - [Forza](forza-setup.md)
 - [Forwarding Forza telemetry to SimHub](forza-forward.md)
 - [Farming Simulator](farming-sim.md)
-- [USBPcap, and why it is needed](usbpcap.md)
-- [SimHub's license and telemetry rates](simhub-license.md)
-
-## Force feedback
-
-- [How the force reaches your wheel](normal-ffb.md)
-- [The force handover](force-handover.md)
+- [Assetto Corsa](assetto-corsa-setup.md)
+- [The TF4ALL CSP Bridge](csp-bridge.md)
+- [Games with native Trueforce](native-trueforce.md)
 - [Telemetry Based FFB](telemetry-ffb.md)
-- [Tuning the effects](tuning-effects.md)
-- [When the effects feel weak](weak-effects.md)
-- [When there is no force feedback](ffb-not-working.md)
-- [Games with their own Trueforce](native-trueforce.md)
+- [Force handover](force-handover.md)
 
-## Lights and screen
+## When something is wrong
 
-- [Light patterns](light-patterns.md)
-- [Why lights and force share a channel](force-and-lights.md)
-- [The wheel's screen](wheel-screen.md)
+- [Force feedback: limp, weak, or silent](ffb-not-working.md)
+- [Effects feel weak](weak-effects.md)
 
-## The rest
+## Good to know
 
-- [The TF4ALL Dash](dash.md)
-- [The SimHub home tile](home-tile.md)
 - [Car facts](car-facts.md)
-- [Lovely Sim Racing car data](lovely-car-data.md)
+- [Tuning the effects](tuning-effects.md)
+- [Where your rev lights and screen work](force-and-lights.md)
+- [The wheel's screen](wheel-screen.md)
 - [Backup and sync](backup-sync.md)
-- [Putting controls on your wheel](bindings.md)
-- [Anti-cheat safety](anti-cheat.md)
+- [Light patterns](light-patterns.md)
+- [Per-car rev light data](lovely-car-data.md)
+- [TF4ALL Dash](dash.md)
+- [The Trueforce widget](home-tile.md)
+- [Bindings](bindings.md)
+- [Will this change or replace my normal force feedback?](normal-ffb.md)
+- [Do I need to pay for SimHub?](simhub-license.md)
+- [Why does it need USBPcap, and is that safe?](usbpcap.md)
+- [Is this anti-cheat safe?](anti-cheat.md)

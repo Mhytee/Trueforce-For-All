@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# USBPcap, and why it is needed
+# Why does it need USBPcap, and is that safe?
 
 USBPcap is an open-source USB capture driver, bundled with our installer.
 

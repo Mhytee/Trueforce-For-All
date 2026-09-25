@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# The TF4ALL Dash
+# TF4ALL Dash
 
 TF4ALL Dash puts the plugin on your phone or tablet, so effects, gains and presets can be changed without leaving the seat. There is no app to install: it opens in the browser on any phone or tablet on the same network as your PC. The phone button at the top of the panel shows a QR code to scan, and **Settings** > **TF4ALL Dash** has the same button. Add it to your home screen once and it opens like an app.
 
@@ -12,6 +12,7 @@ TF4ALL Dash puts the plugin on your phone or tablet, so effects, gains and prese
 - **Car facts.** The engine layout and redline of the car you are in, which is what the engine effects time themselves from.
 - **Tele-FFB.** The force the plugin builds itself, in the games where it does: strength, damping, centering, cornering weight and the rest.
 - **Visualizer.** A live graph of what your wheel is being sent: the vibration and the steering force.
+- **Gains.** Master and audio gain on a page of their own, with the wheel's state above them. Off to begin with, since the Drive tab's gains box already covers it.
 
 Hide the ones you do not want and put the rest in your own order under **Settings** > **TF4ALL Dash** > **Tabs**; the dash updates straight away. **Dash tab next** and **back** can go on a wheel button, so the tab can be changed without reaching for the screen. ([What you can bind](bindings.md))
 

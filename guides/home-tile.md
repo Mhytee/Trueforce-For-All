@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# The SimHub home tile
+# The Trueforce widget
 
 The **Trueforce** widget in SimHub's home-screen **Feedback** section: two switches and two gain sliders.
 

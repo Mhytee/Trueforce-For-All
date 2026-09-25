@@ -1,10 +1,10 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# The force handover
+# Force handover
 
 Some sims publish the steering force they compute. Where they do, the plugin reads that force and carries it to the wheel over Trueforce, instead of capturing it off the USB connection. The feel stays the sim's own, with the plugin's effects on top.
 
-This is the opposite of [Telemetry Based FFB](telemetry-ffb.md), where the plugin builds the steering force itself. Both live on the FFB tab, and the tab changes its wording to match the game you are in.
+This is the opposite of [Telemetry Based FFB](telemetry-ffb.md), where the plugin builds the steering force itself. Both live on the force feedback tab, and the tab changes its wording to match the game you are in.
 
 ## Where it works
 

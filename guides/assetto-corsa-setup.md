@@ -35,6 +35,6 @@ The CSP FFB tweaks themselves (understeer effect, dampers, curbs, and the rest) 
 
 If the plugin cannot find your Assetto Corsa install (for example a non-Steam copy), install the script by hand:
 
-1. Copy the `tf4all` folder from the plugin's `gamemods\AssettoCorsaCsp` folder into `Assetto Corsa\extension\lua\ffb-postprocess`.
+1. Download the `tf4all` folder from [the project on GitHub](https://github.com/Mhytee/Trueforce-For-All), under `gamemods/AssettoCorsaCsp`, and copy it into `Assetto Corsa\extension\lua\ffb-postprocess`.
 2. In Content Manager, open Settings, Custom Shaders Patch, FFB Tweaks, and select `tf4all` as the additional post-processing script.
 3. Start a session and drive.

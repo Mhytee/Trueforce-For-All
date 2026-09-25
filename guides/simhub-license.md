@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# SimHub's license and telemetry rates
+# Do I need to pay for SimHub?
 
 No. SimHub is free, and the plugin works without a license.
 

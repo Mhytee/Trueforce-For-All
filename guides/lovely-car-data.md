@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# Lovely Sim Racing car data
+# Per-car rev light data
 
 Some cars carry their own rev-light data: the RPM each gear really lights up at, how fast the redline warning blinks, and the colors and fill direction of the real car's strip. The per-gear redlines set where the shift cue arrives. Reading the data needs community features on.
 

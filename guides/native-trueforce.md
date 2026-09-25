@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# Games with their own Trueforce
+# Games with native Trueforce
 
 A few games ship Trueforce on PC themselves. The plugin defaults to **Lightsync only** in those, rather than fighting the game for the same channel on the wheel.
 
@@ -15,6 +15,7 @@ Where a real off switch exists:
 - Dirt Rally 2.0: an in-game Trueforce on/off switch
 - GRID (2019): an in-game Trueforce on/off switch
 - Automobilista 2: the `disableTF` Steam launch option
+- Le Mans Ultimate: **Vendor Specific Force Feedback** off, under Settings > Controls > Force Feedback ([full setup](lmu-setup.md))
 
 Assetto Corsa Competizione, EVO and Rally offer a slider and no off switch that anyone has found, so the plugin stays out of the way in those. Plain Assetto Corsa is not one of these games at all: it ships no Trueforce, so the plugin runs there normally and reads its telemetry directly.
 

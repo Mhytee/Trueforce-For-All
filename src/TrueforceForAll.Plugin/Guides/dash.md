@@ -8,6 +8,7 @@ TF4ALL Dash puts the plugin on your phone or tablet, so effects, gains and prese
 - **Car facts.** The engine layout and redline of the car you are in, which is what the engine effects time themselves from.
 - **Tele-FFB.** The force the plugin builds itself, in the games where it does: strength, damping, centering, cornering weight and the rest.
 - **Visualizer.** A live graph of what your wheel is being sent: the vibration and the steering force.
+- **Gains.** Master and audio gain on a page of their own, with the wheel's state above them. Off to begin with, since the Drive tab's gains box already covers it.
 
 Hide the ones you do not want and put the rest in your own order under **Settings** > **TF4ALL Dash** > **Tabs**; the dash updates straight away. **Dash tab next** and **back** can go on a wheel button, so the tab can be changed without reaching for the screen. ([What you can bind](guide:bindings))
 

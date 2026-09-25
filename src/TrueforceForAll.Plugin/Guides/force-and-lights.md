@@ -23,7 +23,7 @@ So the question is not whether our force is winning. It is whether that connecti
 Two situations make that connection quiet, and they are the two where the plugin will drive your lights:
 
 - **[Telemetry Based FFB](guide:telemetry-ffb)**, where the plugin builds the force and the game is sending none.
-- **[Force handover](guide:force-handover)**, where the sim hands its force to the plugin instead of the wheel. iRacing, RaceRoom, and Assetto Corsa through the CSP Bridge.
+- **[Force handover](guide:force-handover)**, where the sim hands its force to the plugin instead of the wheel. iRacing, RaceRoom, Le Mans Ultimate, and Assetto Corsa through the CSP Bridge.
 
 Anywhere else the plugin leaves your lights as they are rather than costing you the feel of the car. Setting a single pattern is different: that is one write rather than a constant stream, so a car's colors can still land in a game whose rev lights stay dark. Patterns need a wheel whose strip is programmable: the G PRO and the RS50 have one, the G923's strip has a fixed look.
 
