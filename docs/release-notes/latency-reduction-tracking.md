@@ -1,8 +1,10 @@
 # Latency reduction tracking
 
-Running tally of latency work so we can write a "Latency reduction" section in a
-future release. Numbers are **derived from code/buffer math**, not bench-measured
-on hardware, unless a row says "measured". Treat estimates as estimates.
+Running tally of latency work. Changes 1 to 3 shipped in v0.2.0; the copy drafted
+for changes 2 and 3 is below, reworded before it went out, while change 1 went
+unannounced; change 4 is deferred. Numbers are **derived from code/buffer
+math**, not bench-measured on hardware, unless a row says "measured". Treat
+estimates as estimates.
 
 Two independent paths exist and should be reported separately:
 
@@ -17,7 +19,10 @@ parameter, not a firmware constraint (the wheel accepts 250-1000 packets/s, per
 mescon 2026-07), but lowering it would grow this term, so 1 ms stands as the
 practical floor. The rest is reducible.
 
-## Finalized public copy (changes 2 and 3, for this release)
+## Public copy drafted for v0.2.0 (changes 2 and 3)
+
+The published notes reworded the intro and the second bullet, and added a third
+for the 500 Hz effects clock. Read v0.2.0.md for what actually went out.
 
 ```
 ### Latency and responsiveness
@@ -34,10 +39,9 @@ when your system is under load, and quicker detail from captured game audio.
   to 4 ms, with no added risk of dropouts.
 ```
 
-The WASAPI capture cleanup (change 1) is intentionally NOT in the public copy: it
-has no user-facing benefit (it did not change latency, see change 1 above). It can
-go under a generic "Under the hood" line in the full notes if we want to acknowledge
-it at all.
+The WASAPI capture cleanup (change 1) was deliberately left out of the public
+copy: it has no user-facing benefit (it did not change latency, see change 1
+above), and the v0.2.0 notes never mentioned it.
 
 Scope notes for accuracy: bullet 1 (MMCSS on the output pump) helps ALL haptics +
 FFB passthrough. Bullet 2 only affects the captured-audio layer (telemetry effects
@@ -61,7 +65,7 @@ Log location: `C:\Program Files (x86)\SimHub\Logs\SimHub.txt`.
 
 ## Changes
 
-### 1. WASAPI capture buffer: hard-coded 10 ms to engine minimum (DONE, unshipped)
+### 1. WASAPI capture buffer: hard-coded 10 ms to engine minimum (SHIPPED v0.2.0, deliberately not announced)
 
 - **File:** `src/TrueforceForAll.LoopbackHelper/ProcessLoopbackCapture.cs`
 - **What changed:** the legacy `IAudioClient::Initialize` now requests
@@ -85,7 +89,7 @@ Log location: `C:\Program Files (x86)\SimHub\Logs\SimHub.txt`.
 - **Status:** needs a hardware session to read the real "latency ceiling" log line.
   That number is the actual WASAPI contribution to Path A; record it here when known.
 
-### 2. MMCSS "Pro Audio" on the two real-time threads (DONE, unshipped)
+### 2. MMCSS "Pro Audio" on the two real-time threads (SHIPPED v0.2.0)
 
 - **Files:** `src/TrueforceForAll.Core/TrueforceDevice.cs` (StreamLoop, the 1 kHz
   pump), `src/TrueforceForAll.LoopbackHelper/ProcessLoopbackCapture.cs` (CaptureLoop).
@@ -95,11 +99,12 @@ Log location: `C:\Program Files (x86)\SimHub\Logs\SimHub.txt`.
 - **Estimated saving:** ~1-3 ms p99 jitter under load (tail, not mean). Also helps
   Path A mean indirectly by reducing ring auto-ratchet pressure (fewer glitch-driven
   bumps), which compounds with change 3.
-- **Status:** built, compiles. Needs a hardware session to confirm via the
-  AudioRingGlitches / ring-cap telemetry that ratchet activity drops under load.
-  Helper logs "capture thread joined MMCSS Pro Audio" when registration succeeds.
+- **Status:** shipped in v0.2.0. Still needs a hardware session to confirm via
+  the AudioRingGlitches / ring-cap telemetry that ratchet activity drops under
+  load. Helper logs "capture thread joined MMCSS Pro Audio" when registration
+  succeeds.
 
-### 3. Shrink the helper-to-plugin transport chunk so the audio ring settles lower (DONE, unshipped)
+### 3. Shrink the helper-to-plugin transport chunk so the audio ring settles lower (SHIPPED v0.2.0)
 
 - **File:** `src/TrueforceForAll.Plugin/HelperHost.cs` (stdout pump read buffer
   2048 -> 1024 bytes).
@@ -112,8 +117,8 @@ Log location: `C:\Program Files (x86)\SimHub\Logs\SimHub.txt`.
   for users already lower. Bounded by the 1 kHz back-pressure coupling. Pairs with
   change 2 (jitter headroom). Note: change 4 (shared memory) supersedes this transport
   but will keep the pipe as fallback, so this tuning still applies to the fallback.
-- **Status:** built, compiles. Confirm on hardware that the audio ring cap reported
-  in the perf UI settles at 16 rather than 32.
+- **Status:** shipped in v0.2.0. Still to confirm on hardware that the audio ring
+  cap reported in the perf UI settles at 16 rather than 32.
 
 ### 4. Shared-memory IPC instead of the stdout pipe (DEFERRED)
 

@@ -30,44 +30,46 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src", "TrueforceForAll.Plugin", "Guides")
 OUT = os.path.join(ROOT, "guides")
 
-# Titles and grouping mirror SettingsControl.Guides.cs, which is what the
-# in-app browser lists. Anything not named here still gets published; it
-# just lands under "More" with a title made from its file name.
+# Titles and grouping mirror BuildGuideEntries() in SettingsControl.Guides.cs,
+# which is what the in-app browser lists: same three groups, same order, same
+# wording, so a rename in the panel is one copy-across away from the site.
+# The one deliberate addition is forza-forward, which the browser does not
+# list (the Forza guide and the panel link to it). Anything not named here
+# still gets published; it just lands under "More" with a title made from its
+# file name.
 TITLES = [
-    ("Setup", [
+    ("Game setup", [
         ("iracing-setup", "iRacing"),
         ("raceroom-setup", "RaceRoom"),
         ("lmu-setup", "Le Mans Ultimate"),
-        ("assetto-corsa-setup", "Assetto Corsa"),
-        ("csp-bridge", "The TF4ALL CSP Bridge"),
         ("forza-setup", "Forza"),
         ("forza-forward", "Forwarding Forza telemetry to SimHub"),
         ("farming-sim", "Farming Simulator"),
-        ("usbpcap", "USBPcap, and why it is needed"),
-        ("simhub-license", "SimHub's license and telemetry rates"),
-    ]),
-    ("Force feedback", [
-        ("normal-ffb", "How the force reaches your wheel"),
-        ("force-handover", "The force handover"),
+        ("assetto-corsa-setup", "Assetto Corsa"),
+        ("csp-bridge", "The TF4ALL CSP Bridge"),
+        ("native-trueforce", "Games with native Trueforce"),
         ("telemetry-ffb", "Telemetry Based FFB"),
-        ("tuning-effects", "Tuning the effects"),
-        ("weak-effects", "When the effects feel weak"),
-        ("ffb-not-working", "When there is no force feedback"),
-        ("native-trueforce", "Games with their own Trueforce"),
+        ("force-handover", "Force handover"),
     ]),
-    ("Lights and screen", [
-        ("light-patterns", "Light patterns"),
-        ("force-and-lights", "Why lights and force share a channel"),
-        ("wheel-screen", "The wheel's screen"),
+    ("When something is wrong", [
+        ("ffb-not-working", "Force feedback: limp, weak, or silent"),
+        ("weak-effects", "Effects feel weak"),
     ]),
-    ("The rest", [
-        ("dash", "The TF4ALL Dash"),
-        ("home-tile", "The SimHub home tile"),
+    ("Good to know", [
         ("car-facts", "Car facts"),
-        ("lovely-car-data", "Lovely Sim Racing car data"),
+        ("tuning-effects", "Tuning the effects"),
+        ("force-and-lights", "Where your rev lights and screen work"),
+        ("wheel-screen", "The wheel's screen"),
         ("backup-sync", "Backup and sync"),
-        ("bindings", "Putting controls on your wheel"),
-        ("anti-cheat", "Anti-cheat safety"),
+        ("light-patterns", "Light patterns"),
+        ("lovely-car-data", "Per-car rev light data"),
+        ("dash", "TF4ALL Dash"),
+        ("home-tile", "The Trueforce widget"),
+        ("bindings", "Bindings"),
+        ("normal-ffb", "Will this change or replace my normal force feedback?"),
+        ("simhub-license", "Do I need to pay for SimHub?"),
+        ("usbpcap", "Why does it need USBPcap, and is that safe?"),
+        ("anti-cheat", "Is this anti-cheat safe?"),
     ]),
 ]
 

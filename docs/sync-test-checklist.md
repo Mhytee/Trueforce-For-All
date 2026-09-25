@@ -1,15 +1,22 @@
 # Cloud sync + per-account profiles: 2-PC hardware test checklist
 
-Build under test: `TrueforceForAll-Setup.exe` (commit 2dc1247).
+Build under test: the current dev build's `TrueforceForAll-Setup.exe`.
 Install on **both** PCs (the installer's factory cleanup runs, so built-in counts match).
 Both signed in as the **same** account for sections A and C; section B needs a second account.
 
-Watch the SimHub log while testing for `[Trueforce] Auto-sync ...` lines and any warnings.
+Watch the SimHub log while testing for `[TF4ALL] Auto-sync ...` lines and any warnings.
 
 ## A. Sync works (same account, both PCs)
-- [ ] PC1: toggle an effect off and save -> change appears on PC2 within ~5-10s.
+
+A change uploads about 2 seconds after you save it, but the other PC only picks it up on its own
+pull: every 60 seconds while changes are flowing, stretching to 5 and then 10 minutes once several
+polls in a row find nothing new. A change can therefore sit for up to 10 minutes on a PC that has
+been polling quietly, so wait out a full pull interval before calling it a failure, or force it
+with "Restore from cloud" on the receiving PC.
+
+- [ ] PC1: toggle an effect off and save -> change appears on PC2 within a pull cycle.
 - [ ] PC2: change a value -> appears on PC1.
-- [ ] PC1: duplicate a preset -> appears on PC2 in ~10s.
+- [ ] PC1: duplicate a preset -> appears on PC2.
 - [ ] PC1: delete a preset -> it disappears on PC2 and stays gone (no resurrection).
 - [ ] Retry fix: on PC1, toggle+save ~10 times in a row -> every change lands on PC2 (none silently missed).
 - [ ] Both PCs idle a few minutes -> no runaway uploads, library stays identical.
@@ -30,7 +37,7 @@ Watch the SimHub log while testing for `[Trueforce] Auto-sync ...` lines and any
 - [ ] Grayed-out upload for a non-supporter (if testable): download stays active, upload disabled with the lapsed message.
 
 ## D. No FFB / performance regression
-- [ ] Drive in a sim -> FFB feels normal; no stutter or blip from the 2s polling (it defers while a game runs).
+- [ ] Drive in a sim -> FFB feels normal; no stutter or blip from the background sync (a pull that lands mid-game applies nothing and simply re-arms).
 - [ ] After an account switch, master gain / FFB scale on the wheel match the signed-in account's profile.
 
 ## E. Cross-wheel FFB gate (two different wheel models)

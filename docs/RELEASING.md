@@ -22,6 +22,10 @@ agreed to and skips the license + EULA pages on a later update only while it
 still matches; bumping forces those pages to be shown (and re-accepted) once
 after the text changes.
 
+Releases follow the repo's channel model: work lands on `dev`, promotes to
+`beta` for pre-releases, and promotes to `main` for stable releases. The steps
+below name the branch each one applies to.
+
 For each release:
 
 1. Bump `<Version>X.Y.Z</Version>` in `src/Directory.Build.props` (shared by
@@ -29,7 +33,13 @@ For each release:
    header readout, the auto-updater's "current version," and the User-Agent it
    sends to GitHub.
 2. Update `README.md` if any user-visible feature changed (especially the
-   supported-games or wheels tables, install steps, known limitations).
+   supported-games or wheels tables, install steps, known limitations). If any
+   guide text changed, edit the source under
+   `src/TrueforceForAll.Plugin/Guides/`, then run
+   `python scripts/gen_public_guides.py` and commit the regenerated `guides/`.
+   The public guides site republishes on a push to `main` that touches
+   `guides/**` (or the workflow itself), and can also be run by hand from the
+   Actions tab (`.github/workflows/pages.yml`).
 3. Changelog / What's new:
    - The **GitHub release notes are the canonical "What's new" source.** The
      in-app What's-new modal fetches and renders the published release body
@@ -56,8 +66,12 @@ For each release:
      "since vX.Y.Z" baseline to this version so it never goes stale.
 4. Hardware-validate any new telemetry source or game-detection change on the
    rig before tagging.
-5. Commit the version bump (plus any README / changelog changes) to `main`
-   and push it.
+5. Commit the version bump (plus any README / changelog / guides changes) on
+   `dev` and push it. Every recent bump was authored there and reached the
+   other channels by promotion: `dev` to `beta` for the pre-release, then
+   `beta` to `main` for stable. Never commit a bump to `main` directly. Promote
+   `dev` to `beta` now, before tagging, so the branch the release targets
+   carries the bump.
 6. Build the installer locally. `TRUEFORCEFORALL_VERSION` must be set to the
    release version before invoking `iscc`; the Inno Setup script reads it at
    compile time and falls back to `0.1.0-dev` (which ends up in Add/Remove
@@ -88,11 +102,12 @@ For each release:
              installer\output\TrueforceForAll-Setup-X.Y.Z.exe
    ```
 7. Create a **draft** GitHub release targeting the version-bump commit on
-   `main`, and upload the installer:
+   `beta`, and upload the installer. (Every tag from v0.2.0 to v0.4.0 points at
+   a commit on `beta`; `main` catches up when you promote after publishing.)
 
    ```powershell
    gh release create vX.Y.Z installer\output\TrueforceForAll-Setup.exe `
-       --draft --target main --title "vX.Y.Z: <description>" --notes-file notes.md
+       --draft --target beta --title "vX.Y.Z: <description>" --notes-file notes.md
    ```
 
    Title and notes conventions (consistent since v0.1.19):
@@ -128,15 +143,16 @@ version numbers with no `-beta.N` suffix. Each beta is an ordinary version bump.
 The updater compares numeric versions, so a distinct number per build is what
 lets a tester move from one beta to the next.
 
-1. Bump the version in `src/Directory.Build.props` to the next number (a beta is
-   just the next version, e.g. 0.2.0 to 0.3.0). Build, tag, and produce the
-   installer exactly as in steps 1 to 6 above.
-2. Create the release with `--prerelease`, and do NOT set it as latest. Target
-   whichever branch the beta is cut from:
+1. Bump the version in `src/Directory.Build.props` on `dev` to the next
+   number (a beta is just the next version, e.g. 0.2.0 to 0.3.0), then promote
+   `dev` to `beta`. Build, tag, and produce the installer exactly as in steps
+   1 to 6 above.
+2. Create the release with `--prerelease`, and do NOT set it as latest. The beta
+   is cut from `beta`, so target that branch:
 
    ```powershell
    gh release create v0.3.0 installer\output\TrueforceForAll-Setup.exe `
-       --draft --prerelease --target <branch> `
+       --draft --prerelease --target beta `
        --title "v0.3.0-beta: <description>" --notes-file notes.md
    ```
 
@@ -152,4 +168,5 @@ lets a tester move from one beta to the next.
    No rebuild is needed, so the exact binary testers validated becomes the
    stable release, and stable users are offered it on their next check. (If you
    would rather ship a fresh build, just cut a normal full release at the next
-   version instead.)
+   version instead.) Promote the branch as well: merge `beta` into `main` so the
+   stable branch carries what shipped.

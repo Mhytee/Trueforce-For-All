@@ -1,6 +1,9 @@
 # Localization plan
 
-Status: planned, not started. Owner decisions are listed at the end.
+Status: Phase 0 and the Phase 1 runtime have landed on `dev`; the Phase 1
+tab conversions are under way, with the rehearsal slice and the Controls
+and Account tabs converted. Phases 2 to 4 are not started and no translation has
+shipped. Owner decisions are listed at the end.
 Written 2026-09-24 from a two-workflow audit of the tree (five readers,
 two competing designs, three adversarial reviews). Counts below were
 measured on `dev` that day; re-measure rather than trusting them.
@@ -143,7 +146,9 @@ to exercise font fallback and line height.
 ## Identifier couplings to fix before any extraction
 
 These are display strings the code reads back as state. Translating any of
-them silently breaks a setting.
+them silently breaks a setting. Phase 0 landed every fix below except the
+`TelemetryFfbTab.Header` read-back, which moves with the TelemetryFfb tab
+conversion in Phase 1.
 
 - `ImplementThudWaveformCombo`: Content is matched as a `Waveform` enum
   name (`(it.Content as string) == wname` and `Enum.TryParse<Waveform>`).
@@ -182,7 +187,7 @@ endings byte for byte (`SettingsControl.xaml` is LF with BOM,
 leftovers from 2026-08-23, a scripted insert that dropped about 2,470 lines
 from `SettingsControl.xaml.cs`, are the precedent this rule exists for.
 
-### Phase 0: pre-work (hours; ships alone)
+### Phase 0: pre-work (landed 2026-09-24, commit 07b466b)
 
 The identifier fixes above. The three `DateTime.TryParse` culture fixes. A
 comma-decimal guard before `JObject.Parse` in
@@ -197,7 +202,7 @@ Exit: build green; grep shows no Content-as-key read remains; Implement
 thud waveform and FX kind gain round-trip through save and reload; the log
 line shows en-US.
 
-### Phase 1: runtime plus XAML, English only (2 to 4 days; ships alone)
+### Phase 1: runtime plus XAML, English only (in progress; 2 to 4 days; ships alone)
 
 The Loc runtime, about 350 lines. Rehearsal slice first, chosen to hit
 every hazard class on about 15 percent of the surface: `MotdStrip.xaml`

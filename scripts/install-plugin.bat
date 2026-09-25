@@ -56,7 +56,7 @@ echo.
 echo ============================================================
 echo  DONE. Look for "1 file(s) copied" THREE times above.
 echo  If you see "being used by another process", SimHub didn't
-echo  fully close -- close this window and re-run as admin.
-echo  Next: docs\TESTER-HANDOFF.md has the full setup + test plan.
+echo  fully close. Close this window and re-run as admin.
+echo  Next: the in-app guides, or mhytee.github.io/Trueforce-For-All
 echo ============================================================
 pause
