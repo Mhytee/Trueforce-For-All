@@ -15,6 +15,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -46,7 +47,7 @@ namespace TrueforceForAll.Plugin
 
         public WelcomeWindow()
         {
-            Title         = "Trueforce For All: community features";
+            Title         = Loc.T("Welcome_Title");
             Width         = 500;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -59,15 +60,12 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Introducing: community presets and car data",
+                Text = Loc.T("Welcome_Heading"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 17,
                 Margin = new Thickness(0, 0, 0, 6),
             });
             root.Children.Add(new TextBlock {
-                Text = "This update adds a community preset browser, crowd-sourced car data, and per-car corrections. "
-                     + "Community features are on: car data you tune (redlines, engine types, car names) is shared "
-                     + "anonymously and improves everyone's defaults. You can turn any of this off in Settings. "
-                     + "An account is only needed for the preset browser (free email sign-in).",
+                Text = Loc.T("Welcome_Intro"),
                 Foreground = MutedFg, FontSize = 12,
                 Margin = new Thickness(0, 0, 0, 18),
                 TextWrapping = TextWrapping.Wrap,
@@ -76,20 +74,20 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(MakePrereleaseNotice());
 
             root.Children.Add(MakeBullet(
-                "Crowd-sourced car data",
-                "Effects like the engine pulse and rev limiter feel best when they know a car's engine and redline. Games don't always report that data in telemetry, and a few don't even give the car a real name, just a code like \"car_123\". Now, drivers can fill in the gaps, building a shared pool everyone benefits from. Saved per tune, so a swapped engine keeps its own redline."));
+                Loc.T("Welcome_CarDataTitle"),
+                Loc.T("Welcome_CarDataBody")));
             root.Children.Add(MakeBullet(
-                "Community presets",
-                "Browse and download presets other drivers have shared, for the car you're driving or the game you're playing. Vote on the ones you've tried so the best rise to the top."));
+                Loc.T("Welcome_PresetsTitle"),
+                Loc.T("Welcome_PresetsBody")));
             root.Children.Add(MakeBullet(
-                "It gets better as it grows",
-                "The more drivers take part, the more often the right setup is already waiting when you load in. What you add helps the next person the same way."));
+                Loc.T("Welcome_GrowsTitle"),
+                Loc.T("Welcome_GrowsBody")));
             root.Children.Add(MakeBullet(
-                "Earn achievements",
-                "Earn achievements for things like sharing presets, confirming car data, and supporting the project. Link your Discord account to get a matching role in the community server."));
+                Loc.T("Welcome_AchievementsTitle"),
+                Loc.T("Welcome_AchievementsBody")));
             root.Children.Add(MakeBullet(
-                "Privacy by default",
-                "Car data you contribute is anonymous. Sign-in (only needed for presets) takes just your email and a one-time code. No password, no signup form. The privacy policy spells out what's stored and how to remove it."));
+                Loc.T("Welcome_PrivacyTitle"),
+                Loc.T("Welcome_PrivacyBody")));
 
             // Policy link, indented to align with the bullet bodies.
             var policyLine = new TextBlock {
@@ -97,7 +95,7 @@ namespace TrueforceForAll.Plugin
                 TextWrapping = TextWrapping.Wrap,
             };
             var policyLink = new System.Windows.Documents.Hyperlink(
-                new System.Windows.Documents.Run("Read the privacy policy"))
+                new System.Windows.Documents.Run(Loc.T("Welcome_ReadPrivacyPolicy")))
             { Foreground = HeaderFg };
             policyLink.Click += (s, e) => OpenUrl(SettingsControl.PrivacyPolicyUrl);
             policyLine.Inlines.Add(policyLink);
@@ -109,7 +107,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 20, 0, 0),
             };
             var continueBtn = new Button {
-                Content = "Continue without an account", Padding = new Thickness(14, 6, 14, 6),
+                Content = Loc.T("Welcome_ContinueWithout"), Padding = new Thickness(14, 6, 14, 6),
                 Margin = new Thickness(0, 0, 10, 0),
                 Foreground = TextFg, IsCancel = true,
                 Style = MakeFilledButtonStyle(
@@ -122,7 +120,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(continueBtn);
 
             var signInBtn = new Button {
-                Content = "Sign in / create account", Padding = new Thickness(16, 6, 16, 6),
+                Content = Loc.T("Welcome_SignIn"), Padding = new Thickness(16, 6, 16, 6),
                 Foreground = WindowBg,
                 FontWeight = FontWeights.SemiBold, IsDefault = true,
                 Style = MakeFilledButtonStyle(
@@ -191,12 +189,12 @@ namespace TrueforceForAll.Plugin
             };
             var stack = new StackPanel();
             stack.Children.Add(new TextBlock {
-                Text = "Pre-release test backend",
+                Text = Loc.T("Welcome_TestBackendTitle"),
                 Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 3),
             });
             stack.Children.Add(new TextBlock {
-                Text = "The community backend is still in testing. Shared presets and packs here are test data and may be reset before the public launch. Your account, achievements, and any car data you contribute are kept.",
+                Text = Loc.T("Welcome_TestBackendBody"),
                 Foreground = TextFg, FontSize = 11, TextWrapping = TextWrapping.Wrap,
             });
             border.Child = stack;

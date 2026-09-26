@@ -10,9 +10,11 @@
 // Built in code (not XAML) to match the existing plugin modal convention.
 
 using System;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -71,11 +73,11 @@ namespace TrueforceForAll.Plugin
         // phone dash. The last bullet carries what the longer list used to spell out.
         private static readonly string[] Bullets =
         {
-            "Trueforce haptics in games with no native support",
-            "Improved force feedback in a growing list of games",
-            "Rev lights and your wheel's built-in OLED screen in games that never had them (select titles for now)",
-            "A dash for your phone or tablet",
-            "Tunable effects, community car data, and more",
+            Loc.T("SupportPrompt_Bullet1"),
+            Loc.T("SupportPrompt_Bullet2"),
+            Loc.T("SupportPrompt_Bullet3"),
+            Loc.T("SupportPrompt_Bullet4"),
+            Loc.T("SupportPrompt_Bullet5"),
         };
 
         /// <summary>True when the user clicked through to Patreon. DialogResult is
@@ -107,7 +109,7 @@ namespace TrueforceForAll.Plugin
             });
 
             root.Children.Add(new TextBlock {
-                Text = "TF4ALL adds what games leave out:",
+                Text = Loc.T("SupportPrompt_Lead"),
                 Foreground = TextFg, FontSize = 12,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Margin = new Thickness(0, 0, 0, 9),
@@ -151,27 +153,38 @@ namespace TrueforceForAll.Plugin
             // beat between the list and the ask rather than as a body paragraph.
             if (bankedHours >= 1)
             {
-                root.Children.Add(new TextBlock {
+                // One sentence rather than three Runs, so a translation chooses
+                // its own plural form and its own word order. The count is then
+                // found in the rendered text and split back out, which keeps the
+                // accent colour on the number without freezing where it sits. If
+                // a translation drops the placeholder the line still renders, just
+                // without the accent.
+                string hoursLine = Loc.N("SupportPrompt_HoursDriven", bankedHours, bankedHours);
+                string hoursCount = bankedHours.ToString(CultureInfo.InvariantCulture);
+                int countAt = hoursLine.IndexOf(hoursCount, StringComparison.Ordinal);
+                var hoursBlock = new TextBlock {
                     Foreground = TextFg, FontSize = 12,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Margin = new Thickness(0, 0, 0, 0),
                     TextWrapping = TextWrapping.Wrap,
-                    Inlines = {
-                        new System.Windows.Documents.Run("You have driven "),
-                        new System.Windows.Documents.Bold(
-                            new System.Windows.Documents.Run(
-                                bankedHours + (bankedHours == 1 ? " hour" : " hours"))) {
-                            Foreground = AccentFg },
-                        new System.Windows.Documents.Run(" with it."),
-                    },
-                });
+                };
+                if (countAt < 0)
+                {
+                    hoursBlock.Inlines.Add(new System.Windows.Documents.Run(hoursLine));
+                }
+                else
+                {
+                    hoursBlock.Inlines.Add(new System.Windows.Documents.Run(hoursLine.Substring(0, countAt)));
+                    hoursBlock.Inlines.Add(new System.Windows.Documents.Bold(
+                        new System.Windows.Documents.Run(hoursCount)) { Foreground = AccentFg });
+                    hoursBlock.Inlines.Add(new System.Windows.Documents.Run(
+                        hoursLine.Substring(countAt + hoursCount.Length)));
+                }
+                root.Children.Add(hoursBlock);
             }
 
             root.Children.Add(new TextBlock {
-                Text = "Supporting us on Patreon helps us keep the plugin free for everybody. "
-                     + "It costs real money to run: a "
-                     + "server for the community features, games bought purely to test against, "
-                     + "and a lot of hours.",
+                Text = Loc.T("SupportPrompt_Why"),
                 Foreground = TextFg, FontSize = 12,
                 Margin = new Thickness(0, 12, 0, 10),
                 TextWrapping = TextWrapping.Wrap,
@@ -181,7 +194,7 @@ namespace TrueforceForAll.Plugin
             // entitlements.supporter_since, which is stamped once and never
             // cleared, so a lapse never brings this back.
             root.Children.Add(new TextBlock {
-                Text = "Memberships start at $1, and supporting once hides this message forever.",
+                Text = Loc.T("SupportPrompt_Price"),
                 Foreground = TextFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 8),
                 TextWrapping = TextWrapping.Wrap,
@@ -191,8 +204,7 @@ namespace TrueforceForAll.Plugin
             // account, so a supporter who never signed in reads as a non-supporter
             // and would otherwise be stuck being asked forever.
             root.Children.Add(new TextBlock {
-                Text = "Already supporting? Sign in on the Account tab, then use Link Patreon. "
-                     + "If you donated another way, message me on Discord.",
+                Text = Loc.T("SupportPrompt_AlreadySupporting"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 16),
                 TextWrapping = TextWrapping.Wrap,
@@ -204,7 +216,7 @@ namespace TrueforceForAll.Plugin
             };
 
             var laterBtn = new Button {
-                Content = "Not now",
+                Content = Loc.T("SupportPrompt_NotNow"),
                 Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg,
@@ -218,7 +230,7 @@ namespace TrueforceForAll.Plugin
             // It carries its own template because the stock button re-themes its
             // background on hover, which turned the gold gray under the cursor.
             var supportBtn = new Button {
-                Content = "Support on Patreon",
+                Content = Loc.T("SupportPrompt_Support"),
                 Foreground = ButtonDarkFg, FontWeight = FontWeights.SemiBold,
                 Template = GoldButtonTemplate(),
                 IsDefault = true,

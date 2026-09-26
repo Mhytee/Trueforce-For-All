@@ -57,3 +57,8 @@ value:Impact
 value:Consolas
 value:Georgia
 value:Trebuchet
+
+# The product's own name, added 2026-09-26 with the support prompt, which uses it
+# as the window title and as its heading. xaml-keep-literal.txt keeps the same
+# value literal on the markup side; a brand is not copy to translate.
+value:Trueforce For All

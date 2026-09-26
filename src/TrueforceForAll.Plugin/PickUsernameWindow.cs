@@ -14,6 +14,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -40,7 +41,7 @@ namespace TrueforceForAll.Plugin
         {
             _plugin = plugin;
 
-            Title         = "Pick your username";
+            Title         = Loc.T("PickUsername_Title");
             Width         = 440;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -53,19 +54,19 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Pick your username",
+                Text = Loc.T("PickUsername_Title"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "Your public name, shown on anything you share with the community. 3 to 32 characters, letters / numbers / underscore.",
+                Text = Loc.T("PickUsername_Intro"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,
             });
 
             root.Children.Add(new TextBlock {
-                Text = "Username", Foreground = MutedFg, FontSize = 11,
+                Text = Loc.T("PickUsername_Label"), Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 2),
             });
             var input = new TextBox {
@@ -91,7 +92,7 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
             var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
             };
@@ -99,7 +100,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(cancelBtn);
 
             var saveBtn = new Button {
-                Content = "Save", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Save"), Padding = new Thickness(12, 5, 12, 5),
                 Foreground = TextFg, Background = PanelBg, IsDefault = true,
                 IsEnabled = false,
             };
@@ -120,7 +121,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     hint.Foreground = ErrFg;
-                    hint.Text = "Couldn't check that name. Check your connection and try again.";
+                    hint.Text = Loc.T("PickUsername_CheckFailed");
                     TrueforceDialog.LogError("Username check", ex);
                     saveBtn.IsEnabled = false;
                 }
@@ -128,7 +129,7 @@ namespace TrueforceForAll.Plugin
             input.TextChanged += (s, e) =>
             {
                 hint.Foreground = MutedFg;
-                hint.Text = "Checking...";
+                hint.Text = Loc.T("PickUsername_Checking");
                 saveBtn.IsEnabled = false;
                 _debounce.Stop();
                 _debounce.Start();
@@ -141,13 +142,13 @@ namespace TrueforceForAll.Plugin
                 saveBtn.IsEnabled = false;
                 cancelBtn.IsEnabled = false;
                 hint.Foreground = InfoFg;
-                hint.Text = "Saving...";
+                hint.Text = Loc.T("PickUsername_Saving");
                 UsernameAvailability result;
                 try { result = await _plugin.AuthSetUsernameAsync(name); }
                 catch (Exception ex)
                 {
                     hint.Foreground = ErrFg;
-                    hint.Text = "Couldn't save your username. Check your connection and try again.";
+                    hint.Text = Loc.T("PickUsername_SaveFailed");
                     TrueforceDialog.LogError("Username save", ex);
                     saveBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
@@ -178,7 +179,7 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     hint.Foreground = ErrFg;
-                    hint.Text = "Couldn't check that name. Check your connection and try again.";
+                    hint.Text = Loc.T("PickUsername_CheckFailed");
                     TrueforceDialog.LogError("Username check", ex);
                     saveBtn.IsEnabled = false;
                 }
@@ -201,7 +202,7 @@ namespace TrueforceForAll.Plugin
             catch
             {
                 hint.Foreground = ErrFg;
-                hint.Text = "Could not reach the server.";
+                hint.Text = Loc.T("PickUsername_ServerUnreachable");
                 saveBtn.IsEnabled = false;
                 return;
             }
@@ -211,12 +212,12 @@ namespace TrueforceForAll.Plugin
             {
                 case UsernameAvailability.Available:
                     hint.Foreground = OkFg;
-                    hint.Text = "Available.";
+                    hint.Text = Loc.T("PickUsername_Available");
                     saveBtn.IsEnabled = true;
                     break;
                 case UsernameAvailability.SelfOwned:
                     hint.Foreground = MutedFg;
-                    hint.Text = "That's already your username.";
+                    hint.Text = Loc.T("PickUsername_AlreadyYours");
                     saveBtn.IsEnabled = false;
                     break;
                 default:
