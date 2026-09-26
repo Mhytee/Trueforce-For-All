@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -126,10 +127,10 @@ namespace TrueforceForAll.Plugin
             bool isGame   = _kind == "game";
             bool isEngine = _kind == "engine";
             Title         = isEngine
-                ? "Share custom engine with the community"
+                ? Loc.T("PresetShare_TitleEngine")
                 : isGame
-                    ? "Share game preset with the community"
-                    : "Share preset with the community";
+                    ? Loc.T("PresetShare_TitleGame")
+                    : Loc.T("PresetShare_TitlePreset");
             Width         = 480;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -143,10 +144,10 @@ namespace TrueforceForAll.Plugin
 
             root.Children.Add(new TextBlock {
                 Text = isEngine
-                    ? "Share custom engine with the community"
+                    ? Loc.T("PresetShare_TitleEngine")
                     : isGame
-                        ? "Share game preset with the community"
-                        : "Share preset with the community",
+                        ? Loc.T("PresetShare_TitleGame")
+                        : Loc.T("PresetShare_TitlePreset"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 12),
             });
@@ -155,7 +156,7 @@ namespace TrueforceForAll.Plugin
             // forget which preset is going up. Engines are game-agnostic
             // so neither Game nor Car nor Sections apply. Game presets
             // skip the Car row.
-            root.Children.Add(MakeFactLine(isEngine ? "Engine" : "Preset", _presetName));
+            root.Children.Add(MakeFactLine(isEngine ? Loc.T("PresetShare_RowEngine") : Loc.T("PresetShare_RowPreset"), _presetName));
             TextBox carNameInput = null;
             string carNameInitial = null;
             if (!isEngine)
@@ -166,7 +167,7 @@ namespace TrueforceForAll.Plugin
                 // misleading. Skip the Game line for game presets and let
                 // the picker carry that decision.
                 if (!isGame)
-                    root.Children.Add(MakeFactLine("Game", _game));
+                    root.Children.Add(MakeFactLine(Loc.T("Common_Game"), _game));
                 if (!isGame)
                 {
                     // Car identification: show the game-side ID read-only
@@ -180,9 +181,9 @@ namespace TrueforceForAll.Plugin
                     // gets written into local CarFacts and submitted so
                     // the community gets the better name alongside the
                     // preset.
-                    root.Children.Add(MakeFactLine("Car ID", _carId));
+                    root.Children.Add(MakeFactLine(Loc.T("Common_CarId"), _carId));
                     root.Children.Add(new TextBlock {
-                        Text = "Car name (helps other drivers find the right car):",
+                        Text = Loc.T("PresetShare_CarNameLabel"),
                         Foreground = MutedFg, FontSize = 11,
                         Margin = new Thickness(0, 0, 0, 2),
                     });
@@ -203,8 +204,8 @@ namespace TrueforceForAll.Plugin
                     };
                     root.Children.Add(carNameInput);
                 }
-                root.Children.Add(MakeFactLine("Sections", _effectTags.Count == 0
-                    ? "(none)" : EffectTagLabels.JoinLabels(_effectTags)));
+                root.Children.Add(MakeFactLine(Loc.T("PresetShare_RowSections"), _effectTags.Count == 0
+                    ? Loc.T("PresetShare_RowSectionsNone") : EffectTagLabels.JoinLabels(_effectTags)));
             }
 
             // Identity is server-authoritative: the server stamps
@@ -215,10 +216,10 @@ namespace TrueforceForAll.Plugin
             string sharingAs = signedIn
                 ? (_plugin?.Settings?.SharingAuthor ?? "(your username)")
                 : "(sign in required)";
-            root.Children.Add(MakeFactLine("Sharing as", sharingAs, SharingAsRowTag));
+            root.Children.Add(MakeFactLine(Loc.T("PresetShare_RowSharingAs"), sharingAs, SharingAsRowTag));
 
             root.Children.Add(new TextBlock {
-                Text = "Description (optional, what makes this preset feel good):",
+                Text = Loc.T("PresetShare_DescriptionLabel"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 2),
             });
@@ -244,7 +245,7 @@ namespace TrueforceForAll.Plugin
             // items never accidentally ride along.
             var allowInPacksCheck = new CheckBox
             {
-                Content = "Allow others to include this in their packs",
+                Content = Loc.T("Share_AllowInPacks"),
                 Foreground = TextFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
                 IsEnabled = signedIn,
@@ -263,7 +264,7 @@ namespace TrueforceForAll.Plugin
             {
                 root.Children.Add(new TextBlock
                 {
-                    Text = "Which games is this tuned for?",
+                    Text = Loc.T("Share_WhichGames"),
                     Foreground = MutedFg, FontSize = 11,
                     Margin = new Thickness(0, 0, 0, 4),
                 });
@@ -287,7 +288,7 @@ namespace TrueforceForAll.Plugin
                 bool startUniversal = defaultGames.Count == 0;
                 universalCheck = new CheckBox
                 {
-                    Content = "Universal (any game)",
+                    Content = Loc.T("Share_Universal"),
                     Foreground = TextFg, FontSize = 11,
                     Margin = new Thickness(0, 0, 0, 6),
                     IsChecked = startUniversal,
@@ -393,12 +394,12 @@ namespace TrueforceForAll.Plugin
                 // documented exception, so users can flip this on for it.
                 var showNativeCheck = new CheckBox
                 {
-                    Content = "Show games with native Trueforce (advanced)",
+                    Content = Loc.T("Share_ShowNativeTrueforce"),
                     Foreground = MutedFg, FontSize = 11,
                     Margin = new Thickness(0, 0, 0, 6),
                     IsChecked = false,
                     IsEnabled = signedIn,
-                    ToolTip = "Trueforce ships in some games directly (iRacing, ACC, F1 22+, etc) and the plugin yields to those. Check this if you're sharing for a setup where the game's own Trueforce is switched off.",
+                    ToolTip = Loc.T("PresetShare_NativeTrueforce_Tip"),
                 };
                 showNativeCheck.Checked   += (s, e) => rebuildGames(true);
                 showNativeCheck.Unchecked += (s, e) => rebuildGames(false);
@@ -417,7 +418,7 @@ namespace TrueforceForAll.Plugin
                 };
                 addGameBtn = new Button
                 {
-                    Content = "Add", Padding = new Thickness(10, 3, 10, 3),
+                    Content = Loc.T("Common_Add"), Padding = new Thickness(10, 3, 10, 3),
                     Foreground = TextFg, Background = PanelBg,
                 };
                 addRow.Children.Add(addGameInput);
@@ -458,8 +459,8 @@ namespace TrueforceForAll.Plugin
                 Foreground = signedIn ? MutedFg : ErrFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 8),
                 Text = signedIn
-                    ? "Uploads are credited to your username."
-                    : "Sign in to share. Click \"Sign in...\" below.",
+                    ? Loc.T("PresetShare_CreditedToUsername")
+                    : Loc.T("PresetShare_SignInPrompt"),
                 TextWrapping = TextWrapping.Wrap,
             };
             root.Children.Add(statusText);
@@ -488,14 +489,14 @@ namespace TrueforceForAll.Plugin
             if (!signedIn)
             {
                 signInBtn = new Button {
-                    Content = "Sign in…", Padding = new Thickness(12, 5, 12, 5),
+                    Content = Loc.T("PresetShare_SignInButton"), Padding = new Thickness(12, 5, 12, 5),
                     Margin = new Thickness(0, 0, 8, 0),
                     Foreground = TextFg, Background = PanelBg,
                 };
                 btnRow.Children.Add(signInBtn);
             }
             var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0), IsCancel = true,
             };
             ModalButtonTheme.Secondary(cancelBtn);
@@ -507,7 +508,7 @@ namespace TrueforceForAll.Plugin
             // description), this re-runs the username picker in place. Hidden until
             // that case is hit; wired below once the fields it flips exist.
             var pickUsernameBtn = new Button {
-                Content = "Pick username…", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("PresetShare_PickUsernameButton"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg,
                 Visibility = Visibility.Collapsed,
@@ -521,7 +522,7 @@ namespace TrueforceForAll.Plugin
             // enabled whenever signed in).
             bool hasSections = isEngine || _effectTags.Count > 0;
             var uploadBtn = new Button {
-                Content = "Upload", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("PresetShare_Upload"), Padding = new Thickness(12, 5, 12, 5),
                 IsDefault = true,
                 IsEnabled = signedIn && hasSections,
             };
@@ -532,7 +533,7 @@ namespace TrueforceForAll.Plugin
             // default.
             if (!isEngine && !hasSections)
             {
-                uploadBtn.ToolTip = "Pick at least one effect section to share. An empty preset has nothing for downloaders to apply.";
+                uploadBtn.ToolTip = Loc.T("PresetShare_NoSections_Tip");
                 System.Windows.Controls.ToolTipService.SetShowOnDisabled(uploadBtn, true);
             }
 
@@ -547,7 +548,7 @@ namespace TrueforceForAll.Plugin
                 allowInPacksCheck.IsEnabled = true;
                 if (universalCheck != null) universalCheck.IsEnabled = true;
                 statusText.Foreground = MutedFg;
-                statusText.Text = "Uploads are credited to your username.";
+                statusText.Text = Loc.T("PresetShare_CreditedToUsername");
                 if (signInBtn != null) btnRow.Children.Remove(signInBtn);
                 // Rebuild the Sharing-as line in place. Cheap since the parent
                 // StackPanel preserves order.
@@ -559,8 +560,8 @@ namespace TrueforceForAll.Plugin
                     {
                         root.Children.RemoveAt(i);
                         root.Children.Insert(i, MakeFactLine(
-                            "Sharing as",
-                            _plugin?.Settings?.SharingAuthor ?? "(your username)",
+                            Loc.T("PresetShare_RowSharingAs"),
+                            _plugin?.Settings?.SharingAuthor ?? Loc.T("PresetShare_YourUsername"),
                             SharingAsRowTag));
                         break;
                     }
@@ -577,7 +578,7 @@ namespace TrueforceForAll.Plugin
                 if (string.IsNullOrWhiteSpace(_plugin?.Settings?.SharingAuthor))
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Signed in, but no username yet. Pick one to finish sharing.";
+                    statusText.Text = Loc.T("PresetShare_NoUsernameYet");
                     pickUsernameBtn.Visibility = Visibility.Visible;
                     return;
                 }
@@ -614,7 +615,7 @@ namespace TrueforceForAll.Plugin
                 cancelBtn.IsEnabled = false;
                 statusText.Foreground = MutedFg;
                 bool isUpdatePath = IsUpdate && !string.IsNullOrEmpty(ExistingUploadId);
-                statusText.Text = isUpdatePath ? "Updating..." : "Uploading...";
+                statusText.Text = isUpdatePath ? Loc.T("PresetShare_Updating") : Loc.T("PresetShare_Uploading");
                 uploadProgress.IsIndeterminate = true;
                 uploadProgress.Visibility = Visibility.Visible;
 
@@ -682,7 +683,7 @@ namespace TrueforceForAll.Plugin
                     uploadProgress.IsIndeterminate = false;
                     uploadProgress.Visibility = Visibility.Collapsed;
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Couldn't upload. Check your connection and try again.";
+                    statusText.Text = Loc.T("Share_UploadFailed");
                     TrueforceDialog.LogError("Share upload", ex);
                     uploadBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
@@ -742,8 +743,8 @@ namespace TrueforceForAll.Plugin
                 }
                 statusText.Foreground = OkFg;
                 statusText.Text = isUpdatePath
-                    ? "Updated. Thanks for contributing."
-                    : "Uploaded. Thanks for contributing.";
+                    ? Loc.T("PresetShare_Updated")
+                    : Loc.T("Share_Uploaded");
                 DialogResult = true;
                 Close();
             };

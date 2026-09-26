@@ -15,7 +15,7 @@
 # sweep see writes it was blind to. Re-run with -WriteBudget in that commit and
 # say so in the message.
 #
-# Written 2026-09-26 from 126 plugin file(s): 1555 literal(s) left.
+# Written 2026-09-26 from 126 plugin file(s): 1463 literal(s) left.
 
 src/TrueforceForAll.Plugin/SettingsControl.xaml.cs 570
 src/TrueforceForAll.Plugin/PresetManagerControl.xaml.cs 206
@@ -24,12 +24,9 @@ src/TrueforceForAll.Plugin/SettingsControl.Guides.cs 84
 src/TrueforceForAll.Plugin/PresetPreviewWindow.cs 68
 src/TrueforceForAll.Plugin/SettingsControl.PatternEditor.cs 58
 src/TrueforceForAll.Plugin/OledScreenModel.cs 41
-src/TrueforceForAll.Plugin/PresetShareWindow.cs 37
 src/TrueforceForAll.Plugin/PackManagerWindow.cs 33
-src/TrueforceForAll.Plugin/EditCommunityPresetWindow.cs 30
 src/TrueforceForAll.Plugin/UsbDevicePickerWindow.cs 27
 src/TrueforceForAll.Plugin/SettingsControl.TrueforceEq.cs 26
-src/TrueforceForAll.Plugin/CreatePackWindow.cs 25
 src/TrueforceForAll.Plugin/CommunityForCarPopover.cs 22
 src/TrueforceForAll.Plugin/CarFactsVariantsWindow.cs 19
 src/TrueforceForAll.Plugin/ImportPreviewWindow.cs 18

@@ -19,6 +19,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Newtonsoft.Json.Linq;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -62,7 +63,7 @@ namespace TrueforceForAll.Plugin
         {
             _plugin = plugin;
 
-            Title         = "Create a community pack";
+            Title         = Loc.T("CreatePack_Title");
             Width         = 560;
             Height        = 640;
             Background    = WindowBg;
@@ -81,13 +82,13 @@ namespace TrueforceForAll.Plugin
 
             headerStack.Children.Add(new TextBlock
             {
-                Text = "Create a community pack",
+                Text = Loc.T("CreatePack_Title"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             headerStack.Children.Add(new TextBlock
             {
-                Text = "Bundle game presets, car presets, and custom engines into one downloadable pack. Built-ins never appear here. Community items only appear when their author allowed re-bundling.",
+                Text = Loc.T("CreatePack_Intro"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
                 TextWrapping = TextWrapping.Wrap,
@@ -102,10 +103,10 @@ namespace TrueforceForAll.Plugin
             metaGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             metaGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            var nameLbl = new TextBlock { Text = "Pack name", Foreground = MutedFg, FontSize = 11 };
+            var nameLbl = new TextBlock { Text = Loc.T("CreatePack_NameLabel"), Foreground = MutedFg, FontSize = 11 };
             Grid.SetColumn(nameLbl, 0); Grid.SetRow(nameLbl, 0);
             metaGrid.Children.Add(nameLbl);
-            var verLbl = new TextBlock { Text = "Version (optional)", Foreground = MutedFg, FontSize = 11 };
+            var verLbl = new TextBlock { Text = Loc.T("CreatePack_VersionLabel"), Foreground = MutedFg, FontSize = 11 };
             Grid.SetColumn(verLbl, 2); Grid.SetRow(verLbl, 0);
             metaGrid.Children.Add(verLbl);
 
@@ -133,7 +134,7 @@ namespace TrueforceForAll.Plugin
             // Description.
             var descLbl = new TextBlock
             {
-                Text = "Description (optional)",
+                Text = Loc.T("CreatePack_DescriptionLabel"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 2, 0, 2),
             };
@@ -170,7 +171,7 @@ namespace TrueforceForAll.Plugin
             DockPanel.SetDock(btnRow, Dock.Bottom);
             var cancelBtn = new Button
             {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
             };
@@ -178,7 +179,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(cancelBtn);
             var uploadBtn = new Button
             {
-                Content = "Upload pack", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("CreatePack_Upload"), Padding = new Thickness(12, 5, 12, 5),
                 Foreground = TextFg, Background = PanelBg, IsDefault = true,
             };
             btnRow.Children.Add(uploadBtn);
@@ -204,19 +205,19 @@ namespace TrueforceForAll.Plugin
                 if (packName.Length < 2)
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Pick a pack name (2 chars or more).";
+                    statusText.Text = Loc.T("CreatePack_NameTooShort");
                     return;
                 }
                 if (_plugin?.Settings?.CommunityEnabled != true)
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Turn on 'Enable community features (online)' in Settings first.";
+                    statusText.Text = Loc.T("CreatePack_CommunityOff");
                     return;
                 }
                 if (!_plugin.AuthIsSignedIn)
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Sign in first (Account tab).";
+                    statusText.Text = Loc.T("CreatePack_SignInFirst");
                     return;
                 }
 
@@ -312,14 +313,14 @@ namespace TrueforceForAll.Plugin
                 if (entryCount == 0)
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Pick at least one entry to include.";
+                    statusText.Text = Loc.T("CreatePack_PickOne");
                     return;
                 }
 
                 uploadBtn.IsEnabled = false;
                 cancelBtn.IsEnabled = false;
                 statusText.Foreground = MutedFg;
-                statusText.Text = $"Uploading {entryCount} entr{(entryCount == 1 ? "y" : "ies")}...";
+                statusText.Text = Loc.N("CreatePack_Uploading", entryCount, entryCount);
 
                 string newId = null;
                 try
@@ -334,7 +335,7 @@ namespace TrueforceForAll.Plugin
                 {
                     if (_closed) return;
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Couldn't upload. Check your connection and try again.";
+                    statusText.Text = Loc.T("Share_UploadFailed");
                     TrueforceDialog.LogError("Pack upload", ex);
                     uploadBtn.IsEnabled = true; cancelBtn.IsEnabled = true;
                     return;
@@ -351,7 +352,7 @@ namespace TrueforceForAll.Plugin
                 }
                 UploadedPackId = newId;
                 statusText.Foreground = OkFg;
-                statusText.Text = "Uploaded. Thanks for contributing.";
+                statusText.Text = Loc.T("Share_Uploaded");
                 DialogResult = true;
                 Close();
             };
@@ -365,7 +366,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 6),
                 Header = new TextBlock
                 {
-                    Text = "Game presets",
+                    Text = Loc.T("CreatePack_GamePresets"),
                     Foreground = TextFg, FontWeight = FontWeights.SemiBold, FontSize = 12,
                 },
             };
@@ -381,7 +382,7 @@ namespace TrueforceForAll.Plugin
                 if (_plugin.IsBuiltinPreset(name)) continue;
                 if (!IsRedistributable(snap?.CommunitySourceId, snap?.CommunityAllowInPacks, snap?.CommunityUploadedByUserId))
                 {
-                    list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(name, 128) + "  (community item, author didn't allow re-bundling)"));
+                    list.Children.Add(MakeIneligibleRow(Loc.F("CreatePack_IneligibleItem_Fmt", UiContentSanitizer.SafeDisplayText(name, 128))));
                     continue;
                 }
                 var cb = new CheckBox
@@ -396,7 +397,7 @@ namespace TrueforceForAll.Plugin
             if (_gameEntries.Count == 0)
                 list.Children.Add(new TextBlock
                 {
-                    Text = "(no eligible game presets)",
+                    Text = Loc.T("CreatePack_NoGamePresets"),
                     Foreground = MutedFg, FontStyle = FontStyles.Italic, FontSize = 11,
                 });
         }
@@ -409,7 +410,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 6),
                 Header = new TextBlock
                 {
-                    Text = "Car presets",
+                    Text = Loc.T("CreatePack_CarPresets"),
                     Foreground = TextFg, FontWeight = FontWeights.SemiBold, FontSize = 12,
                 },
             };
@@ -432,7 +433,7 @@ namespace TrueforceForAll.Plugin
                     string gameName = carEntry.GameName ?? "";
                     if (!IsRedistributable(carEntry.Override?.CommunitySourceId, carEntry.Override?.CommunityAllowInPacks, carEntry.Override?.CommunityUploadedByUserId))
                     {
-                        list.Children.Add(MakeIneligibleRow($"{UiContentSanitizer.SafeDisplayText(carId, 96)} :: {UiContentSanitizer.SafeDisplayText(presetName, 96)}  (community item, author didn't allow re-bundling)"));
+                        list.Children.Add(MakeIneligibleRow(Loc.F("CreatePack_IneligibleCar_Fmt", UiContentSanitizer.SafeDisplayText(carId, 96), UiContentSanitizer.SafeDisplayText(presetName, 96))));
                         continue;
                     }
                     var cb = new CheckBox
@@ -451,7 +452,7 @@ namespace TrueforceForAll.Plugin
             if (_carEntries.Count == 0)
                 list.Children.Add(new TextBlock
                 {
-                    Text = "(no eligible car presets)",
+                    Text = Loc.T("CreatePack_NoCarPresets"),
                     Foreground = MutedFg, FontStyle = FontStyles.Italic, FontSize = 11,
                 });
         }
@@ -464,7 +465,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 6),
                 Header = new TextBlock
                 {
-                    Text = "Custom engines",
+                    Text = Loc.T("CreatePack_CustomEngines"),
                     Foreground = TextFg, FontWeight = FontWeights.SemiBold, FontSize = 12,
                 },
             };
@@ -479,7 +480,7 @@ namespace TrueforceForAll.Plugin
                 if (def == null || string.IsNullOrWhiteSpace(def.Name)) continue;
                 if (!IsRedistributable(def.CommunitySourceId, def.CommunityAllowInPacks, def.CommunityUploadedByUserId))
                 {
-                    list.Children.Add(MakeIneligibleRow(UiContentSanitizer.SafeDisplayText(def.Name, 128) + "  (community engine, author didn't allow re-bundling)"));
+                    list.Children.Add(MakeIneligibleRow(Loc.F("CreatePack_IneligibleEngine_Fmt", UiContentSanitizer.SafeDisplayText(def.Name, 128))));
                     continue;
                 }
                 var cb = new CheckBox
@@ -494,7 +495,7 @@ namespace TrueforceForAll.Plugin
             if (_engineEntries.Count == 0)
                 list.Children.Add(new TextBlock
                 {
-                    Text = "(no eligible custom engines)",
+                    Text = Loc.T("CreatePack_NoCustomEngines"),
                     Foreground = MutedFg, FontStyle = FontStyles.Italic, FontSize = 11,
                 });
         }

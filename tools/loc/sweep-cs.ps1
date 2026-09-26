@@ -853,6 +853,12 @@ function Get-LocCsFileResult([string]$Path, [string]$Rel, $Rx, $Rules, $Allow, $
 
 # ---------------------------------------------------------------- run
 
+# -Only scans one file, so a budget written from it would drop every other
+# file's line and read as a finished phase.
+if ($WriteBudget -and $Only -ne '') {
+    throw '-WriteBudget writes the whole budget, so it cannot be combined with -Only. Run it without -Only.'
+}
+
 $rules = Read-LocCsSinkRules (Join-Path $LocToolsDir 'cs-ui-sinks.txt')
 $allow = Read-LocCsAllowlist (Join-Path $LocToolsDir 'cs-keep-literal.txt')
 $commonSet = Read-LocListFile (Join-Path $LocToolsDir 'common-keys.txt')
@@ -867,6 +873,11 @@ $unknownAll = New-Object 'System.Collections.Generic.List[string]'
 $indirectAll = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::Ordinal)
 foreach ($f in $files) {
     $rel = Get-LocRelativePath $f.FullName $Root
+    # -Only is an inspection switch, so it skips the other files outright rather
+    # than scanning them and filtering the output. A full run is the enforcing
+    # one; this one cannot check the budget, because every skipped file would
+    # read as zero and trip the under-budget rule.
+    if ($Only -ne '' -and -not $rel.EndsWith($Only)) { continue }
     if ($allow.Files.Contains($rel)) { $skippedFiles.Add($rel); continue }
     $r = Get-LocCsFileResult $f.FullName $rel $rx $rules $allow $commonSet ([bool]$Indirect)
     foreach ($u in $r.Unknown) { $unknownAll.Add($u) }
@@ -895,6 +906,9 @@ foreach ($r in $results) {
 Write-Host ('Sink rules: {0} propert(y/ies), {1} constructor(s), {2} call(s), {3} call pattern(s), {4} skipped call(s)' -f
     $rules.Props.Count, $rules.Ctors.Count, $rules.Calls.Count, $rules.CallRes.Count, $rules.SkipCalls.Count)
 Write-Host ('Files: {0} scanned, {1} allowlisted whole' -f $results.Count, $skippedFiles.Count)
+if ($Only -ne '') {
+    Write-Host ('Only: ' + $Only + ' (an inspection run: the other files were not scanned, so the budget is not checked)')
+}
 Write-Host ''
 Write-Host 'Remaining bare UI literals, by file:'
 $rows = @($results | Where-Object { $_.Findings.Count -gt 0 } | Sort-Object -Property @{ Expression = { $_.Findings.Count }; Descending = $true }, Rel)
@@ -911,7 +925,6 @@ if ($Detail) {
     Write-Host ''
     Write-Host 'Detail:'
     foreach ($r in $rows) {
-        if ($Only -ne '' -and -not $r.Rel.EndsWith($Only)) { continue }
         foreach ($fd in $r.Findings) {
             $where = '{0}:{1}' -f $fd.File, $fd.Line
             $frame = ''
@@ -960,7 +973,7 @@ if ($WriteBudget) {
     Write-LocNewFile $budgetPath $sb.ToString()
     Write-Host ''
     Write-Host ('Wrote {0} ({1} file(s), {2} literal(s)).' -f (Get-LocRelativePath $budgetPath $Root), $rows.Count, $totalRemaining)
-} elseif (-not $NoBudget) {
+} elseif (-not $NoBudget -and $Only -eq '') {
     $budget = Read-LocCsBudget $budgetPath
     if (-not $budget.Exists) {
         $fails.Add('tools/loc/cs-literal-budget.txt does not exist; run sweep-cs.ps1 -WriteBudget to create it.')

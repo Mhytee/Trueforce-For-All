@@ -17,6 +17,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Newtonsoft.Json.Linq;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -74,7 +75,7 @@ namespace TrueforceForAll.Plugin
             System.Func<CarOverride, List<string>> tagsBuilder,
             bool currentAllowInPacks = false)
         {
-            Title         = "Edit your community preset";
+            Title         = Loc.T("EditCommunity_Title");
             Width         = 480;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -87,18 +88,18 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Edit your community preset",
+                Text = Loc.T("EditCommunity_Title"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "Update the name or description, and optionally replace the body with one of your local presets. Existing votes + downloads stay on the preset.",
+                Text = Loc.T("EditCommunity_Intro"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,
             });
 
-            root.Children.Add(new TextBlock { Text = "Name", Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
+            root.Children.Add(new TextBlock { Text = Loc.T("Common_Name"), Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
             var nameInput = new TextBox {
                 Text = presetName ?? "",
                 Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
@@ -111,7 +112,7 @@ namespace TrueforceForAll.Plugin
             nameInput.Loaded += (s, e) => { nameInput.Focus(); nameInput.SelectAll(); };
             root.Children.Add(nameInput);
 
-            root.Children.Add(new TextBlock { Text = "Description", Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
+            root.Children.Add(new TextBlock { Text = Loc.T("EditCommunity_DescriptionLabel"), Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
             var descInput = new TextBox {
                 Text = presetDescription ?? "",
                 Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
@@ -122,13 +123,13 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(descInput);
 
             root.Children.Add(new TextBlock {
-                Text = "Replace body with…", Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2),
+                Text = Loc.T("EditCommunity_ReplaceBody"), Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2),
             });
             var combo = new ComboBox {
                 Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
                 Height = 26, Margin = new Thickness(0, 0, 0, 4),
             };
-            combo.Items.Add(new ComboBoxItem { Content = "(leave body alone)", Tag = null, Foreground = TextFg });
+            combo.Items.Add(new ComboBoxItem { Content = Loc.T("EditCommunity_LeaveBody"), Tag = null, Foreground = TextFg });
             if (userPresetsForCar != null)
                 foreach (var p in userPresetsForCar.OrderBy(p => p.PresetName))
                     combo.Items.Add(new ComboBoxItem {
@@ -140,8 +141,8 @@ namespace TrueforceForAll.Plugin
 
             var helpText = new TextBlock {
                 Text = (userPresetsForCar?.Count ?? 0) == 0
-                    ? "(You don't have local presets for car '" + carId + "' yet. Save one first to enable body replacement.)"
-                    : "Body comes from the preset you pick. Custom-engine defs travel along.",
+                    ? Loc.F("EditCommunity_NoLocalPresets_Fmt", carId)
+                    : Loc.T("EditCommunity_BodyFromPreset"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
                 TextWrapping = TextWrapping.Wrap,
@@ -154,7 +155,7 @@ namespace TrueforceForAll.Plugin
             // doesn't burn a content_version bump).
             var allowInPacksCheck = new CheckBox
             {
-                Content = "Allow others to include this in their packs",
+                Content = Loc.T("Share_AllowInPacks"),
                 Foreground = TextFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
                 IsChecked = currentAllowInPacks,
@@ -166,7 +167,7 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
             var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = CancelFg, Background = CancelBg, IsCancel = true,
             };
@@ -174,7 +175,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(cancelBtn);
 
             var saveBtn = new Button {
-                Content = "Save", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Save"), Padding = new Thickness(12, 5, 12, 5),
                 Foreground = PrimaryFg, Background = PrimaryBg, IsDefault = true,
                 FontWeight = FontWeights.Bold,
             };
@@ -183,7 +184,7 @@ namespace TrueforceForAll.Plugin
                 string n = (nameInput.Text ?? "").Trim();
                 if (n.Length < 2 || n.Length > 96)
                 {
-                    TrueforceDialog.Show(this, "Edit preset", "Name must be 2-96 characters.",
+                    TrueforceDialog.Show(this, Loc.T("EditCommunity_DialogTitle"), Loc.T("EditCommunity_NameLength"),
                         DialogKind.Warning);
                     return;
                 }
@@ -229,7 +230,7 @@ namespace TrueforceForAll.Plugin
             string[] currentTargetGames, string activeGameSeed,
             bool currentAllowInPacks)
         {
-            Title         = "Edit your community game preset";
+            Title         = Loc.T("EditCommunity_GameTitle");
             Width         = 480;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -242,18 +243,18 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Edit your community game preset",
+                Text = Loc.T("EditCommunity_GameTitle"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "Update the name, description, or which games this preset is tuned for. Existing votes and downloads stay on the preset.",
+                Text = Loc.T("EditCommunity_GameIntro"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,
             });
 
-            root.Children.Add(new TextBlock { Text = "Name", Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
+            root.Children.Add(new TextBlock { Text = Loc.T("Common_Name"), Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
             var nameInput = new TextBox {
                 Text = presetName ?? "",
                 Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
@@ -263,7 +264,7 @@ namespace TrueforceForAll.Plugin
             nameInput.Loaded += (s, e) => { nameInput.Focus(); nameInput.SelectAll(); };
             root.Children.Add(nameInput);
 
-            root.Children.Add(new TextBlock { Text = "Description", Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
+            root.Children.Add(new TextBlock { Text = Loc.T("EditCommunity_DescriptionLabel"), Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 0, 0, 2) });
             var descInput = new TextBox {
                 Text = presetDescription ?? "",
                 Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
@@ -276,7 +277,7 @@ namespace TrueforceForAll.Plugin
             // Pack-inclusion permission (same semantics as the car ctor).
             var allowInPacksCheck = new CheckBox
             {
-                Content = "Allow others to include this in their packs",
+                Content = Loc.T("Share_AllowInPacks"),
                 Foreground = TextFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
                 IsChecked = currentAllowInPacks,
@@ -289,14 +290,14 @@ namespace TrueforceForAll.Plugin
             // (de-duped) so the user can add/remove without retyping.
             root.Children.Add(new TextBlock
             {
-                Text = "Which games is this tuned for?",
+                Text = Loc.T("Share_WhichGames"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             bool startsUniversal = currentTargetGames == null || currentTargetGames.Length == 0;
             var universalCheck = new CheckBox
             {
-                Content = "Universal (any game)",
+                Content = Loc.T("Share_Universal"),
                 Foreground = TextFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 6),
                 IsChecked = startsUniversal,
@@ -392,11 +393,11 @@ namespace TrueforceForAll.Plugin
 
             var showNativeCheck = new CheckBox
             {
-                Content = "Show games with native Trueforce (advanced)",
+                Content = Loc.T("Share_ShowNativeTrueforce"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 6),
                 IsChecked = false,
-                ToolTip = "Trueforce ships in some games directly (iRacing, ACC, F1 22+, etc) and the plugin yields to those. Check this if your preset targets a setup where the game's own Trueforce is switched off.",
+                ToolTip = Loc.T("EditCommunity_NativeTrueforce_Tip"),
             };
             showNativeCheck.Checked   += (s, e) => rebuildGames(true);
             showNativeCheck.Unchecked += (s, e) => rebuildGames(false);
@@ -411,7 +412,7 @@ namespace TrueforceForAll.Plugin
             };
             var addGameBtn = new Button
             {
-                Content = "Add", Padding = new Thickness(10, 3, 10, 3),
+                Content = Loc.T("Common_Add"), Padding = new Thickness(10, 3, 10, 3),
                 Foreground = AddFg, Background = AddBg,
             };
             addRow.Children.Add(addGameInput);
@@ -448,7 +449,7 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
             var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = CancelFg, Background = CancelBg, IsCancel = true,
             };
@@ -456,7 +457,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(cancelBtn);
 
             var saveBtn = new Button {
-                Content = "Save", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Save"), Padding = new Thickness(12, 5, 12, 5),
                 Foreground = PrimaryFg, Background = PrimaryBg, IsDefault = true,
                 FontWeight = FontWeights.Bold,
             };
@@ -465,7 +466,7 @@ namespace TrueforceForAll.Plugin
                 string n = (nameInput.Text ?? "").Trim();
                 if (n.Length < 2 || n.Length > 96)
                 {
-                    TrueforceDialog.Show(this, "Edit preset", "Name must be 2-96 characters.",
+                    TrueforceDialog.Show(this, Loc.T("EditCommunity_DialogTitle"), Loc.T("EditCommunity_NameLength"),
                         DialogKind.Warning);
                     return;
                 }
