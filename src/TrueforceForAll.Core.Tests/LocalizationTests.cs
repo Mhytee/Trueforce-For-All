@@ -100,6 +100,67 @@ namespace TrueforceForAll.Core.Tests
         // ------------------------------------------------------------------
 
         [Fact]
+        public void LocStore_RegionalFileServesTheNeutralTag()
+        {
+            // Resolution walks child to parent, so a plain "pt" finds nothing
+            // below it and a community pt-BR.json would go unread while the user
+            // sat in English. A regional file of the same language is still that
+            // language, so it is the last step before English.
+            string root = Path.Combine(Path.GetTempPath(), "tf4all-loc-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var utf8 = new UTF8Encoding(false);
+            try
+            {
+                var embedded = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["en"] = LangJson("en", ("A", "A-en"), ("B", "B-en")),
+                };
+                var log = new List<string>();
+                Func<string, string> readEmbedded = tag => embedded.TryGetValue(tag, out string json) ? json : null;
+                var store = new LocStore(readEmbedded, root, log.Add);
+
+                File.WriteAllText(Path.Combine(root, "pt-BR.json"), LangJson("pt-BR", ("A", "A-pt-BR")), utf8);
+
+                store.Load("pt");
+                Assert.Equal("pt-BR", store.ActiveTag);
+                Assert.Equal("region", store.ActiveSource);
+                Assert.Equal("pt", store.RequestedTag);
+                Assert.Equal("A-pt-BR", store["A"]);
+                Assert.Equal("B-en", store["B"]);
+
+                // A sibling region counts too: pt-PT has no file, its parent has
+                // none, and Brazilian Portuguese beats English for that reader.
+                store.Load("pt-PT");
+                Assert.Equal("pt-BR", store.ActiveTag);
+                Assert.Equal("region", store.ActiveSource);
+                Assert.Equal("A-pt-BR", store["A"]);
+
+                // Ordinally first, so two regional files resolve the same way on
+                // every machine whatever order the folder enumerates.
+                File.WriteAllText(Path.Combine(root, "pt-AO.json"), LangJson("pt-AO", ("A", "A-pt-AO")), utf8);
+                store.Load("pt");
+                Assert.Equal("pt-AO", store.ActiveTag);
+                Assert.Equal("A-pt-AO", store["A"]);
+
+                // The neutral file itself wins the moment it exists.
+                File.WriteAllText(Path.Combine(root, "pt.json"), LangJson("pt", ("A", "A-pt")), utf8);
+                store.Load("pt");
+                Assert.Equal("pt", store.ActiveTag);
+                Assert.Equal("requested", store.ActiveSource);
+                Assert.Equal("A-pt", store["A"]);
+
+                // An unrelated language is not a stand-in for anything.
+                store.Load("de");
+                Assert.Equal("en", store.ActiveTag);
+                Assert.Equal("english", store.ActiveSource);
+            }
+            finally
+            {
+                try { Directory.Delete(root, true); } catch { }
+            }
+        }
+
+        [Fact]
         public void LocStore_LayerPrecedence_AndParentFallback()
         {
             string root = Path.Combine(Path.GetTempPath(), "tf4all-loc-" + Guid.NewGuid().ToString("N"));
@@ -652,6 +713,11 @@ namespace TrueforceForAll.Core.Tests
             // lead fragment ends where its link begins.
             { "SignIn_PrivacyLead", "runs into the Privacy policy hyperlink" },
             { "SignIn_DidntGetIt", "runs into the Resend code link" },
+            // The import preview's toggle row is built from separate elements:
+            // a caption, then "all" and "none" as links, so the caption and the
+            // bullet-prefixed second caption carry the spacing between them.
+            { "ImportPreview_Include", "runs into the all and none links" },
+            { "ImportPreview_Default", "separates the row and runs into its links" },
             // Each of these three is a mode note that runs into a hyperlink in
             // the same paragraph, so the sentence ends with its separating space.
             { "Settings_LightsyncOnlySessionMAIRA", "runs into the guide link" },

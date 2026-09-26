@@ -43,6 +43,7 @@ using System.Threading.Tasks;
 using SimHub.Plugins;
 using TrueforceForAll.Core;
 using TrueforceForAll.Plugin.Effects;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -156,9 +157,9 @@ namespace TrueforceForAll.Plugin
               "TyreTemps", "TyreWear", "Scope", "None" };
         // Friendly labels for the Settings-tab pickers, index-matched above.
         internal static readonly string[] DashDriveContentLabels =
-            { "Car facts", "Damage", "Friction circle", "Fuel", "G circle",
-              "Gains", "Inputs", "Lap times", "Presets", "Radar",
-              "Relative", "Tire temps", "Tire wear", "Visualizer", "Empty" };
+            { Loc.T("Settings_CarFacts"), Loc.T("DashRemote_Damage"), Loc.T("DashRemote_FrictionCircle"), Loc.T("DashRemote_Fuel"), Loc.T("DashRemote_GCircle"),
+              Loc.T("Settings_Gains"), Loc.T("DashRemote_Inputs"), Loc.T("DashRemote_LapTimes"), Loc.T("Presets_PresetsTab_Header"), Loc.T("DashRemote_Radar"),
+              Loc.T("DashRemote_Relative"), Loc.T("DashRemote_TireTemps"), Loc.T("DashRemote_TireWear"), Loc.T("Settings_Visualizer"), Loc.T("DashRemote_Empty") };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.

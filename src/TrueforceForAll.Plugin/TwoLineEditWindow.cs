@@ -6,6 +6,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -26,7 +27,7 @@ namespace TrueforceForAll.Plugin
             string title, string line1Label, string line1Init,
             string line2Label, string line2Init, int line2Lines = 4)
         {
-            Title         = title ?? "Edit";
+            Title         = title ?? Loc.T("Common_Edit");
             Width         = 440;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -39,7 +40,7 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = title ?? "Edit",
+                Text = title ?? Loc.T("Common_Edit"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 14),
             });
@@ -92,7 +93,7 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
             var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
             };
@@ -100,14 +101,14 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(cancelBtn);
 
             var saveBtn = new Button {
-                Content = "Save", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Save"), Padding = new Thickness(12, 5, 12, 5),
                 Foreground = TextFg, Background = PanelBg, IsDefault = true,
             };
             saveBtn.Click += (s, e) =>
             {
                 if (string.IsNullOrWhiteSpace(input1.Text))
                 {
-                    line1Error.Text = "This can't be empty.";
+                    line1Error.Text = Loc.T("TwoLineEdit_CanTEmpty");
                     line1Error.Visibility = Visibility.Visible;
                     input1.Focus();
                     return;   // keep the dialog open

@@ -15,40 +15,6 @@
 # sweep see writes it was blind to. Re-run with -WriteBudget in that commit and
 # say so in the message.
 #
-# Written 2026-09-26 from 126 plugin file(s): 704 literal(s) left.
+# Written 2026-09-26 from 126 plugin file(s): 88 literal(s) left.
 
 src/TrueforceForAll.Plugin/TrueforcePlugin.cs 88
-src/TrueforceForAll.Plugin/SettingsControl.Guides.cs 84
-src/TrueforceForAll.Plugin/PresetPreviewWindow.cs 68
-src/TrueforceForAll.Plugin/SettingsControl.PatternEditor.cs 58
-src/TrueforceForAll.Plugin/OledScreenModel.cs 41
-src/TrueforceForAll.Plugin/PackManagerWindow.cs 33
-src/TrueforceForAll.Plugin/UsbDevicePickerWindow.cs 27
-src/TrueforceForAll.Plugin/SettingsControl.TrueforceEq.cs 26
-src/TrueforceForAll.Plugin/CommunityForCarPopover.cs 22
-src/TrueforceForAll.Plugin/CarFactsVariantsWindow.cs 19
-src/TrueforceForAll.Plugin/ImportPreviewWindow.cs 18
-src/TrueforceForAll.Plugin/ModerationNoticesWindow.cs 18
-src/TrueforceForAll.Plugin/PresetManagerControl.xaml.cs 17
-src/TrueforceForAll.Plugin/PackPickerWindow.cs 16
-src/TrueforceForAll.Plugin/TrueforcePlugin.DashRemote.cs 15
-src/TrueforceForAll.Plugin/DashPhoneWindow.cs 14
-src/TrueforceForAll.Plugin/PresetUpdatesAvailableWindow.cs 14
-src/TrueforceForAll.Plugin/RestoreOptionsWindow.cs 12
-src/TrueforceForAll.Plugin/BackupConflictWindow.cs 11
-src/TrueforceForAll.Plugin/SettingsControl.Arcade.cs 11
-src/TrueforceForAll.Plugin/PresetMetadataDialog.cs 10
-src/TrueforceForAll.Plugin/CarFactsConsentGate.cs 9
-src/TrueforceForAll.Plugin/ReportDialog.cs 9
-src/TrueforceForAll.Plugin/ArcadeSubmitNotice.cs 8
-src/TrueforceForAll.Plugin/AchievementsWindow.cs 7
-src/TrueforceForAll.Plugin/CarFactsShareWindow.cs 7
-src/TrueforceForAll.Plugin/CommunitySectionPickerWindow.cs 6
-src/TrueforceForAll.Plugin/FeedbackBoxInjector.cs 6
-src/TrueforceForAll.Plugin/TrueforceDialog.cs 6
-src/TrueforceForAll.Plugin/CustomEngineEditor.xaml.cs 5
-src/TrueforceForAll.Plugin/TwoLineEditWindow.cs 5
-src/TrueforceForAll.Plugin/UpdateVsNewChooserWindow.cs 5
-src/TrueforceForAll.Plugin/GuideBrowserWindow.cs 4
-src/TrueforceForAll.Plugin/ShareGate.cs 3
-src/TrueforceForAll.Plugin/MarkdownView.cs 2

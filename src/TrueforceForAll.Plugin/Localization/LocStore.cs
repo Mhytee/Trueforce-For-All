@@ -101,7 +101,9 @@ namespace TrueforceForAll.Plugin.Localization
 
         /// <summary>"requested" when the requested tag itself has layers,
         /// "parent" when a parent tag supplied them (es-MX served by es, or
-        /// en-US served by English), "english" when nothing matched.</summary>
+        /// en-US served by English), "region" when only a regional file of the
+        /// same language exists (es served by es-ES), "english" when nothing
+        /// matched.</summary>
         public string ActiveSource { get; private set; } = "english";
 
         /// <summary>The tag Load was last asked for, before resolution.</summary>
@@ -234,15 +236,32 @@ namespace TrueforceForAll.Plugin.Localization
                 }
             }
 
-            var active = new Dictionary<string, string>(StringComparer.Ordinal);
-            if (start >= 0)
+            // Nothing for the requested tag or any parent of it. A regional file
+            // of the same language is still that language, so a plain "es" is
+            // served by an es-ES.json a translator or the community left on disk
+            // rather than by English.
+            string regional = null;
+            if (start < 0)
             {
-                // Lowest precedence first: the farthest parent, up to the
-                // active tag, so a nearer tag's key wins by overwriting.
-                for (int i = chain.Count - 1; i >= start; i--)
+                for (int i = 0; i < chain.Count && regional == null; i++) regional = RegionalStandIn(chain[i]);
+                if (regional != null)
                 {
-                    if (IsEnglish(chain[i])) continue;   // the English base covers it
-                    OverlayTagLayers(active, chain[i]);
+                    activeTag = regional;
+                    source = "region";
+                }
+            }
+
+            var active = new Dictionary<string, string>(StringComparer.Ordinal);
+            // Lowest precedence first: the farthest parent, up to the active tag,
+            // so a nearer tag's key wins by overwriting.
+            List<string> activeChain = start >= 0 ? chain.GetRange(start, chain.Count - start)
+                : (regional != null ? Chain(regional) : null);
+            if (activeChain != null)
+            {
+                for (int i = activeChain.Count - 1; i >= 0; i--)
+                {
+                    if (IsEnglish(activeChain[i])) continue;   // the English base covers it
+                    OverlayTagLayers(active, activeChain[i]);
                 }
             }
 
@@ -436,6 +455,38 @@ namespace TrueforceForAll.Plugin.Localization
             Overlay(into, ReadEmbeddedLayer(tag));
             Overlay(into, ReadDiskLayer(ShippedPath(tag)));
             Overlay(into, ReadDiskLayer(RootPath(tag)));
+        }
+
+        /// <summary>A language on disk whose parent chain contains this tag:
+        /// "es" served by an es-ES.json, "zh" by a zh-Hans-CN.json. Ordinally
+        /// first so the choice is stable across machines. Null when there is
+        /// none, and null for English, which is the base already. Disk only:
+        /// the languages this build embeds are neutral by design, so an embedded
+        /// regional tag cannot exist.</summary>
+        private string RegionalStandIn(string tag)
+        {
+            if (_languagesRoot == null || string.IsNullOrEmpty(tag) || IsEnglish(tag)) return null;
+            string best = null;
+            string[] folders = { _languagesRoot, Path.Combine(_languagesRoot, ShippedFolder) };
+            foreach (string folder in folders)
+            {
+                try
+                {
+                    if (!Directory.Exists(folder)) continue;
+                    foreach (string file in Directory.GetFiles(folder, tag + "-*.json"))
+                    {
+                        string found = Path.GetFileNameWithoutExtension(file);
+                        if (NormalizeTag(found) == null) continue;
+                        bool related = false;
+                        for (string p = ParentTag(found); p != null; p = ParentTag(p))
+                            if (string.Equals(p, tag, StringComparison.OrdinalIgnoreCase)) { related = true; break; }
+                        if (!related) continue;
+                        if (best == null || string.CompareOrdinal(found, best) < 0) best = found;
+                    }
+                }
+                catch { }
+            }
+            return best;
         }
 
         private bool HasAnyLayer(string tag)

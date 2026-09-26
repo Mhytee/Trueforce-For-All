@@ -15,6 +15,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Newtonsoft.Json.Linq;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -78,7 +79,7 @@ namespace TrueforceForAll.Plugin
                               : isGame   ? "game preset"
                               : "preset";
 
-            Title         = "Preview: " + (summary?.Name ?? typeLabel);
+            Title         = Loc.F("PresetPreview_Preview_Fmt", (summary?.Name ?? typeLabel));
             Width         = 540;
             Height        = 560;
             Background    = WindowBg;
@@ -98,7 +99,7 @@ namespace TrueforceForAll.Plugin
             // ---- Header block ----
             var head = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
             head.Children.Add(new TextBlock {
-                Text = UiContentSanitizer.SafeDisplayText(summary?.Name, 128) ?? "(unnamed)",
+                Text = UiContentSanitizer.SafeDisplayText(summary?.Name, 128) ?? Loc.T("PresetPreview_Unnamed"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 16,
                 Margin = new Thickness(0, 0, 0, 2),
             });
@@ -120,7 +121,7 @@ namespace TrueforceForAll.Plugin
             });
             int score = (summary?.Upvotes ?? 0) - (summary?.Downvotes ?? 0);
             head.Children.Add(new TextBlock {
-                Text = $"Score {score} (▲ {summary?.Upvotes ?? 0} / ▼ {summary?.Downvotes ?? 0})   |   {summary?.Downloads ?? 0} downloads",
+                Text = Loc.F("PresetPreview_ScoreDownloads_Fmt", score, summary?.Upvotes ?? 0, summary?.Downvotes ?? 0, summary?.Downloads ?? 0),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 8),
             });
@@ -132,7 +133,7 @@ namespace TrueforceForAll.Plugin
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(8, 6, 8, 6),
                     Child = new TextBlock {
-                        Text = UiContentSanitizer.SafeMultiLineText(summary.Description, 1024, 10) ?? "(no description)",
+                        Text = UiContentSanitizer.SafeMultiLineText(summary.Description, 1024, 10) ?? Loc.T("PresetPreview_NoDescription"),
                         Foreground = TextFg, FontSize = 12,
                         TextWrapping = TextWrapping.Wrap,
                     },
@@ -176,7 +177,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 10, 0, 0),
             };
             var closeBtn = new Button {
-                Content = "Close", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Settings_Close"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0), IsCancel = true,
             };
             ModalButtonTheme.Secondary(closeBtn);
@@ -184,7 +185,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(closeBtn);
 
             var dlBtn = new Button {
-                Content = "Download…", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("PresetManager_CommunityDownload"), Padding = new Thickness(12, 5, 12, 5),
                 IsDefault = true,
             };
             ModalButtonTheme.Primary(dlBtn);
@@ -209,7 +210,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_dlBtn == null || _packEntryChecks.Count == 0) return;
             int n = _packEntryChecks.Count(c => c.IsChecked == true);
-            _dlBtn.Content = "Download selected (" + n + ")";
+            _dlBtn.Content = Loc.F("PresetPreview_DownloadSelected_Fmt", n);
             _dlBtn.IsEnabled = n > 0;
         }
 
@@ -283,7 +284,7 @@ namespace TrueforceForAll.Plugin
             }
             if (flat.Count == 0) return;
             host.Children.Add(new TextBlock {
-                Text = "Global FFB settings",
+                Text = Loc.T("PresetPreview_GlobalFFBSettings"),
                 Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 2),
             });
@@ -303,7 +304,7 @@ namespace TrueforceForAll.Plugin
             string author    = body["Author"]?.ToString();
 
             bodyPanel.Children.Add(new TextBlock {
-                Text = "Engine", Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Text = Loc.T("Header_CarFactsRowsEngine"), Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 2),
             });
             var parts = new List<string> { "Name: " + name };
@@ -321,7 +322,7 @@ namespace TrueforceForAll.Plugin
             if (!string.IsNullOrWhiteSpace(pattern))
             {
                 bodyPanel.Children.Add(new TextBlock {
-                    Text = "Pattern", Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                    Text = Loc.T("PresetPreview_Pattern"), Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
                     Margin = new Thickness(0, 6, 0, 2),
                 });
                 bodyPanel.Children.Add(new Border {
@@ -347,7 +348,7 @@ namespace TrueforceForAll.Plugin
 
             int total = (games?.Count ?? 0) + (cars?.Count ?? 0) + (engines?.Count ?? 0);
             bodyPanel.Children.Add(new TextBlock {
-                Text = $"{total} item{(total == 1 ? "" : "s")} bundled. Expand a row to see its tuning; uncheck anything you don't want, then Download selected.",
+                Text = Loc.N("PresetPreview_ItemsBundled", total, total),
                 Foreground = MutedFg, FontSize = 11, TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8),
             });
@@ -415,7 +416,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 6, 0),
                 Foreground = TextFg,
                 Tag = PackEntryKey(bucket, entry),
-                ToolTip = "Include this item when you download the pack.",
+                ToolTip = Loc.T("PresetPreview_IncludeItemWhenDownload"),
             };
             cb.Click += (s, e) => UpdatePackDownloadButton();
             _packEntryChecks.Add(cb);
@@ -476,37 +477,37 @@ namespace TrueforceForAll.Plugin
 
         private void AddOverrideSections(StackPanel host, JObject ovr)
         {
-            AddSection(host, ovr, "EnginePulse",  "Engine pulse");
-            AddSection(host, ovr, "RevLimiter",   "Redline buzz");
-            AddSection(host, ovr, "RoadBumps",    "Road bumps");
-            AddSection(host, ovr, "TractionLoss", "Traction loss");
-            AddSection(host, ovr, "AxleSlip",     "Axle slip");
-            AddSection(host, ovr, "KerbThump",    "Curb thump");
-            AddSection(host, ovr, "LockupJudder", "Lockup judder");
-            AddSection(host, ovr, "GearShift",    "Gear shift");
-            AddSection(host, ovr, "AbsClick",     "ABS click");
-            AddSection(host, ovr, "PitLimiter",   "Pit limiter");
-            AddSection(host, ovr, "Drs",          "DRS");
-            AddSection(host, ovr, "Collision",    "Collision");
-            AddSection(host, ovr, "AudioCapture", "Audio rumble");
-            AddSection(host, ovr, "Airborne",     "Airborne ducking");
-            AddSection(host, ovr, "ImplementThud", "Implement thud");
+            AddSection(host, ovr, "EnginePulse",  Loc.T("Effects_AirborneDuckEngine"));
+            AddSection(host, ovr, "RevLimiter",   Loc.T("Effects_AirborneDuckRevLimiter"));
+            AddSection(host, ovr, "RoadBumps",    Loc.T("Effects_AirborneDuckRoadBumps"));
+            AddSection(host, ovr, "TractionLoss", Loc.T("Effects_AirborneDuckTraction"));
+            AddSection(host, ovr, "AxleSlip",     Loc.T("Effects_AxleSlipEnabled"));
+            AddSection(host, ovr, "KerbThump",    Loc.T("Effects_KerbThumpEnabled"));
+            AddSection(host, ovr, "LockupJudder", Loc.T("Effects_LockupJudderEnabled"));
+            AddSection(host, ovr, "GearShift",    Loc.T("Effects_AirborneDuckGearShift"));
+            AddSection(host, ovr, "AbsClick",     Loc.T("PresetPreview_ABSClick"));
+            AddSection(host, ovr, "PitLimiter",   Loc.T("Effects_AirborneDuckPitLimiter"));
+            AddSection(host, ovr, "Drs",          Loc.T("Effects_AirborneDuckDrs"));
+            AddSection(host, ovr, "Collision",    Loc.T("Effects_AirborneDuckCollision"));
+            AddSection(host, ovr, "AudioCapture", Loc.T("Effects_AudioEnabled"));
+            AddSection(host, ovr, "Airborne",     Loc.T("Effects_AirborneEnabled"));
+            AddSection(host, ovr, "ImplementThud", Loc.T("Effects_ImplementThud"));
         }
 
         private void AddBundledEngines(StackPanel host, JArray customs)
         {
             if (customs == null || customs.Count == 0) return;
             host.Children.Add(new TextBlock {
-                Text = $"Bundled custom engines ({customs.Count})",
+                Text = Loc.F("PresetPreview_BundledCustomEngines_Fmt", customs.Count),
                 Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 10, 0, 4),
             });
             foreach (var c in customs.OfType<JObject>())
             {
-                string name = UiContentSanitizer.SafeDisplayText(c["Name"]?.ToString(), 128) ?? "(unnamed)";
+                string name = UiContentSanitizer.SafeDisplayText(c["Name"]?.ToString(), 128) ?? Loc.T("PresetPreview_Unnamed");
                 bool ev = c["IsElectric"]?.ToObject<bool>() ?? false;
                 host.Children.Add(new TextBlock {
-                    Text = "• " + name + (ev ? "  (electric)" : ""),
+                    Text = "• " + name + (ev ? "  " + Loc.T("PresetPreview_Electric") : ""),
                     Foreground = TextFg, FontSize = 12,
                     Margin = new Thickness(8, 1, 0, 1),
                 });
@@ -604,7 +605,7 @@ namespace TrueforceForAll.Plugin
             {
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 var tb = new TextBlock {
-                    Text = "(no fields set)", Foreground = MutedFg, FontSize = 11,
+                    Text = Loc.T("PresetPreview_NoFieldsSet"), Foreground = MutedFg, FontSize = 11,
                 };
                 Grid.SetRow(tb, 0);
                 Grid.SetColumn(tb, 0);
@@ -642,25 +643,25 @@ namespace TrueforceForAll.Plugin
         private static readonly System.Collections.Generic.Dictionary<string, string> FieldLabels =
             new System.Collections.Generic.Dictionary<string, string>(System.StringComparer.Ordinal)
         {
-            { "FfbInvertSign", "Invert FFB" },
-            { "FfbSmoothTimeConstantMs", "FFB smoothing (ms)" },
-            { "FfbSpikeTamingEnabled", "FFB spike reduction" },
-            { "FfbSpikeUseSlewLimiter", "Spike method: rate limiter" },
-            { "FfbSpikeMaxLsbPerMs", "Spike rate limit" },
-            { "FfbSpikeTransientThresholdLsb", "Spike minimum reference" },
-            { "FfbPeakSoftLimitLsb", "Spike max hit" },
-            { "DuckingEnabled", "Sidechain ducking" },
-            { "DuckDepth", "Duck depth" },
-            { "DuckAttackMs", "Duck attack (ms)" },
-            { "DuckReleaseMs", "Duck release (ms)" },
-            { "StationarySpringEnabled", "Stationary spring" },
-            { "StationarySpringStrength", "Spring strength" },
-            { "StationarySpringCutoffKmh", "Spring fade (km/h)" },
-            { "MasterGain", "Master gain" },
-            { "FfbScale", "FFB scale" },
-            { "PulseFreq", "Pulse rate (Hz)" },
-            { "Freq", "Frequency (Hz)" },
-            { "PulseDuty", "Pulse length" },
+            { Loc.T("PresetPreview_FfbInvertSign"), Loc.T("PresetPreview_InvertFFB") },
+            { Loc.T("PresetPreview_FfbSmoothTimeConstantMs"), Loc.T("PresetPreview_FFBSmoothingMs") },
+            { Loc.T("PresetPreview_FfbSpikeTamingEnabled"), Loc.T("Settings_FFBSpikeReduction") },
+            { Loc.T("PresetPreview_FfbSpikeUseSlewLimiter"), Loc.T("PresetPreview_SpikeMethodRateLimiter") },
+            { Loc.T("PresetPreview_FfbSpikeMaxLsbPerMs"), Loc.T("PresetPreview_SpikeRateLimit") },
+            { Loc.T("PresetPreview_FfbSpikeTransientThresholdLsb"), Loc.T("PresetPreview_SpikeMinimumReference") },
+            { Loc.T("PresetPreview_FfbPeakSoftLimitLsb"), Loc.T("PresetPreview_SpikeMaxHit") },
+            { Loc.T("PresetPreview_DuckingEnabled"), Loc.T("Effects_DuckingEnabled") },
+            { Loc.T("PresetPreview_DuckDepth"), Loc.T("PresetPreview_DuckDepth2") },
+            { Loc.T("PresetPreview_DuckAttackMs"), Loc.T("PresetPreview_DuckAttackMs2") },
+            { Loc.T("PresetPreview_DuckReleaseMs"), Loc.T("PresetPreview_DuckReleaseMs2") },
+            { Loc.T("PresetPreview_StationarySpringEnabled"), Loc.T("TelemetryFfb_StationarySpring") },
+            { Loc.T("PresetPreview_StationarySpringStrength"), Loc.T("PresetPreview_SpringStrength") },
+            { Loc.T("PresetPreview_StationarySpringCutoffKmh"), Loc.T("PresetPreview_SpringFadeKmH") },
+            { Loc.T("PresetPreview_MasterGain"), Loc.T("PresetPreview_MasterGain2") },
+            { Loc.T("PresetPreview_FfbScale"), Loc.T("PresetPreview_FFBScale") },
+            { Loc.T("PresetPreview_PulseFreq"), Loc.T("PresetPreview_PulseRateHz") },
+            { Loc.T("PresetPreview_Freq"), Loc.T("PresetPreview_FrequencyHz") },
+            { Loc.T("PresetPreview_PulseDuty"), Loc.T("PresetPreview_PulseLength") },
         };
 
         private static string PrettyFieldName(string raw)

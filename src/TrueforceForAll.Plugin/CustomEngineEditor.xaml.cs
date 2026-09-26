@@ -285,8 +285,8 @@ namespace TrueforceForAll.Plugin
             string name = (NameTextBox.Text ?? "").Trim();
             if (string.IsNullOrEmpty(name))
             {
-                TrueforceDialog.Show(this, "Custom engine",
-                    "Please enter a name for this engine.", DialogKind.Info);
+                TrueforceDialog.Show(this, Loc.T("EngineEditor_CustomEngine_Title"),
+                    Loc.T("EngineEditor_PleaseEnterNameEngine"), DialogKind.Info);
                 NameTextBox.Focus();
                 return;
             }
@@ -295,9 +295,8 @@ namespace TrueforceForAll.Plugin
             var parsed = FiringPatternDb.ParseCustom(pattern);
             if (parsed == null || parsed.Pulses < 1)
             {
-                TrueforceDialog.Show(this, "Custom engine",
-                    "The firing pattern couldn't be parsed. Expected format: comma-separated numbers in [0, 1) "
-                    + "with optional ':amplitude' per entry (e.g. 0, 0.25:1.0, 0.5, 0.75:0.85).",
+                TrueforceDialog.Show(this, Loc.T("EngineEditor_CustomEngine_Title"),
+                    Loc.T("EngineEditor_FiringPatternCouldnT"),
                     DialogKind.Warning);
                 PatternTextBox.Focus();
                 return;

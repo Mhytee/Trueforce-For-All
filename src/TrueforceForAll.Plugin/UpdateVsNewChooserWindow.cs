@@ -11,6 +11,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -27,7 +28,7 @@ namespace TrueforceForAll.Plugin
         public UpdateVsNewChooserWindow(string title, string message,
                                         string updateBtnLabel, string newBtnLabel)
         {
-            Title         = title ?? "Update or share as new";
+            Title         = title ?? Loc.T("UpdateVsNew_UpdateShareAsNew");
             Width         = 460;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -40,7 +41,7 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = title ?? "Update or share as new",
+                Text = title ?? Loc.T("UpdateVsNew_UpdateShareAsNew"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 8),
             });
@@ -61,7 +62,7 @@ namespace TrueforceForAll.Plugin
             // clustered on the right where the eye lands after reading the
             // message. IsCancel binds Escape; IsDefault on Update binds Enter.
             var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
             };
@@ -69,7 +70,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(cancelBtn);
 
             var newBtn = new Button {
-                Content = string.IsNullOrEmpty(newBtnLabel) ? "Share as new" : newBtnLabel,
+                Content = string.IsNullOrEmpty(newBtnLabel) ? Loc.T("UpdateVsNew_ShareAsNew") : newBtnLabel,
                 Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg,
@@ -83,7 +84,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(newBtn);
 
             var updateBtn = new Button {
-                Content = string.IsNullOrEmpty(updateBtnLabel) ? "Update" : updateBtnLabel,
+                Content = string.IsNullOrEmpty(updateBtnLabel) ? Loc.T("Settings_Update") : updateBtnLabel,
                 Padding = new Thickness(12, 5, 12, 5),
                 Foreground = TextFg, Background = PanelBg, IsDefault = true,
             };

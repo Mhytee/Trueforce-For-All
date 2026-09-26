@@ -19,6 +19,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -42,7 +43,7 @@ namespace TrueforceForAll.Plugin
         private bool _eqRowsSuppress;
 
         private static readonly Brush EqRowSelectedBrush = new SolidColorBrush(Color.FromArgb(0x26, 0xE5, 0xC0, 0x4A));
-        private static readonly string[] EqTypeLabels  = { "Bell", "Low shelf", "High shelf", "Low cut", "High cut" };
+        private static readonly string[] EqTypeLabels  = { Loc.T("Eq_Bell"), Loc.T("Eq_LowShelf"), Loc.T("Eq_HighShelf"), Loc.T("Eq_LowCut"), Loc.T("Eq_HighCut") };
         private static readonly string[] EqSlopeLabels = { "12 dB", "24 dB", "36 dB", "48 dB" };
 
         // Undo: whole-list snapshots, newest last. Gestures on the same band
@@ -150,10 +151,10 @@ namespace TrueforceForAll.Plugin
             int active = 0;
             if (bands != null) foreach (var b in bands) if (b != null && !b.IsBypass) active++;
             TrueforceEqSummaryText.Text =
-                s == null || !s.TrueforceEqEnabled ? "off"
-                : active == 0 ? "flat"
-                : active == 1 ? "1 band active"
-                : active + " bands active";
+                s == null || !s.TrueforceEqEnabled ? Loc.T("Eq_Off")
+                : active == 0 ? Loc.T("Eq_Flat")
+                : active == 1 ? Loc.T("Eq_N1BandActive")
+                : Loc.F("Eq_BandsActive_Fmt", active);
         }
 
         /// <summary>A band's values changed (editor gesture or a row edit).
@@ -223,9 +224,9 @@ namespace TrueforceForAll.Plugin
             {
                 // Destructive: themed Yes/No pair, Reset painted red, Cancel is
                 // the Enter default so a stray keypress keeps the curve.
-                bool? ok = TrueforceDialog.Show(Window.GetWindow(this), "Reset the EQ?",
-                    "This puts the six flat bands back and discards your curve. Undo can bring it back.",
-                    DialogKind.Destructive, okLabel: "Reset", cancelLabel: "Keep my curve");
+                bool? ok = TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Eq_ResetEQ"),
+                    Loc.T("Eq_PutsSixFlatBands"),
+                    DialogKind.Destructive, okLabel: Loc.T("Common_Reset"), cancelLabel: Loc.T("Eq_KeepMyCurve"));
                 if (ok != true) return;
             }
             PushEqUndo("reset");
@@ -423,7 +424,7 @@ namespace TrueforceForAll.Plugin
                 {
                     var empty = new TextBlock
                     {
-                        Text = "No bands. Add one, or double-click the graph where the rattle is.",
+                        Text = Loc.T("Eq_NoBandsAddOne"),
                         Margin = new Thickness(0, 4, 0, 0),
                     };
                     var style = TryFindResource("HelpText") as Style;
@@ -434,12 +435,12 @@ namespace TrueforceForAll.Plugin
 
                 var header = NewEqGrid();
                 header.Children.Add(EqHeaderLabel("#", 0));
-                header.Children.Add(EqHeaderLabel("On", 1));
-                header.Children.Add(EqHeaderLabel("Type", 2));
-                header.Children.Add(EqHeaderLabel("Freq (Hz)", 3));
-                header.Children.Add(EqHeaderLabel("Gain (dB)", 4));
+                header.Children.Add(EqHeaderLabel(Loc.T("Eq_On"), 1));
+                header.Children.Add(EqHeaderLabel(Loc.T("PresetManager_CustomListType_Header"), 2));
+                header.Children.Add(EqHeaderLabel(Loc.T("Eq_FreqHz"), 3));
+                header.Children.Add(EqHeaderLabel(Loc.T("Eq_GainDB"), 4));
                 header.Children.Add(EqHeaderLabel("Q", 5));
-                header.Children.Add(EqHeaderLabel("Slope", 6));
+                header.Children.Add(EqHeaderLabel(Loc.T("Eq_Slope"), 6));
                 TrueforceEqBandRows.Children.Add(header);
 
                 for (int i = 0; i < bands.Count; i++)
@@ -475,7 +476,7 @@ namespace TrueforceForAll.Plugin
                 IsChecked = band.Enabled,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 0, 0),
-                ToolTip = "Turns this band on or off without losing its values.",
+                ToolTip = Loc.T("Eq_TurnsBandOffWithout"),
             };
             row.On.Checked   += (s, e) => EqRowToggle(row);
             row.On.Unchecked += (s, e) => EqRowToggle(row);
@@ -486,19 +487,19 @@ namespace TrueforceForAll.Plugin
             foreach (var label in EqTypeLabels) row.Type.Items.Add(label);
             int typeIdx = (int)band.Type;
             row.Type.SelectedIndex = typeIdx >= 0 && typeIdx < EqTypeLabels.Length ? typeIdx : 0;
-            row.Type.ToolTip = "Bell: boost or cut around the frequency. Shelves move everything below or above it. Cuts remove everything below or above it.";
+            row.Type.ToolTip = Loc.T("Eq_BellBoostCutAround");
             row.Type.SelectionChanged += (s, e) => EqRowTypeChanged(row);
             Grid.SetColumn(row.Type, 2);
             row.Root.Children.Add(row.Type);
 
-            row.Hz = EqNumberBox(row, 3, "Center or corner frequency, 5 to 1800 Hz.");
-            row.Db = EqNumberBox(row, 4, "Boost or cut, -30 to +12 dB. Not used by cuts.");
-            row.Q  = EqNumberBox(row, 5, "Width. Higher Q is narrower: 0.7 is broad, 2 is a typical rattle, 10 is a needle. On a cut it is the corner's sharpness: 0.7 is flat, higher adds a bump at the corner. Drag a cut's point up or down to change it.");
+            row.Hz = EqNumberBox(row, 3, Loc.T("Eq_CenterCornerFrequency5"));
+            row.Db = EqNumberBox(row, 4, Loc.T("Eq_BoostCut3012"));
+            row.Q  = EqNumberBox(row, 5, Loc.T("Eq_WidthHigherQNarrower"));
 
             row.Slope = new ComboBox { Margin = new Thickness(2, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, Height = 24 };
             foreach (var label in EqSlopeLabels) row.Slope.Items.Add(label);
             row.Slope.SelectedIndex = Math.Max(0, Array.IndexOf(ParametricEq.Slopes, ParametricEq.SnapSlope(band.SlopeDbPerOct)));
-            row.Slope.ToolTip = "How steeply a cut falls away past its corner, in dB per octave. Cuts only.";
+            row.Slope.ToolTip = Loc.T("Eq_HowSteeplyCutFalls");
             row.Slope.SelectionChanged += (s, e) => EqRowSlopeChanged(row);
             Grid.SetColumn(row.Slope, 6);
             row.Root.Children.Add(row.Slope);
@@ -509,7 +510,7 @@ namespace TrueforceForAll.Plugin
                 Width = 22, Height = 22,
                 Margin = new Thickness(6, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "Remove this band.",
+                ToolTip = Loc.T("Eq_RemoveBand"),
                 Cursor = Cursors.Hand,
             };
             ModalButtonTheme.Destructive(row.Remove);

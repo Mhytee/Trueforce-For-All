@@ -13,6 +13,7 @@
 
 using System;
 using System.Globalization;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -110,19 +111,19 @@ namespace TrueforceForAll.Plugin
         };
         public static readonly string[] ScreenOrderLabels =
         {
-            "Speed over gear, labelled",
-            "Gear over speed, labelled",
-            "Speed over gear",
-            "Gear over speed",
-            "Speed only",
-            "Gear only",
-            "Big gear, speed beside it",
-            "Big speed, gear beside it",
-            "Speed and lap delta",
-            "Gear and lap delta",
-            "Speed, gear and lap delta",
-            "Build my own",
-            "Nothing, the wheel's own display",
+            Loc.T("Oled_SpeedOverGearLabelled"),
+            Loc.T("Oled_GearOverSpeedLabelled"),
+            Loc.T("Oled_SpeedOverGear"),
+            Loc.T("Oled_GearOverSpeed"),
+            Loc.T("Oled_SpeedOnly"),
+            Loc.T("Oled_GearOnly"),
+            Loc.T("TelemetryFfb_OledFlashStyleBigGearSpeedBeside"),
+            Loc.T("Oled_BigSpeedGearBeside"),
+            Loc.T("Oled_SpeedLapDelta"),
+            Loc.T("Oled_GearLapDelta"),
+            Loc.T("Oled_SpeedGearLapDelta"),
+            Loc.T("Oled_BuildMyOwn"),
+            Loc.T("Oled_NothingWheelSOwn"),
         };
 
         // ---- Field catalog -------------------------------------------------
@@ -132,8 +133,8 @@ namespace TrueforceForAll.Plugin
             { "Gear", "Speed", "SpeedUnit", "Delta", "Position", "Laps", "LastLap",
               "Custom", "None" };
         public static readonly string[] FieldLabels =
-            { "Gear", "Speed", "Speed with unit", "Lap delta", "Position",
-              "Lap of total", "Last lap time", "Custom text", "Empty" };
+            { Loc.T("Oled_Gear"), Loc.T("Oled_Speed"), Loc.T("Oled_SpeedUnit"), Loc.T("Oled_LapDelta"), Loc.T("Oled_Position"),
+              Loc.T("Oled_LapTotal"), Loc.T("Oled_LastLapTime"), Loc.T("Oled_CustomText"), Loc.T("DashRemote_Empty") };
 
         public const string FieldNone = "None";
         public const string FieldCustom = "Custom";
@@ -148,14 +149,14 @@ namespace TrueforceForAll.Plugin
         };
         public static readonly string[] LayoutLabels =
         {
-            "Two side by side, first one huge",
-            "Two side by side, second one huge",
-            "Two stacked, second one larger",
-            "Four rows, centered",
-            "Four rows, right aligned",
-            "One meter",
-            "Two meters and a caption",
-            "Two meters and two texts",
+            Loc.T("Oled_TwoSideSideFirst"),
+            Loc.T("Oled_TwoSideSideSecond"),
+            Loc.T("Oled_TwoStackedSecondOne"),
+            Loc.T("Oled_FourRowsCentered"),
+            Loc.T("Oled_FourRowsRightAligned"),
+            Loc.T("Oled_OneMeter"),
+            Loc.T("Oled_TwoMetersCaption"),
+            Loc.T("Oled_TwoMetersTwoTexts"),
         };
 
         // ---- Meter catalog -------------------------------------------------
@@ -166,8 +167,8 @@ namespace TrueforceForAll.Plugin
             { "Throttle", "Brake", "Clutch", "Handbrake", "Revs",
               "FfbTorque", "TrueforceLevel", "FrontGrip", "RearGrip", "Steering", "None" };
         public static readonly string[] GaugeFieldLabels =
-            { "Throttle", "Brake", "Clutch", "Handbrake", "Revs",
-              "Force output", "Trueforce texture", "Front grip", "Rear grip", "Steering", "Empty" };
+            { Loc.T("Oled_Throttle"), Loc.T("Oled_Brake"), Loc.T("Oled_Clutch"), Loc.T("Oled_Handbrake"), Loc.T("Oled_Revs"),
+              Loc.T("Oled_ForceOutput"), Loc.T("Oled_TrueforceTexture"), Loc.T("Oled_FrontGrip"), Loc.T("Oled_RearGrip"), Loc.T("Oled_Steering"), Loc.T("DashRemote_Empty") };
 
         public const int MaxSlots = 4;
 

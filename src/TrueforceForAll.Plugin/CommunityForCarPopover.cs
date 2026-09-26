@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -46,7 +47,7 @@ namespace TrueforceForAll.Plugin
             _activeCarId = activeCarId ?? "";
             _activeGame  = activeGame  ?? "";
 
-            Title         = "Community presets for this car";
+            Title         = Loc.T("CommunityCar_CommunityPresetsCar");
             Width         = 520;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -60,15 +61,15 @@ namespace TrueforceForAll.Plugin
 
             root.Children.Add(new TextBlock
             {
-                Text = "Top community presets",
+                Text = Loc.T("CommunityCar_TopCommunityPresets"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock
             {
                 Text = string.IsNullOrEmpty(carDisplay)
-                    ? $"For {activeCarId} in {activeGame}."
-                    : $"For {carDisplay} ({activeCarId}) in {activeGame}.",
+                    ? Loc.F("CommunityCar_ForIn_Fmt", activeCarId, activeGame)
+                    : Loc.F("CommunityCar_ForIn_Fmt2", carDisplay, activeCarId, activeGame),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
                 TextWrapping = TextWrapping.Wrap,
@@ -87,7 +88,7 @@ namespace TrueforceForAll.Plugin
             {
                 root.Children.Add(new TextBlock
                 {
-                    Text = "(no community presets available right now)",
+                    Text = Loc.T("CommunityCar_NoCommunityPresetsAvailable"),
                     Foreground = MutedFg, FontStyle = FontStyles.Italic,
                     Margin = new Thickness(0, 0, 0, 12),
                 });
@@ -104,7 +105,7 @@ namespace TrueforceForAll.Plugin
             var footer = new DockPanel { Margin = new Thickness(0, 4, 0, 0) };
             var seeAllBtn = new Button
             {
-                Content = "See all in Preset Manager…",
+                Content = Loc.T("CommunityCar_SeeAllPresetManager"),
                 Padding = new Thickness(0), Margin = new Thickness(0),
                 Background = Brushes.Transparent, BorderBrush = Brushes.Transparent,
                 Foreground = LinkFg, FontSize = 11,
@@ -122,7 +123,7 @@ namespace TrueforceForAll.Plugin
 
             var closeBtn = new Button
             {
-                Content = "Close", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Settings_Close"), Padding = new Thickness(12, 5, 12, 5),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
@@ -151,7 +152,7 @@ namespace TrueforceForAll.Plugin
             grid.Children.Add(meta);
             meta.Children.Add(new TextBlock
             {
-                Text = UiContentSanitizer.SafeDisplayText(p.Name, 128) ?? "(unnamed)",
+                Text = UiContentSanitizer.SafeDisplayText(p.Name, 128) ?? Loc.T("PresetPreview_Unnamed"),
                 Foreground = TextFg, FontSize = 13, FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             });
@@ -185,7 +186,7 @@ namespace TrueforceForAll.Plugin
 
             var applyBtn = new Button
             {
-                Content = "Apply",
+                Content = Loc.T("Common_Apply"),
                 Padding = new Thickness(10, 4, 10, 4),
                 Foreground = TextFg, Background = PanelBg,
                 FontSize = 11,
@@ -212,20 +213,20 @@ namespace TrueforceForAll.Plugin
             {
                 applyBtn.IsEnabled = false;
                 rowStatus.Foreground = MutedFg;
-                rowStatus.Text = $"Applying '{UiContentSanitizer.SafeDisplayText(p.Name, 96) ?? "preset"}'...";
+                rowStatus.Text = Loc.F("CommunityCar_Applying_Fmt", UiContentSanitizer.SafeDisplayText(p.Name, 96) ?? "preset");
                 rowStatus.Visibility = Visibility.Visible;
                 bool ok = await ApplyOneAsync(p, statusText);
                 if (ok)
                 {
                     rowStatus.Foreground = OkFg;
-                    rowStatus.Text = $"Applied '{UiContentSanitizer.SafeDisplayText(p.Name, 96) ?? "preset"}'. This is now the car's active preset.";
-                    applyBtn.Content   = "Re-apply";
+                    rowStatus.Text = Loc.F("CommunityCar_AppliedNowCarS_Fmt", UiContentSanitizer.SafeDisplayText(p.Name, 96) ?? "preset");
+                    applyBtn.Content   = Loc.T("CommunityCar_ReApply");
                     applyBtn.IsEnabled = true;
                 }
                 else
                 {
                     rowStatus.Foreground = ErrFg;
-                    rowStatus.Text = "Apply failed. Check the status line below for details.";
+                    rowStatus.Text = Loc.T("CommunityCar_ApplyFailedCheckStatus");
                     applyBtn.IsEnabled = true;
                 }
             };
@@ -245,14 +246,14 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 statusText.Foreground = ErrFg;
-                statusText.Text = "Couldn't download that preset. Check your connection and try again.";
+                statusText.Text = Loc.T("PresetManager_CouldnTDownloadPreset");
                 TrueforceDialog.LogError("Popover download", ex);
                 return false;
             }
             if (full?.Body == null || full.Summary == null)
             {
                 statusText.Foreground = ErrFg;
-                statusText.Text = "Download returned no body.";
+                statusText.Text = Loc.T("PresetManager_DownloadReturnedNoBody");
                 return false;
             }
 
@@ -270,14 +271,14 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 statusText.Foreground = ErrFg;
-                statusText.Text = "That preset's data couldn't be read (it may be from a newer version).";
+                statusText.Text = Loc.T("PresetManager_PresetSDataCouldn");
                 TrueforceDialog.LogError("Popover body parse", ex);
                 return false;
             }
             if (ovr == null)
             {
                 statusText.Foreground = ErrFg;
-                statusText.Text = "Body had no override section.";
+                statusText.Text = Loc.T("PresetManager_BodyHadNoOverride");
                 return false;
             }
 
@@ -310,11 +311,11 @@ namespace TrueforceForAll.Plugin
                         "[TF4ALL] Popover switch-to-existing failed: " + ex.Message);
                     statusText.Foreground = ErrFg;
                     statusText.Text =
-                        $"Found '{existingName}' in your library but couldn't make it active. Set it in Presets > Car presets.";
+                        Loc.F("CommunityCar_FoundLibraryButCouldn_Fmt", existingName);
                     return false;
                 }
                 statusText.Foreground = OkFg;
-                statusText.Text = $"Switched this car to '{existingName}' (already in your library).";
+                statusText.Text = Loc.F("CommunityCar_SwitchedCarAlreadyLibrary_Fmt", existingName);
                 return true;
             }
 
@@ -353,7 +354,7 @@ namespace TrueforceForAll.Plugin
                     "[TF4ALL] Popover switch-after-save failed: " + ex.Message);
                 statusText.Foreground = ErrFg;
                 statusText.Text =
-                    $"Saved '{presetName}' to your library but couldn't make it active. Set it in Presets > Car presets.";
+                    Loc.F("CommunityCar_SavedLibraryButCouldn_Fmt", presetName);
                 return false;
             }
 

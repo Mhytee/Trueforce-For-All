@@ -22,6 +22,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -40,7 +41,7 @@ namespace TrueforceForAll.Plugin
             {
                 panel.Children.Add(new TextBlock
                 {
-                    Text = "(No release notes published.)",
+                    Text = Loc.T("Markdown_NoReleaseNotesPublished"),
                     FontSize = 12 * scale,
                     Opacity = 0.7,
                 });
@@ -93,7 +94,7 @@ namespace TrueforceForAll.Plugin
                         imageNoteShown = true;
                         panel.Children.Add(new TextBlock
                         {
-                            Text = "(screenshots on the GitHub release page)",
+                            Text = Loc.T("Markdown_ScreenshotsGitHubReleasePage"),
                             FontSize = 11 * scale,
                             Opacity = 0.55,
                             Margin = new Thickness(0, 0, 0, 2),

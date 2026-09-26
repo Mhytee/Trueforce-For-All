@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -27,16 +28,11 @@ namespace TrueforceForAll.Plugin
             if (s.Arcade.Id8SubmitNoticeShown) return s.Arcade.Id8SubmitTimesEnabled;
 
             bool? ok = TrueforceDialog.Show(owner,
-                "Your lap times go on the leaderboard",
-                "TF4ALL fills Initial D 8's in-game leaderboards, which SEGA's servers stopped " +
-                "serving years ago. When you finish a Time Attack run, your time is sent to the " +
-                "community board under your TF4ALL username, so other players see it in the game." +
-                Environment.NewLine + Environment.NewLine +
-                "Only runs you actually finish are sent, and only while you are signed in. You can " +
-                "change this any time under Arcade leaderboards on the Settings tab.",
+                Loc.T("ArcadeSubmit_LapTimesGoLeaderboard"),
+                Loc.F("ArcadeSubmit_TF4ALLFillsInitialD_Fmt", Environment.NewLine, Environment.NewLine),
                 DialogKind.Confirm,
-                "OK, submit my times",
-                "Don't submit my times",
+                Loc.T("ArcadeSubmit_OKSubmitMyTimes"),
+                Loc.T("ArcadeSubmit_DonTSubmitMy"),
                 // Gold: this is the path the notice recommends, and two identical grey
                 // buttons make an opt-out notice read as a question with no answer.
                 goldOk: true,

@@ -27,6 +27,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -54,7 +55,7 @@ namespace TrueforceForAll.Plugin
         {
             Candidates = candidates ?? new List<SettingsControl.ImportCandidate>();
 
-            Title  = "Import";
+            Title  = Loc.T("Settings_Import");
             Width  = 760;
             Height = 560;
             MinWidth  = 580;
@@ -109,8 +110,8 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 12, 0, 0),
             };
-            var ok     = new Button { Content = "Import",  Width = 110, Height = 28, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel",  Width =  90, Height = 28, IsCancel  = true };
+            var ok     = new Button { Content = Loc.T("Settings_Import"),  Width = 110, Height = 28, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"),  Width =  90, Height = 28, IsCancel  = true };
             btnRow.Children.Add(ok);
             btnRow.Children.Add(cancel);
             Grid.SetRow(btnRow, 2);
@@ -128,7 +129,7 @@ namespace TrueforceForAll.Plugin
                 int kept = Candidates.Sum(cand => cand.Items?.Count(it => it.IsChecked) ?? 0);
                 if (kept == 0)
                 {
-                    TrueforceDialog.Show(this, "Trueforce For All", "No items selected for import.",
+                    TrueforceDialog.Show(this, "Trueforce For All", Loc.T("ImportPreview_NoItemsSelectedImport"),
                         DialogKind.Info);
                     return;
                 }
@@ -172,7 +173,7 @@ namespace TrueforceForAll.Plugin
             {
                 sp.Children.Add(new TextBlock
                 {
-                    Text       = "(no importable items inside this file)",
+                    Text       = Loc.T("ImportPreview_NoImportableItemsInside"),
                     Foreground = MutedFg,
                     Margin     = new Thickness(0, 6, 0, 0),
                 });
@@ -186,12 +187,12 @@ namespace TrueforceForAll.Plugin
 
             if (games.Count > 0)
             {
-                sp.Children.Add(BuildGroupHeader($"Game presets ({games.Count})", games));
+                sp.Children.Add(BuildGroupHeader(Loc.F("ImportPreview_GamePresets_Fmt", games.Count), games));
                 foreach (var it in games) sp.Children.Add(BuildItemRow(it));
             }
             if (cars.Count > 0)
             {
-                sp.Children.Add(BuildGroupHeader($"Car presets ({cars.Count})", cars));
+                sp.Children.Add(BuildGroupHeader(Loc.F("ImportPreview_CarPresets_Fmt", cars.Count), cars));
                 foreach (var it in cars) sp.Children.Add(BuildItemRow(it));
             }
 
@@ -269,33 +270,33 @@ namespace TrueforceForAll.Plugin
             };
             togglePanel.Children.Add(new TextBlock
             {
-                Text       = "Include ",
+                Text       = Loc.T("ImportPreview_Include"),
                 Foreground = MutedFg, FontSize = 11,
                 VerticalAlignment = VerticalAlignment.Center,
             });
-            togglePanel.Children.Add(MakeLink("all",  () => SetGroupIncluded(items, true)));
+            togglePanel.Children.Add(MakeLink(Loc.T("ImportPreview_All"),  () => SetGroupIncluded(items, true)));
             togglePanel.Children.Add(new TextBlock
             {
                 Text = " / ", Foreground = MutedFg, FontSize = 11,
                 VerticalAlignment = VerticalAlignment.Center,
             });
-            togglePanel.Children.Add(MakeLink("none", () => SetGroupIncluded(items, false)));
+            togglePanel.Children.Add(MakeLink(Loc.T("ImportPreview_None"), () => SetGroupIncluded(items, false)));
 
             if (anyDefaultableInGroup)
             {
                 togglePanel.Children.Add(new TextBlock
                 {
-                    Text       = "   •   Default ",   // bullet separator + label
+                    Text       = Loc.T("ImportPreview_Default"),   // bullet separator + label
                     Foreground = MutedFg, FontSize = 11,
                     VerticalAlignment = VerticalAlignment.Center,
                 });
-                togglePanel.Children.Add(MakeLink("all",  () => SetGroupSetDefault(items, true)));
+                togglePanel.Children.Add(MakeLink(Loc.T("ImportPreview_All"),  () => SetGroupSetDefault(items, true)));
                 togglePanel.Children.Add(new TextBlock
                 {
                     Text = " / ", Foreground = MutedFg, FontSize = 11,
                     VerticalAlignment = VerticalAlignment.Center,
                 });
-                togglePanel.Children.Add(MakeLink("none", () => SetGroupSetDefault(items, false)));
+                togglePanel.Children.Add(MakeLink(Loc.T("ImportPreview_None"), () => SetGroupSetDefault(items, false)));
             }
 
             Grid.SetColumn(togglePanel, 1);
@@ -380,7 +381,7 @@ namespace TrueforceForAll.Plugin
             var labelSp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             labelSp.Children.Add(new TextBlock
             {
-                Text       = item.Name ?? "(unnamed)",
+                Text       = item.Name ?? Loc.T("PresetPreview_Unnamed"),
                 Foreground = TextFg,
             });
             var subParts = new List<string>();
@@ -412,25 +413,25 @@ namespace TrueforceForAll.Plugin
             {
                 setDefault = new CheckBox
                 {
-                    Content           = "Set as default",
+                    Content           = Loc.T("PresetManager_CarSetActive"),
                     IsChecked         = item.SetAsDefault,
                     Foreground        = TextFg,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin            = new Thickness(8, 0, 0, 0),
-                    ToolTip           = "Make this the default preset for this car.",
+                    ToolTip           = Loc.T("ImportPreview_MakeDefaultPresetCar"),
                 };
             }
             else
             {
                 setDefault = new CheckBox
                 {
-                    Content     = "Set as default",
+                    Content     = Loc.T("PresetManager_CarSetActive"),
                     IsChecked   = false,
                     IsEnabled   = false,
                     Foreground  = MutedFg,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin      = new Thickness(8, 0, 0, 0),
-                    ToolTip     = "Game presets aren't auto-bound on import yet. Set the game default manually in the Preset Manager after importing.",
+                    ToolTip     = Loc.T("ImportPreview_GamePresetsArenT"),
                 };
             }
             Grid.SetColumn(setDefault, 2);

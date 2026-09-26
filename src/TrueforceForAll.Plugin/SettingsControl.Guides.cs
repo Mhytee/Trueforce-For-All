@@ -114,29 +114,29 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "iracing-setup", Group = GroupSetup,
-                    Title = "iRacing",
+                    Title = Loc.T("Guides_IRacing"),
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
                 new GuideEntry
                 {
                     Key = "raceroom-setup", Group = GroupSetup,
-                    Title = "RaceRoom",
+                    Title = Loc.T("Guides_RaceRoom"),
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
                 new GuideEntry
                 {
                     Key = "lmu-setup", Group = GroupSetup,
-                    Title = "Le Mans Ultimate",
+                    Title = Loc.T("Guides_LeMansUltimate"),
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
                 new GuideEntry
                 {
                     Key = "forza-setup", Group = GroupSetup,
-                    Title = "Forza",
-                    ActionLabel = "Open the UDP settings",
+                    Title = Loc.T("Guides_Forza"),
+                    ActionLabel = Loc.T("Guides_OpenUDPSettings"),
                     Action = () => JumpToForzaTelemetrySetup(openTroubleshooter: false),
                     // The forwarding half lives in its own file because the panel
                     // shows it in a different place: down beside the forward host
@@ -147,15 +147,15 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "farming-sim", Group = GroupSetup,
-                    Title = "Farming Simulator",
-                    ActionLabel = "Open the mod installer",
+                    Title = Loc.T("Guides_FarmingSimulator"),
+                    ActionLabel = Loc.T("Guides_OpenModInstaller"),
                     Action = JumpToFsModSetup,
                 },
                 new GuideEntry
                 {
                     Key = "assetto-corsa-setup", Group = GroupSetup,
-                    Title = "Assetto Corsa",
-                    ActionLabel = "Install the TF4ALL CSP Bridge",
+                    Title = Loc.T("Guides_AssettoCorsa"),
+                    ActionLabel = Loc.T("Guides_InstallTF4ALLCSPBridge"),
                     Action = () => _plugin.InstallAcCspBridgeInteractive(),
                 },
                 // What the bridge IS, kept apart from how to install it: the setup
@@ -165,8 +165,8 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "csp-bridge", Group = GroupSetup,
-                    Title = "The TF4ALL CSP Bridge",
-                    ActionLabel = "Install the TF4ALL CSP Bridge",
+                    Title = Loc.T("Guides_TF4ALLCSPBridge"),
+                    ActionLabel = Loc.T("Guides_InstallTF4ALLCSPBridge"),
                     Action = () => _plugin.InstallAcCspBridgeInteractive(),
                 },
                 // Game-specific like the rows above it, and the thing to read
@@ -175,15 +175,15 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "native-trueforce", Group = GroupSetup,
-                    Title = "Games with native Trueforce",
-                    ActionLabel = "Open the full table",
+                    Title = Loc.T("Guides_GamesNativeTrueforce"),
+                    ActionLabel = Loc.T("Guides_OpenFullTable"),
                     Action = () => OpenUrl(
                         "https://github.com/Mhytee/Trueforce-For-All#games-with-native-trueforce"),
                 },
                 new GuideEntry
                 {
                     Key = "telemetry-ffb", Group = GroupSetup,
-                    Title = "Telemetry Based FFB",
+                    Title = Loc.T("TelemetryFfb_TeleFfbSection"),
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
@@ -194,7 +194,7 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "force-handover", Group = GroupSetup,
-                    Title = "Force handover",
+                    Title = Loc.T("Guides_ForceHandover"),
                     ActionLabel = TelemetryFfbTabLabel(),
                     Action = () => SelectTab(TelemetryFfbTab),
                 },
@@ -202,15 +202,15 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "ffb-not-working", Group = GroupTrouble,
-                    Title = "Force feedback: limp, weak, or silent",
-                    ActionLabel = "Run the self-test",
+                    Title = Loc.T("Guides_ForceFeedbackLimpWeak"),
+                    ActionLabel = Loc.T("Guides_RunSelfTest"),
                     Action = RunWheelCheck,
                 },
                 new GuideEntry
                 {
                     Key = "weak-effects", Group = GroupTrouble,
-                    Title = "Effects feel weak",
-                    ActionLabel = "Open the gain controls",
+                    Title = Loc.T("Guides_EffectsFeelWeak"),
+                    ActionLabel = Loc.T("Guides_OpenGainControls"),
                     Action = () =>
                     {
                         SelectTab(EffectsTab);
@@ -221,15 +221,15 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "car-facts", Group = GroupAbout,
-                    Title = "Car facts",
-                    ActionLabel = "Open Car Facts",
+                    Title = Loc.T("Settings_CarFacts"),
+                    ActionLabel = Loc.T("Guides_OpenCarFacts"),
                     Action = JumpToCarFacts,
                 },
                 new GuideEntry
                 {
                     Key = "tuning-effects", Group = GroupAbout,
-                    Title = "Tuning the effects",
-                    ActionLabel = "Open the Effects tab",
+                    Title = Loc.T("Guides_TuningEffects"),
+                    ActionLabel = Loc.T("Guides_OpenEffectsTab"),
                     Action = () => SelectTab(EffectsTab),
                 },
                 // Gated the same way the lights guide's own entry is not: the
@@ -245,24 +245,24 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "force-and-lights", Group = GroupAbout,
-                    Title = "Where your rev lights and screen work",
-                    ActionLabel = "Open the lights settings",
+                    Title = Loc.T("Guides_WhereRevLightsScreen"),
+                    ActionLabel = Loc.T("Guides_OpenLightsSettings"),
                     Action = JumpToWheelLights,
                 },
                 new GuideEntry
                 {
                     Key = "wheel-screen", Group = GroupAbout,
-                    Title = "The wheel's screen",
+                    Title = Loc.T("Guides_WheelSScreen"),
                     Visible = () => !(_plugin != null && _plugin.WheelDetected
                                       && !_plugin.WheelHasOledScreen),
-                    ActionLabel = "Open the screen settings",
+                    ActionLabel = Loc.T("Guides_OpenScreenSettings"),
                     Action = JumpToWheelScreen,
                 },
                 new GuideEntry
                 {
                     Key = "backup-sync", Group = GroupAbout,
-                    Title = "Backup and sync",
-                    ActionLabel = "Open Backup & Sync",
+                    Title = Loc.T("Guides_BackupSync"),
+                    ActionLabel = Loc.T("Guides_OpenBackupSync"),
                     Action = JumpToBackupSync,
                 },
                 new GuideEntry
@@ -275,17 +275,17 @@ namespace TrueforceForAll.Plugin
                     // pane. Fails OPEN on an undetected wheel, same as the tab does,
                     // so a wheel powered on after SimHub does not lose the entry.
                     Key = "light-patterns", Group = GroupAbout,
-                    Title = "Light patterns",
+                    Title = Loc.T("Guides_LightPatterns"),
                     Visible = () => _plugin?.Settings?.LightsyncTabUnlocked == true
                                  && !(_plugin.WheelDetected && !_plugin.WheelHasSelectableLightPattern),
-                    ActionLabel = "Open the LIGHTSYNC tab",
+                    ActionLabel = Loc.T("Guides_OpenLIGHTSYNCTab"),
                     Action = () => SelectTab(LightsyncTab),
                 },
                 new GuideEntry
                 {
                     Key = "lovely-car-data", Group = GroupAbout,
-                    Title = "Per-car rev light data",
-                    ActionLabel = "Open the Lovely dataset",
+                    Title = Loc.T("Guides_PerCarRevLight"),
+                    ActionLabel = Loc.T("Guides_OpenLovelyDataset"),
                     Action = () => OpenUrl("https://github.com/Lovely-Sim-Racing/lovely-car-data"),
                 },
                 // TF4ALL Dash. The phone button in the header and the Settings
@@ -296,8 +296,8 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "dash", Group = GroupAbout,
-                    Title = "TF4ALL Dash",
-                    ActionLabel = "Open it on your phone",
+                    Title = Loc.T("Guides_TF4ALLDash"),
+                    ActionLabel = Loc.T("Guides_OpenPhone"),
                     Action = () => DashPhoneAccess_Click(null, null),
                 },
                 // The home-screen tile. Its two sliders carry one word each, in
@@ -307,35 +307,35 @@ namespace TrueforceForAll.Plugin
                 new GuideEntry
                 {
                     Key = "home-tile", Group = GroupAbout,
-                    Title = "The Trueforce widget",
+                    Title = Loc.T("Guides_TrueforceWidget"),
                 },
                 new GuideEntry
                 {
                     Key = "bindings", Group = GroupAbout,
-                    Title = "Bindings",
-                    ActionLabel = "Open the Controls tab",
+                    Title = Loc.T("Guides_Bindings"),
+                    ActionLabel = Loc.T("Guides_OpenControlsTab"),
                     Action = () => SelectTab(ControlsTab),
                 },
                 new GuideEntry
                 {
                     Key = "normal-ffb", Group = GroupAbout,
-                    Title = "Will this change or replace my normal force feedback?",
+                    Title = Loc.T("Guides_WillChangeReplaceMy"),
                 },
                 new GuideEntry
                 {
                     Key = "simhub-license", Group = GroupAbout,
-                    Title = "Do I need to pay for SimHub?",
+                    Title = Loc.T("Guides_DoINeedPay"),
                     Extra = LiveTelemetryRateLine,
                 },
                 new GuideEntry
                 {
                     Key = "usbpcap", Group = GroupAbout,
-                    Title = "Why does it need USBPcap, and is that safe?",
+                    Title = Loc.T("Guides_WhyDoesNeedUSBPcap"),
                 },
                 new GuideEntry
                 {
                     Key = "anti-cheat", Group = GroupAbout,
-                    Title = "Is this anti-cheat safe?",
+                    Title = Loc.T("Guides_AntiCheatSafe"),
                 },
             };
             return list;
@@ -593,7 +593,7 @@ namespace TrueforceForAll.Plugin
                     ? "Installed. Restart Assetto Corsa so CSP loads it."
                     : "Not installed.";
             Add(acIn, avail, BuildModCard(
-                "Assetto Corsa: TF4ALL CSP Bridge",
+                Loc.T("Guides_AssettoCorsaTF4ALLCSP"),
                 "Requires Custom Shaders Patch. Unlocks the wheel's Dynamic OLED display and keeps LIGHTSYNC pattern changes from cutting the force feedback.",
                 "v" + _plugin.AcCspBridgeVersionString,
                 avail, acIn, acStatus,
@@ -649,11 +649,11 @@ namespace TrueforceForAll.Plugin
             Grid.SetColumn(buttons, 1);
             var install = new Button
             {
-                Content = installed ? "Reinstall" : "Install",
+                Content = installed ? Loc.T("Settings_UsbPcapReinstall") : Loc.T("TelemetryFfb_FsModInstall"),
                 Padding = new Thickness(12, 3, 12, 3),
                 IsEnabled = available && onInstall != null,
                 Cursor = System.Windows.Input.Cursors.Hand,
-                ToolTip = installed ? "Copy the mod in again, over the one that is there." : "Install this mod.",
+                ToolTip = installed ? Loc.T("Guides_CopyModAgainOver") : Loc.T("Guides_InstallMod"),
             };
             if (install.IsEnabled)
             {
@@ -665,11 +665,11 @@ namespace TrueforceForAll.Plugin
             {
                 var rm = new Button
                 {
-                    Content = "Remove",
+                    Content = Loc.T("PresetManager_Remove"),
                     Padding = new Thickness(12, 3, 12, 3),
                     Margin = new Thickness(6, 0, 0, 0),
                     Cursor = System.Windows.Input.Cursors.Hand,
-                    ToolTip = "Remove this mod.",
+                    ToolTip = Loc.T("Guides_RemoveMod"),
                 };
                 ModalButtonTheme.Destructive(rm);
                 rm.Click += (s, ev) => onRemove.Invoke();
@@ -727,15 +727,15 @@ namespace TrueforceForAll.Plugin
                 // describing where to find it.
                 var guideLink = new TextBlock { Margin = new Thickness(0, 8, 0, 0) };
                 var link = new System.Windows.Documents.Hyperlink(
-                    new System.Windows.Documents.Run("Open the Assetto Corsa setup guide"))
+                    new System.Windows.Documents.Run(Loc.T("Guides_OpenAssettoCorsaSetup")))
                 {
                     Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
                 };
                 link.Click += (s2, e2) => OpenGuides("assetto-corsa-setup");
                 guideLink.Inlines.Add(link);
                 bool? again = TrueforceDialog.Show(Window.GetWindow(this),
-                    "Could not install the TF4ALL CSP Bridge", err,
-                    DialogKind.Error, okLabel: "Retry", cancelLabel: "Cancel", goldOk: true,
+                    Loc.T("Guides_CouldNotInstallTF4ALL"), err,
+                    DialogKind.Error, okLabel: Loc.T("Guides_Retry"), cancelLabel: Loc.T("Common_Cancel"), goldOk: true,
                     extraContent: guideLink);
                 if (again != true) { RefreshModsList(); return; }
                 err = _plugin.InstallAndEnableAcCspBridge();
@@ -751,19 +751,16 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             bool? go = TrueforceDialog.Show(Window.GetWindow(this),
-                "Remove the TF4ALL CSP Bridge?",
-                "This deletes the bridge script from Assetto Corsa and puts CSP's FFB Tweaks post-processing slot back the way it was before the install.\n\n"
-                + "Your force feedback keeps working through the USB capture. What you lose is the wheel's "
-                + "Dynamic OLED display and drop-free LIGHTSYNC pattern changes in Assetto Corsa.\n\n"
-                + "It stops loading the next time Assetto Corsa starts.\n\nIf Content Manager is open, close it first, then click Remove.",
-                DialogKind.Destructive, okLabel: "Remove", cancelLabel: "Keep it");
+                Loc.T("Guides_RemoveTF4ALLCSPBridge"),
+                Loc.T("Guides_DeletesBridgeScriptAssetto"),
+                DialogKind.Destructive, okLabel: Loc.T("PresetManager_Remove"), cancelLabel: Loc.T("Guides_Keep"));
             if (go != true) return;
             string err = _plugin.UninstallAcCspBridge();
             while (err != null)
             {
                 bool? again = TrueforceDialog.Show(Window.GetWindow(this),
-                    "Could not remove the TF4ALL CSP Bridge", err,
-                    DialogKind.Error, okLabel: "Retry", cancelLabel: "Cancel", goldOk: true);
+                    Loc.T("Guides_CouldNotRemoveTF4ALL"), err,
+                    DialogKind.Error, okLabel: Loc.T("Guides_Retry"), cancelLabel: Loc.T("Common_Cancel"), goldOk: true);
                 if (again != true) { RefreshModsList(); return; }
                 err = _plugin.UninstallAcCspBridge();
             }
@@ -782,15 +779,9 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             bool? go = TrueforceDialog.Show(Window.GetWindow(this),
-                "Remove the Farming Simulator mod?",
-                "This deletes TF4ALL Enhanced Telemetry from " + t.DisplayName + "'s mods "
-                + "folder.\n\n"
-                + "Your force feedback keeps working. The plugin builds Farming Simulator's "
-                + "steering force itself and does not need the mod. What you lose is what the "
-                + "mod adds on top: ground texture through the wheel, the implement thud, and "
-                + "the airborne cut.\n\n"
-                + "It stops loading the next time the game starts.",
-                DialogKind.Destructive, okLabel: "Remove", cancelLabel: "Keep it");
+                Loc.T("Guides_RemoveFarmingSimulatorMod"),
+                Loc.F("Guides_DeletesTF4ALLEnhancedTelemetry_Fmt", t.DisplayName),
+                DialogKind.Destructive, okLabel: Loc.T("PresetManager_Remove"), cancelLabel: Loc.T("Guides_Keep"));
             if (go != true) return;
 
             string err = _plugin.UninstallFsMod(t.Game);
@@ -822,14 +813,9 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             bool? go = TrueforceDialog.Show(Window.GetWindow(this),
-                "Remove the arcade plugin?",
-                "This puts " + t.DisplayName + " back the way it was. Whatever force feedback "
-                + "file was in the game's folder before we installed ours is restored, and the "
-                + "game goes back to driving your wheel directly.\n\n"
-                + "You lose the arcade effects through Trueforce, and the wheel's lights and "
-                + "screen go back to cutting out while force is playing.\n\n"
-                + "It takes effect the next time the game starts.",
-                DialogKind.Destructive, okLabel: "Remove", cancelLabel: "Keep it");
+                Loc.T("Guides_RemoveArcadePlugin"),
+                Loc.F("Guides_PutsBackWayWas_Fmt", t.DisplayName),
+                DialogKind.Destructive, okLabel: Loc.T("PresetManager_Remove"), cancelLabel: Loc.T("Guides_Keep"));
             if (go != true) return;
 
             string err = _plugin.UninstallArcadeMod(t);

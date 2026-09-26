@@ -80,7 +80,7 @@ namespace TrueforceForAll.Plugin
             _game   = game;
             _carId  = carId;
 
-            Title         = "Manage engine variants";
+            Title         = Loc.T("CarFactsVariants_ManageEngineVariants");
             // Column minimums sum to ~710px; anything under ~770 shows a
             // horizontal scrollbar with the Delete column cut off.
             Width         = 780;
@@ -104,7 +104,7 @@ namespace TrueforceForAll.Plugin
 
             header.Children.Add(new TextBlock
             {
-                Text = "Manage engine variants",
+                Text = Loc.T("CarFactsVariants_ManageEngineVariants"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
@@ -119,9 +119,7 @@ namespace TrueforceForAll.Plugin
             });
             header.Children.Add(new TextBlock
             {
-                Text = "Variants are created automatically the first time this car shows a new engine. "
-                     + "The Engine dropdown pins that variant's engine type; Auto lets detection decide. "
-                     + "Built-in rows come from the car list and can't be edited.",
+                Text = Loc.T("CarFactsVariants_VariantsCreatedAutomaticallyFirst"),
                 Foreground = MutedFg, FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
@@ -134,7 +132,7 @@ namespace TrueforceForAll.Plugin
             DockPanel.SetDock(btnRow, Dock.Bottom);
             var closeBtn = new Button
             {
-                Content = "Close", Width = 90,
+                Content = Loc.T("Settings_Close"), Width = 90,
                 Padding = new Thickness(12, 5, 12, 5),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
             };
@@ -147,9 +145,9 @@ namespace TrueforceForAll.Plugin
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Left,
             };
-            var createHl = new Hyperlink(new Run("Create custom engine…"))
+            var createHl = new Hyperlink(new Run(Loc.T("CarFactsVariants_CreateCustomEngine")))
             {
-                ToolTip = "Author a firing pattern nothing built-in matches. Saved to your library, then pick it in a variant's Engine dropdown.",
+                ToolTip = Loc.T("CarFactsVariants_AuthorFiringPatternNothing"),
             };
             createHl.Click += CreateCustom_Click;
             createLink.Inlines.Add(createHl);
@@ -158,7 +156,7 @@ namespace TrueforceForAll.Plugin
 
             _emptyHint = new TextBlock
             {
-                Text = "No saved variants yet. One is added automatically the next time this car shows a new engine.",
+                Text = Loc.T("CarFactsVariants_NoSavedVariantsYet"),
                 Foreground = MutedFg, FontSize = 12, FontStyle = FontStyles.Italic,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment   = VerticalAlignment.Center,
@@ -219,7 +217,7 @@ namespace TrueforceForAll.Plugin
             // below so we can plumb the rename into the plugin.
             _labelCol = new DataGridTextColumn
             {
-                Header = "Label (click to rename)",
+                Header = Loc.T("CarFactsVariants_LabelClickRename"),
                 Binding = new Binding("Label") { Mode = BindingMode.TwoWay },
                 Width = new DataGridLength(1, DataGridLengthUnitType.Star),
                 MinWidth = 160,
@@ -236,12 +234,12 @@ namespace TrueforceForAll.Plugin
 
             g.Columns.Add(new DataGridTextColumn
             {
-                Header = "Source", Width = 100, IsReadOnly = true,
+                Header = Loc.T("Common_Source"), Width = 100, IsReadOnly = true,
                 Binding = new Binding("SourceLabel"),
             });
             g.Columns.Add(new DataGridTextColumn
             {
-                Header = "Cyl", Width = 60, IsReadOnly = true,
+                Header = Loc.T("CarFactsVariants_Cyl"), Width = 60, IsReadOnly = true,
                 Binding = new Binding("Cylinders"),
             });
 
@@ -258,7 +256,7 @@ namespace TrueforceForAll.Plugin
             engineTemplate.VisualTree = comboFactory;
             g.Columns.Add(new DataGridTemplateColumn
             {
-                Header = "Engine", Width = 170,
+                Header = Loc.T("Header_CarFactsRowsEngine"), Width = 170,
                 CellTemplate = engineTemplate,
             });
 
@@ -269,7 +267,7 @@ namespace TrueforceForAll.Plugin
             // row you came to this window to correct.
             _redlineCol = new DataGridTextColumn
             {
-                Header = "Redline (click to set)", Width = 130,
+                Header = Loc.T("CarFactsVariants_RedlineClickSet"), Width = 130,
                 Binding = new Binding("Redline") { Mode = BindingMode.TwoWay },
             };
             var redlineHeaderStyle = new Style(typeof(DataGridColumnHeader),
@@ -284,10 +282,10 @@ namespace TrueforceForAll.Plugin
             // variant currently being driven (telemetry would just recreate it).
             var deleteTemplate = new DataTemplate();
             var btnFactory = new FrameworkElementFactory(typeof(Button));
-            btnFactory.SetValue(Button.ContentProperty, "Delete");
+            btnFactory.SetValue(Button.ContentProperty, Loc.T("Common_Delete"));
             btnFactory.SetBinding(Button.IsEnabledProperty, new Binding("CanDelete"));
             btnFactory.SetValue(Button.ToolTipProperty,
-                "Delete a stale or misidentified variant. The one you're currently driving can't be deleted (it auto-detects from telemetry). If that engine turns up again, a fresh row is created.");
+                Loc.T("CarFactsVariants_DeleteStaleMisidentifiedVariant"));
             btnFactory.SetValue(ToolTipService.ShowOnDisabledProperty, true);
             btnFactory.SetValue(Button.PaddingProperty, new Thickness(8, 2, 8, 2));
             btnFactory.SetValue(Button.MarginProperty, new Thickness(4, 2, 4, 2));
@@ -557,8 +555,8 @@ namespace TrueforceForAll.Plugin
             if (!(b.DataContext is Row row)) return;
             if (!row.CanDelete) return;
             if (TrueforceDialog.Show(this,
-                    "Delete variant?",
-                    "Remove the variant \"" + row.Label + "\"? This car falls back to its next-best engine guess.",
+                    Loc.T("CarFactsVariants_DeleteVariant"),
+                    Loc.F("CarFactsVariants_RemoveVariantCarFalls_Fmt", row.Label),
                     DialogKind.Destructive) != true) return;
             if (_plugin.DeleteActiveCarVariant(row.Id))
                 Reload();

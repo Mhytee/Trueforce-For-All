@@ -32,6 +32,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using MahApps.Metro.IconPacks;
 using SimHub.Plugins.Styles;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -365,7 +366,7 @@ namespace TrueforceForAll.Plugin
             // Says what the switch IS, not what the tile does with it. This is the
             // plugin's master switch, so anything about modes or about the tile
             // itself is describing our UI to someone who is looking at SimHub's.
-            _masterToggle = MakeToggle("Master", "Enable the TF4ALL plugin");
+            _masterToggle = MakeToggle(Loc.T("Effects_Master"), Loc.T("Feedback_EnableTF4ALLPlugin"));
             _masterToggle.Checked   += (s, e) => { if (!_syncing) _plugin.SetMasterEnabledFromToggle(true); };
             _masterToggle.Unchecked += (s, e) => { if (!_syncing) _plugin.SetMasterEnabledFromToggle(false); };
             content.Children.Add(MakeRow(_masterToggle, _masterSlider));
@@ -378,14 +379,14 @@ namespace TrueforceForAll.Plugin
                 _plugin.SetActiveAudioGainLive((float)e.NewValue); // live: _audio + settings
                 _pendingPersist = true;
             };
-            _audioToggle = MakeToggle("Audio", "Turn audio haptics on/off");
+            _audioToggle = MakeToggle(Loc.T("Feedback_Audio"), Loc.T("Feedback_TurnAudioHapticsOff"));
             _audioToggle.Checked   += (s, e) => { if (!_syncing) { _plugin.SetActiveAudioEnabledLive(true);  _pendingPersist = true; } };
             _audioToggle.Unchecked += (s, e) => { if (!_syncing) { _plugin.SetActiveAudioEnabledLive(false); _pendingPersist = true; } };
             content.Children.Add(MakeRow(_audioToggle, _audioSlider));
 
             var box = new SHSubTitledBox
             {
-                Title = "Trueforce",
+                Title = Loc.T("Feedback_Trueforce"),
                 ShowCog = true,   // hover cog (top-left), like the built-in tiles
                 Tag = BoxTag,
                 Margin = new Thickness(2),
@@ -446,7 +447,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, -2, -2, 0),
                 Cursor = Cursors.Hand,
                 Opacity = HelpGlyphIdleOpacity,
-                ToolTip = "What Master and Audio do",
+                ToolTip = Loc.T("Feedback_WhatMasterAudioDo"),
             };
             hit.MouseEnter += (s, e) => hit.Opacity = 1.0;
             hit.MouseLeave += (s, e) => hit.Opacity = HelpGlyphIdleOpacity;

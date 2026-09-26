@@ -24,6 +24,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -61,7 +62,7 @@ namespace TrueforceForAll.Plugin
             _previewDefaults = previewDefaults ?? throw new ArgumentNullException(nameof(previewDefaults));
             _removePack      = removePack      ?? throw new ArgumentNullException(nameof(removePack));
 
-            Title = "Manage installed packs";
+            Title = Loc.T("PackManager_ManageInstalledPacks");
             Width = 820;
             Height = 540;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -81,7 +82,7 @@ namespace TrueforceForAll.Plugin
 
             var header = new TextBlock
             {
-                Text = "Installed packs",
+                Text = Loc.T("PackManager_InstalledPacks"),
                 FontSize = 16,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = TextFg,
@@ -151,7 +152,7 @@ namespace TrueforceForAll.Plugin
             };
             _setDefaultsButton = new Button
             {
-                Content = "Set pack as defaults",
+                Content = Loc.T("PresetManager_SetPackAsDefaults"),
                 Width = 170,
                 Height = 28,
                 Margin = new Thickness(0, 0, 8, 0),
@@ -159,13 +160,13 @@ namespace TrueforceForAll.Plugin
                 Foreground = TextFg,
                 BorderBrush = BorderFg,
                 IsEnabled = false,
-                ToolTip = "Sets every preset in the selected pack as the default for its game or car. If any already have a default, you'll be asked whether to overwrite or keep them.",
+                ToolTip = Loc.T("PackManager_SetsEveryPresetSelected"),
             };
             _setDefaultsButton.Click += (s, e) => OnSetDefaultsClicked();
 
             _removeButton = new Button
             {
-                Content = "Remove pack…",
+                Content = Loc.T("PackManager_RemovePack"),
                 Width = 140,
                 Height = 28,
                 Margin = new Thickness(0, 0, 8, 0),
@@ -173,13 +174,13 @@ namespace TrueforceForAll.Plugin
                 Foreground = DangerFg,
                 BorderBrush = BorderFg,
                 IsEnabled = false,
-                ToolTip = "Deletes the pack and every preset it installed. Presets you have edited since import are kept.",
+                ToolTip = Loc.T("PackManager_DeletesPackEveryPreset"),
             };
             _removeButton.Click += (s, e) => OnRemoveClicked();
 
             var closeButton = new Button
             {
-                Content = "Close",
+                Content = Loc.T("Settings_Close"),
                 Width = 90,
                 Height = 28,
                 Background = PanelBg,
@@ -220,7 +221,7 @@ namespace TrueforceForAll.Plugin
                 {
                     Content = new TextBlock
                     {
-                        Text = "No packs installed yet. Import a .tfpack via the Preset Manager to populate this list.",
+                        Text = Loc.T("PackManager_NoPacksInstalledYet"),
                         Foreground = MutedFg,
                         TextWrapping = TextWrapping.Wrap,
                     },
@@ -291,7 +292,7 @@ namespace TrueforceForAll.Plugin
             {
                 _detailsPanel.Children.Add(new TextBlock
                 {
-                    Text = "Select a pack to see its contents.",
+                    Text = Loc.T("PackManager_SelectPackSeeContents"),
                     Foreground = MutedFg,
                     TextWrapping = TextWrapping.Wrap,
                 });
@@ -311,14 +312,14 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 4),
             });
 
-            AddDetailRow("Author",      string.IsNullOrEmpty(p.Author)        ? "(unknown)" : UiContentSanitizer.SafeDisplayText(p.Author, 96));
-            AddDetailRow("Imported",    p.ImportedAt.ToString("yyyy-MM-dd HH:mm"));
+            AddDetailRow(Loc.T("PresetMetadata_Author"),      string.IsNullOrEmpty(p.Author)        ? Loc.T("Settings_Unknown") : UiContentSanitizer.SafeDisplayText(p.Author, 96));
+            AddDetailRow(Loc.T("PresetManager_PacksListImported_Header"),    p.ImportedAt.ToString("yyyy-MM-dd HH:mm"));
             if (!string.IsNullOrEmpty(p.Description))
-                AddDetailRow("Description", UiContentSanitizer.SafeMultiLineText(p.Description, 1024, 10) ?? "(no description)", wrap: true);
+                AddDetailRow(Loc.T("EditCommunity_DescriptionLabel"), UiContentSanitizer.SafeMultiLineText(p.Description, 1024, 10) ?? Loc.T("PresetPreview_NoDescription"), wrap: true);
 
             int gameCount = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindGame) ?? 0;
             int carCount  = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindCar)  ?? 0;
-            AddDetailRow("Contents", $"{gameCount} game preset(s), {carCount} car preset(s)");
+            AddDetailRow(Loc.T("PackManager_Contents"), Loc.F("PackManager_GamePresetSCar_Fmt", gameCount, carCount));
 
             // List the actual entry names so the user knows what they're
             // about to remove or default-bind. Truncated visually if it grows
@@ -336,9 +337,9 @@ namespace TrueforceForAll.Plugin
                 {
                     if (e == null) continue;
                     if (e.Kind == InstalledPackEntry.KindGame)
-                        entryList.Inlines.Add(new Run($"game · {e.Name}\n"));
+                        entryList.Inlines.Add(new Run(Loc.F("PackManager_Game_Fmt", e.Name) + "\n"));
                     else if (e.Kind == InstalledPackEntry.KindCar)
-                        entryList.Inlines.Add(new Run($"car · {e.CarId} / {e.PresetName}\n"));
+                        entryList.Inlines.Add(new Run(Loc.F("PackManager_Car_Fmt", e.CarId, e.PresetName) + "\n"));
                 }
                 _detailsPanel.Children.Add(entryList);
             }
@@ -382,12 +383,11 @@ namespace TrueforceForAll.Plugin
             {
                 int total = preview.FreshCount + preview.ConflictCount;
                 var choice = TrueforceDialog.ShowChoice(this,
-                    "Set pack as defaults",
-                    $"This pack sets {total} default binding(s). {preview.ConflictCount} of them already have a default for that game or car.\n\n"
-                    + "\"Overwrite all\" replaces every existing default. \"Skip existing\" keeps your current defaults and only fills in the ones you haven't set yet.",
-                    primaryLabel:   "Overwrite all",
-                    secondaryLabel: "Skip existing",
-                    cancelLabel:    "Cancel");
+                    Loc.T("PresetManager_SetPackAsDefaults"),
+                    Loc.F("PackManager_PackSetsDefaultBinding_Fmt", total, preview.ConflictCount),
+                    primaryLabel:   Loc.T("PresetManager_OverwriteAll"),
+                    secondaryLabel: Loc.T("PresetManager_SkipExisting"),
+                    cancelLabel:    Loc.T("Common_Cancel"));
                 if (choice == DialogChoice.Cancel) return;
                 policy = choice == DialogChoice.Primary
                     ? SetDefaultsConflictPolicy.OverwriteAll
@@ -403,7 +403,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _statusText.Text = "Couldn't set the defaults. See the SimHub log, then try again.";
+                _statusText.Text = Loc.T("PresetManager_CouldnTSetDefaults");
                 TrueforceDialog.LogError("Set pack defaults", ex);
                 _statusText.Foreground = DangerFg;
             }
@@ -418,14 +418,11 @@ namespace TrueforceForAll.Plugin
             string packLabel = string.IsNullOrEmpty(p.PackName) ? "this pack" : $"'{p.PackName}'";
             if (TrueforceDialog.Show(
                 this,
-                "Remove pack",
-                $"Remove {packLabel} and delete every preset it installed " +
-                $"({gameCount} game, {carCount} car)?\n\n" +
-                $"Entries you have edited since import will be kept.\n\n" +
-                $"This cannot be undone.",
+                Loc.T("PresetManager_PacksRemove"),
+                Loc.F("PackManager_RemoveDeleteEveryPreset_Fmt", packLabel, gameCount, carCount),
                 DialogKind.Destructive,
-                okLabel: "Remove",
-                cancelLabel: "Cancel") != true) return;
+                okLabel: Loc.T("PresetManager_Remove"),
+                cancelLabel: Loc.T("Common_Cancel")) != true) return;
 
             try
             {
@@ -436,7 +433,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                _statusText.Text = "Couldn't remove the pack. See the SimHub log, then try again.";
+                _statusText.Text = Loc.T("PresetManager_CouldnTRemovePack");
                 TrueforceDialog.LogError("Remove pack", ex);
                 _statusText.Foreground = DangerFg;
             }

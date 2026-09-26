@@ -24,6 +24,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -81,7 +82,7 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            Title = exportMode ? "Export" : "Import";
+            Title = exportMode ? Loc.T("PackPicker_Export") : Loc.T("Settings_Import");
             Width = 760;
             Height = 520;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -99,7 +100,7 @@ namespace TrueforceForAll.Plugin
 
             var header = new TextBlock
             {
-                Text = "Pick what to export. One item saves as a single file; pick two or more to bundle them into a pack that imports at once.",
+                Text = Loc.T("PackPicker_PickWhatExportOne"),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10),
                 Foreground = TextFg,
@@ -129,8 +130,8 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 12, 0, 0),
             };
-            var ok = new Button { Content = exportMode ? "Export…" : "Import", Width = 110, Height = 28, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true };
+            var ok = new Button { Content = exportMode ? Loc.T("PresetManager_Export") : Loc.T("Settings_Import"), Width = 110, Height = 28, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 90, Height = 28, IsCancel = true };
             btnRow.Children.Add(ok);
             btnRow.Children.Add(cancel);
             Grid.SetRow(btnRow, 2);
@@ -149,7 +150,7 @@ namespace TrueforceForAll.Plugin
                 if (SelectedPresetNames.Count == 0 && SelectedCarPresets.Count == 0)
                 {
                     TrueforceDialog.Show(this, "Trueforce For All",
-                                    "Pick at least one preset or car preset to include.", DialogKind.Info);
+                                    Loc.T("PackPicker_PickLeastOnePreset"), DialogKind.Info);
                     return;
                 }
 
@@ -169,7 +170,7 @@ namespace TrueforceForAll.Plugin
         {
             var panel = new DockPanel { Margin = new Thickness(0, 0, 6, 0) };
 
-            var header = BuildPanelHeader($"Presets ({presets.Count})");
+            var header = BuildPanelHeader(Loc.F("PackPicker_Presets_Fmt", presets.Count));
             DockPanel.SetDock(header, Dock.Top);
             panel.Children.Add(header);
 
@@ -184,7 +185,7 @@ namespace TrueforceForAll.Plugin
             {
                 listSp.Children.Add(new TextBlock
                 {
-                    Text = "No user presets in your library yet.",
+                    Text = Loc.T("PackPicker_NoUserPresetsLibrary"),
                     Foreground = MutedFg,
                     Margin = new Thickness(4, 6, 0, 0),
                 });
@@ -217,7 +218,7 @@ namespace TrueforceForAll.Plugin
 
             _carCountText = new TextBlock
             {
-                Text = $"Car presets ({cars.Count})",
+                Text = Loc.F("ImportPreview_CarPresets_Fmt", cars.Count),
                 FontWeight = FontWeights.SemiBold,
                 Foreground = TextFg,
                 Margin = new Thickness(2, 0, 2, 6),
@@ -236,7 +237,7 @@ namespace TrueforceForAll.Plugin
             {
                 listSp.Children.Add(new TextBlock
                 {
-                    Text = "No car presets saved yet.",
+                    Text = Loc.T("PackPicker_NoCarPresetsSaved"),
                     Foreground = MutedFg,
                     Margin = new Thickness(4, 6, 0, 0),
                 });
@@ -301,7 +302,7 @@ namespace TrueforceForAll.Plugin
             // hides them when a specific game is selected (they don't match
             // any game). Users can clear the filter to bring them back.
             if (noGame.Count > 0)
-                RenderGroup("", "Other", noGame);
+                RenderGroup("", Loc.T("PackPicker_Other"), noGame);
 
             panel.Children.Add(WrapInScrolledBorder(listSp));
             return panel;
@@ -342,8 +343,8 @@ namespace TrueforceForAll.Plugin
             {
                 int total = _carChecks.Count;
                 _carCountText.Text = filterActive
-                    ? $"Car presets ({visibleCount} of {total})"
-                    : $"Car presets ({total})";
+                    ? Loc.F("PackPicker_CarPresets_Fmt", visibleCount, total)
+                    : Loc.F("ImportPreview_CarPresets_Fmt", total);
             }
         }
 
@@ -391,8 +392,8 @@ namespace TrueforceForAll.Plugin
         private static UIElement BuildToggleRow(Action onAll, Action onNone)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
-            var all  = new Button { Content = "Select all",  Width = 96, Height = 26, FontSize = 11, Margin = new Thickness(0, 0, 6, 0) };
-            var none = new Button { Content = "Select none", Width = 96, Height = 26, FontSize = 11 };
+            var all  = new Button { Content = Loc.T("PackPicker_SelectAll"),  Width = 96, Height = 26, FontSize = 11, Margin = new Thickness(0, 0, 6, 0) };
+            var none = new Button { Content = Loc.T("PackPicker_SelectNone"), Width = 96, Height = 26, FontSize = 11 };
             all.Click  += (s, e) => onAll();
             none.Click += (s, e) => onNone();
             row.Children.Add(all);

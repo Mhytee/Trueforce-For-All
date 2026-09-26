@@ -115,7 +115,7 @@ namespace TrueforceForAll.Plugin
                 System.IO.Directory.CreateDirectory(folder);
                 System.Diagnostics.Process.Start("explorer.exe", "\"" + folder + "\"");
             }
-            catch (Exception ex) { SetDevStatus("Open folder failed: " + ex.Message); }
+            catch (Exception ex) { SetDevStatus(Loc.F("PresetManager_OpenFolderFailed_Fmt", ex.Message)); }
         }
 
         private void DevValidate_Click(object sender, RoutedEventArgs e)
@@ -125,7 +125,7 @@ namespace TrueforceForAll.Plugin
             int issues = lines.Count(l => !l.StartsWith("OK"));
             string body = lines.Count == 0 ? "No built-ins loaded." : string.Join("\n", lines);
             TrueforceDialog.Show(Window.GetWindow(this),
-                $"Validate built-ins ({issues} issue{(issues == 1 ? "" : "s")})",
+                Loc.N("PresetManager_ValidateBuiltIns", issues, issues),
                 body,
                 issues > 0 ? DialogKind.Warning : DialogKind.Info);
             SetDevStatus(issues == 0
@@ -142,7 +142,7 @@ namespace TrueforceForAll.Plugin
                 RefreshLists();
                 SetDevStatus(msg);
             }
-            catch (Exception ex) { SetDevStatus("Refresh failed: " + ex.Message); }
+            catch (Exception ex) { SetDevStatus(Loc.F("PresetManager_RefreshFailed_Fmt", ex.Message)); }
         }
 
         private void SetDevStatus(string text)
@@ -714,7 +714,7 @@ namespace TrueforceForAll.Plugin
             UpdatesChip.Visibility = Visibility.Visible;
             UpdatesChip.Content = count == 1
                 ? Loc.T("PresetManager_N1UpdateAvailable")
-                : "↻ " + count + " updates available";
+                : Loc.F("PresetManager_UpdatesAvailable_Fmt", count);
         }
 
         private void UpdatesChip_Click(object sender, RoutedEventArgs e)
@@ -1008,8 +1008,9 @@ namespace TrueforceForAll.Plugin
             }
             if (summary == null) return;
             if (PacksStatusLabel != null)
-                PacksStatusLabel.Text = $"Removed pack. Deleted {summary.EntriesDeleted} entr{(summary.EntriesDeleted == 1 ? "y" : "ies")}; "
-                    + $"kept {summary.EntriesKept} entr{(summary.EntriesKept == 1 ? "y" : "ies")}.";
+                PacksStatusLabel.Text = Loc.F("PresetManager_RemovedPackCounts_Fmt",
+                    Loc.N("PresetManager_DeletedEntries", summary.EntriesDeleted, summary.EntriesDeleted),
+                    Loc.N("PresetManager_KeptEntries", summary.EntriesKept, summary.EntriesKept));
             ReloadPacks();
             ReloadGames();
             ReloadCars();
@@ -1445,7 +1446,7 @@ namespace TrueforceForAll.Plugin
         {
             var opener = new CheckBox
             {
-                Content = "+" + overflow.Count + " more",
+                Content = Loc.F("PresetManager_More_Fmt", overflow.Count),
                 Style   = (Style)FindResource("ToggleChipButton"),
                 Tag     = MoreGamesChipTag,
                 ToolTip = Loc.T("PresetManager_EveryOtherGameShared"),
@@ -3087,7 +3088,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     {
                         string nextVer = NextVersionLabel(snap.CommunityUploadedVersion);
                         var chooser = new UpdateVsNewChooserWindow(
-                            "Re-share '" + presetName + "'",
+                            Loc.F("Settings_ReShare_Fmt", presetName),
                             Loc.T("PresetManager_AlreadyUploadedPresetCommunity"),
                             "Update existing (" + nextVer + ")",
                             "Share as new preset")
@@ -3118,7 +3119,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         // duplicate row. No bypass on purpose; name and
                         // description edits go through Community > Edit….
                         TrueforceDialog.Show(owner, Loc.T("PresetManager_AlreadyShared"),
-                            "'" + presetName + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                            Loc.F("Settings_AlreadySharedCommunityHasn_Fmt", presetName),
                             DialogKind.Info);
                         return;
                     }
@@ -3197,7 +3198,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             var saved = SettingsControl.RunExportFlow(Window.GetWindow(this), _plugin);
             if (!string.IsNullOrEmpty(saved))
                 SettingsControl.ShowSavedStatus(IoStatusLabel,
-                    "Exported to " + System.IO.Path.GetFileName(saved) + ".", saved);
+                    Loc.F("Settings_Exported_Fmt", System.IO.Path.GetFileName(saved)), saved);
         }
 
         private void DialogImport_Click(object sender, RoutedEventArgs e)
@@ -3534,7 +3535,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     {
                         string nextVer = NextVersionLabel(entry.Override.CommunityUploadedVersion);
                         var chooser = new UpdateVsNewChooserWindow(
-                            "Re-share '" + presetName + "'",
+                            Loc.F("Settings_ReShare_Fmt", presetName),
                             Loc.T("PresetManager_AlreadyUploadedPresetCommunity"),
                             "Update existing (" + nextVer + ")",
                             "Share as new preset")
@@ -3563,7 +3564,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         // Unchanged uploads never re-share (owner rule,
                         // 2026-07-13); see the game-preset handler.
                         TrueforceDialog.Show(owner, Loc.T("PresetManager_AlreadyShared"),
-                            "'" + presetName + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
+                            Loc.F("Settings_AlreadySharedCommunityHasn_Fmt", presetName),
                             DialogKind.Info);
                         return;
                     }
@@ -3810,7 +3811,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 .ToList();
             if (collisions.Count > 0)
             {
-                SetLib(CarLibStatus, "Each car can have one default. Uncheck the extra rows for: " + string.Join(", ", collisions));
+                SetLib(CarLibStatus, Loc.F("PresetManager_EachCarCanHave_Fmt", string.Join(", ", collisions)));
                 return;
             }
 
@@ -3982,7 +3983,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     {
                         string nextVer = NextVersionLabel(def.CommunityUploadedVersion);
                         var chooser = new UpdateVsNewChooserWindow(
-                            "Re-share '" + baseName + "'",
+                            Loc.F("Settings_ReShare_Fmt", baseName),
                             Loc.T("PresetManager_AlreadyUploadedEngineCommunity"),
                             "Update existing (" + nextVer + ")",
                             "Share as new engine")
@@ -4011,7 +4012,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         // Unchanged uploads never re-share (owner rule,
                         // 2026-07-13); see the game-preset handler.
                         TrueforceDialog.Show(owner, Loc.T("PresetManager_AlreadyShared"),
-                            "'" + baseName + "' is already shared to the community and hasn't changed since. Tweak the engine first, or use Edit… on your upload in the Community list to change its name or description.",
+                            Loc.F("PresetManager_AlreadySharedCommunityHasn_Fmt", baseName),
                             DialogKind.Info);
                         return;
                     }

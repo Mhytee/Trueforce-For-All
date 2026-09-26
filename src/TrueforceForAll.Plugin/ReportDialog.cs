@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -35,7 +36,7 @@ namespace TrueforceForAll.Plugin
 
         public ReportDialog(string targetName, string subjectKind)
         {
-            Title = "Report for moderator review";
+            Title = Loc.T("Report_ReportModeratorReview");
             Width = 460;
             Height = 470;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -47,8 +48,8 @@ namespace TrueforceForAll.Plugin
             sp.Children.Add(new TextBlock
             {
                 Text = string.IsNullOrWhiteSpace(targetName)
-                    ? $"Report this {subjectKind} for moderator review."
-                    : $"Report the {subjectKind} \"{targetName}\" for moderator review.",
+                    ? Loc.F("Report_ReportThisForReview_Fmt", subjectKind)
+                    : Loc.F("Report_ReportModeratorReview_Fmt2", subjectKind, targetName),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
                 Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
@@ -56,7 +57,7 @@ namespace TrueforceForAll.Plugin
 
             sp.Children.Add(new TextBlock
             {
-                Text = "Why are you reporting it?",
+                Text = Loc.T("Report_WhyReporting"),
                 Margin = new Thickness(0, 0, 0, 6),
                 FontWeight = FontWeights.SemiBold,
             });
@@ -80,7 +81,7 @@ namespace TrueforceForAll.Plugin
 
             sp.Children.Add(new TextBlock
             {
-                Text = "Anything else? (optional)",
+                Text = Loc.T("Report_AnythingElseOptional"),
                 Margin = new Thickness(0, 10, 0, 4),
                 FontWeight = FontWeights.SemiBold,
             });
@@ -105,8 +106,8 @@ namespace TrueforceForAll.Plugin
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
-            var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
-            var report = new Button { Content = "Report", Width = 110, Height = 28, IsDefault = true };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 90, Height = 28, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+            var report = new Button { Content = Loc.T("PresetManager_CommunityReport"), Width = 110, Height = 28, IsDefault = true };
             btnRow.Children.Add(cancel);
             btnRow.Children.Add(report);
             sp.Children.Add(btnRow);
@@ -120,8 +121,8 @@ namespace TrueforceForAll.Plugin
                 }
                 if (picked == null)
                 {
-                    TrueforceDialog.Show(this, "Report for moderator review",
-                        "Please pick a reason for the report.", DialogKind.Info);
+                    TrueforceDialog.Show(this, Loc.T("Report_ReportModeratorReview"),
+                        Loc.T("Report_PleasePickReasonReport"), DialogKind.Info);
                     return;
                 }
                 SelectedCategory = picked;

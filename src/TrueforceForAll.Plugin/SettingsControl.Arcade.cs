@@ -105,13 +105,12 @@ namespace TrueforceForAll.Plugin
             {
                 string route = _plugin.ArcadeRouteLabel();
                 ArcadeTuningStatus.Text = target == null
-                    ? "Running, but this cabinet is not one TeknoParrot has a profile for."
+                    ? Loc.T("Arcade_RunningButCabinetNot")
                     : !target.IniFound
-                        ? "The arcade plugin's settings file is not beside this game, so the "
-                          + "linger setting below has nothing to write to."
+                        ? Loc.T("Arcade_ArcadePluginSSettings")
                         : route == null
-                            ? "Waiting for force from this cabinet."
-                            : "Force is arriving from " + route + ".";
+                            ? Loc.T("Arcade_WaitingForceCabinet")
+                            : Loc.F("Arcade_ForceArriving_Fmt", route);
 
                 // Power mode has no control here any more, so a cabinet that
                 // already has it switched on would carry it with nothing on
@@ -120,10 +119,7 @@ namespace TrueforceForAll.Plugin
                     && _plugin.ArcadeIniGetInt("PowerMode", 0) != 0)
                 {
                     ArcadeTuningStatus.Text +=
-                        " Note: Power mode is on in this game's FFBPlugin.ini. It lifts the smallest "
-                        + "forces about tenfold and can set a strong wheel oscillating around centre. "
-                        + "Minimum force below does the same job without that. Set PowerMode=0 in that "
-                        + "file, or in the arcade plugin's own settings screen.";
+                        " " + Loc.T("Arcade_NotePowerModeGame");
                 }
             }
 
@@ -190,7 +186,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             string err = _plugin.ArcadeIniSet(key, value);
             if (err != null && ArcadeTuningStatus != null)
-                ArcadeTuningStatus.Text = "Could not save that: " + err + ".";
+                ArcadeTuningStatus.Text = Loc.F("Arcade_CouldNotSave_Fmt", err);
         }
 
         /// <summary>The slider is the primary control and the box beside it is the exact value, the
@@ -573,7 +569,7 @@ namespace TrueforceForAll.Plugin
             {
                 ArcadeShopSourceRow.IsEnabled = !ladder;
                 ArcadeShopSourceRow.ToolTip = ladder
-                    ? "Ladder climb ranks you against everyone, so it takes the shop board over."
+                    ? Loc.T("Arcade_LadderClimbRanksAgainst")
                     : null;
             }
         }

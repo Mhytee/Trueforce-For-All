@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -44,7 +45,7 @@ namespace TrueforceForAll.Plugin
 
         public CommunitySectionPickerWindow(string presetName, string author, CarOverride ovr)
         {
-            Title         = "Download community preset";
+            Title         = Loc.T("CommunitySection_DownloadCommunityPreset");
             Width         = 440;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -57,7 +58,7 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Pick what to import",
+                Text = Loc.T("CommunitySection_PickWhatImport"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
@@ -70,7 +71,7 @@ namespace TrueforceForAll.Plugin
                 TextWrapping = TextWrapping.Wrap,
             });
             root.Children.Add(new TextBlock {
-                Text = "Sections the preset contains. Uncheck anything you'd rather keep your current values for.",
+                Text = Loc.T("CommunitySection_SectionsPresetContainsUncheck"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 10),
                 TextWrapping = TextWrapping.Wrap,
@@ -93,7 +94,7 @@ namespace TrueforceForAll.Plugin
             if (checkboxes.Count == 0)
             {
                 root.Children.Add(new TextBlock {
-                    Text = "The preset doesn't contain any importable sections.",
+                    Text = Loc.T("CommunitySection_PresetDoesnTContain"),
                     Foreground = MutedFg, FontSize = 11,
                     Margin = new Thickness(0, 0, 0, 10),
                 });
@@ -105,7 +106,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 12, 0, 0),
             };
             var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
             };
@@ -113,7 +114,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(cancelBtn);
 
             var applyBtn = new Button {
-                Content = "Apply", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Apply"), Padding = new Thickness(12, 5, 12, 5),
                 Foreground = TextFg, Background = PanelBg, IsDefault = true,
                 IsEnabled = checkboxes.Count > 0,
             };

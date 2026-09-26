@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -45,7 +46,7 @@ namespace TrueforceForAll.Plugin
         public ModerationNoticesWindow(TrueforcePlugin plugin, List<ModerationClient.NoticeRow> notices)
         {
             _plugin = plugin;
-            Title = "Moderation notices";
+            Title = Loc.T("Moderation_ModerationNotices");
             Width = 540;
             Height = 520;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -57,7 +58,7 @@ namespace TrueforceForAll.Plugin
 
             root.Children.Add(new TextBlock
             {
-                Text = "A moderator flagged some of your community content. Fix it (for example, rename it), or explain why it was a mistake, then request a review.",
+                Text = Loc.T("Moderation_ModeratorFlaggedSomeCommunity"),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
                 Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
@@ -65,7 +66,7 @@ namespace TrueforceForAll.Plugin
             DockPanel.SetDock(root.Children[0], Dock.Top);
 
             var closeRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
-            var close = new Button { Content = "Close", Width = 90, Height = 28, IsCancel = true };
+            var close = new Button { Content = Loc.T("Settings_Close"), Width = 90, Height = 28, IsCancel = true };
             closeRow.Children.Add(close);
             DockPanel.SetDock(closeRow, Dock.Bottom);
             root.Children.Add(closeRow);
@@ -128,14 +129,14 @@ namespace TrueforceForAll.Plugin
             };
 
             var btnRow = new StackPanel { Orientation = Orientation.Horizontal };
-            var ack = new Button { Content = "Acknowledge", Width = 110, Height = 26, Margin = new Thickness(0, 0, 8, 0) };
+            var ack = new Button { Content = Loc.T("Moderation_Acknowledge"), Width = 110, Height = 26, Margin = new Thickness(0, 0, 8, 0) };
             ack.Click += async (s, e) =>
             {
                 ack.IsEnabled = false;
                 try
                 {
                     bool ok = await _plugin.AcknowledgeModerationNoticeAsync(n.Id).ConfigureAwait(true);
-                    status.Text = ok ? "Acknowledged." : "Couldn't reach the server, try again.";
+                    status.Text = ok ? Loc.T("Moderation_Acknowledged") : Loc.T("Moderation_CouldnTReachServer");
                     status.Visibility = Visibility.Visible;
                     if (!ok) ack.IsEnabled = true;
                 }
@@ -143,7 +144,7 @@ namespace TrueforceForAll.Plugin
                 {
                     // async void: an unhandled throw here would crash SimHub's
                     // dispatcher. Degrade to the retry path instead.
-                    status.Text = "Couldn't reach the server, try again.";
+                    status.Text = Loc.T("Moderation_CouldnTReachServer");
                     status.Visibility = Visibility.Visible;
                     ack.IsEnabled = true;
                 }
@@ -152,7 +153,7 @@ namespace TrueforceForAll.Plugin
 
             if (n.Appealable)
             {
-                var appeal = new Button { Content = n.HasTarget ? "Fix & request review" : "Request review", Width = 160, Height = 26 };
+                var appeal = new Button { Content = n.HasTarget ? Loc.T("Moderation_FixRequestReview") : Loc.T("Moderation_RequestReview"), Width = 160, Height = 26 };
                 appeal.Click += async (s, e) =>
                 {
                     var res = AppealForm.Prompt(this, n);
@@ -162,8 +163,8 @@ namespace TrueforceForAll.Plugin
                     {
                         bool ok = await _plugin.RequestModerationReviewAsync(n.Id, res.Note, res.ProposedName, res.ProposedDescription).ConfigureAwait(true);
                         status.Text = ok
-                            ? "Review requested. A moderator will take a look."
-                            : "Couldn't submit the appeal, try again.";
+                            ? Loc.T("Moderation_ReviewRequestedModeratorWill")
+                            : Loc.T("Moderation_CouldnTSubmitAppeal");
                         status.Visibility = Visibility.Visible;
                         if (!ok) { appeal.IsEnabled = true; ack.IsEnabled = true; }
                     }
@@ -171,7 +172,7 @@ namespace TrueforceForAll.Plugin
                     {
                         // async void: don't let a throwing network call crash
                         // the dispatcher. Re-enable so the user can retry.
-                        status.Text = "Couldn't submit the appeal, try again.";
+                        status.Text = Loc.T("Moderation_CouldnTSubmitAppeal");
                         status.Visibility = Visibility.Visible;
                         appeal.IsEnabled = true; ack.IsEnabled = true;
                     }
@@ -182,7 +183,7 @@ namespace TrueforceForAll.Plugin
             {
                 btnRow.Children.Add(new TextBlock
                 {
-                    Text = "Final (no appeal)",
+                    Text = Loc.T("Moderation_FinalNoAppeal"),
                     Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A)),
                     VerticalAlignment = VerticalAlignment.Center,
                 });
@@ -215,7 +216,7 @@ namespace TrueforceForAll.Plugin
             private AppealForm(ModerationClient.NoticeRow n)
             {
                 _n = n;
-                Title = "Request review";
+                Title = Loc.T("Moderation_RequestReview");
                 Width = 460; Height = n.HasTarget ? 470 : 280;
                 WindowStartupLocation = WindowStartupLocation.CenterOwner;
                 ShowInTaskbar = false; ResizeMode = ResizeMode.NoResize;
@@ -225,8 +226,8 @@ namespace TrueforceForAll.Plugin
                 sp.Children.Add(new TextBlock
                 {
                     Text = n.HasTarget
-                        ? "Fix the issue here (for example, rename it), then add a note. A moderator reviews your change and restores it if approved."
-                        : "Tell the moderators why this should be reviewed.",
+                        ? Loc.T("Moderation_FixIssueHereExample")
+                        : Loc.T("Moderation_TellModeratorsWhyShould"),
                     TextWrapping = TextWrapping.Wrap,
                     Margin = new Thickness(0, 0, 0, 10),
                     Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
@@ -247,8 +248,8 @@ namespace TrueforceForAll.Plugin
                 sp.Children.Add(_note);
 
                 var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-                var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
-                var ok = new Button { Content = "Submit appeal", Width = 130, Height = 28, IsDefault = true };
+                var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 90, Height = 28, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+                var ok = new Button { Content = Loc.T("Moderation_SubmitAppeal"), Width = 130, Height = 28, IsDefault = true };
                 ok.Click += (s, e) => { DialogResult = true; };
                 row.Children.Add(cancel); row.Children.Add(ok);
                 sp.Children.Add(row);

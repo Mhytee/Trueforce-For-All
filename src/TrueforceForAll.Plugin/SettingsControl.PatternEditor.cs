@@ -169,7 +169,7 @@ namespace TrueforceForAll.Plugin
                 {
                     _brightnessTimer.Stop();
                     if (!_plugin.WriteLedBrightness(_pendingBrightness))
-                        SetPatternStatus("The wheel would not accept a brightness change.");
+                        SetPatternStatus(Loc.T("PatternEditor_WheelWouldNotAccept"));
                 };
             }
             _brightnessTimer.Stop();
@@ -251,8 +251,7 @@ namespace TrueforceForAll.Plugin
                         // An exempt pattern does not move when the trim moves,
                         // which reads as the sliders being broken.
                         if (_editing?.TrimExempt == true)
-                            SetPatternStatus("This pattern goes to the wheel unchanged, so the trim does not move it. "
-                                           + "Use Show yellow or Show white to judge the trim.");
+                            SetPatternStatus(Loc.T("PatternEditor_PatternGoesWheelUnchanged"));
                     }
                 };
             }
@@ -280,7 +279,7 @@ namespace TrueforceForAll.Plugin
             RefreshLedTrim();
             _trimTestColor = null;
             ShowOnWheelNow();
-            SetPatternStatus("Back to the tuning this wheel ships with.");
+            SetPatternStatus(Loc.T("PatternEditor_BackTuningWheelShips"));
         }
 
         /// <summary>Light every LED one flat color, sent as INTENT so it passes
@@ -392,7 +391,7 @@ namespace TrueforceForAll.Plugin
         /// user picking a pattern is choosing among ALL nine things the wheel can
         /// show, not just ours.</summary>
         private static readonly string[] WheelBuiltinEffects =
-        { "Inside out", "Outside in", "Right to left", "Left to right" };
+        { Loc.T("PatternEditor_InsideOut"), Loc.T("Settings_RemoteRevOutsideInRadio"), Loc.T("PatternEditor_RightLeft"), Loc.T("Settings_RemoteRevLtrRadio") };
 
         /// <summary>Device direction value for built-in sweep <paramref name="index"/>
         /// (0-based, effect index + 1). One definition, in TrueforcePlugin: the
@@ -455,8 +454,8 @@ namespace TrueforceForAll.Plugin
                 // Everything from here to the end of the slots physically lives on
                 // the wheel and keeps working with SimHub closed. The bracket down
                 // the left edge is what says so.
-                _rows.Add(new PatternRow { Kind = "header", Text = "On the wheel", OnWheel = true });
-                _rows.Add(new PatternRow { Kind = "note", Text = "these keep working with SimHub closed", OnWheel = true });
+                _rows.Add(new PatternRow { Kind = "header", Text = Loc.T("PatternEditor_Wheel"), OnWheel = true });
+                _rows.Add(new PatternRow { Kind = "note", Text = Loc.T("PatternEditor_TheseKeepWorkingSimHub"), OnWheel = true });
                 for (int i = 0; i < WheelBuiltinEffects.Length; i++)
                     _rows.Add(new PatternRow
                     {
@@ -482,17 +481,17 @@ namespace TrueforceForAll.Plugin
                         // bookkeeping, not something the user picked or needs to
                         // track, and naming it invited the question of what a loan
                         // is. The backup and restore still work exactly the same.
-                        Text = "   CUSTOM " + (i + 1) + ": "
-                             + (inSlot != null ? inSlot.Name : "empty")
+                        Text = "   " + Loc.F("PatternEditor_CustomSlot_Fmt", i + 1,
+                                   inSlot != null ? inSlot.Name : Loc.T("PatternEditor_Empty"))
                              + (inSlot != null && inSlot.Id == _patternLib.CurrentId ? "   ●" : ""),
                     });
                 }
 
-                _rows.Add(new PatternRow { Kind = "header", Text = "In the plugin" });
+                _rows.Add(new PatternRow { Kind = "header", Text = Loc.T("PatternEditor_Plugin") });
                 _rows.Add(new PatternRow
                 {
                     Kind = "note",
-                    Text = "these need SimHub running; save one to a slot to change that",
+                    Text = Loc.T("PatternEditor_TheseNeedSimHubRunning"),
                 });
                 foreach (var p in _patternLib.Patterns)
                 {
@@ -663,18 +662,16 @@ namespace TrueforceForAll.Plugin
                     Origin = "builtin-effect",
                 };
                 _editing = _slotScratch;
-                SetPatternStatus("This one is built into the wheel: it fills "
-                               + Directions.FirstOrDefault(d => d.Wire == _editing.DirectionWire).Label.ToLowerInvariant()
-                               + ", and its colors are fixed in the wheel's own firmware, so they cannot be read or changed here.");
+                SetPatternStatus(Loc.F("PatternEditor_BuiltIntoWheelFills_Fmt",
+                    Directions.FirstOrDefault(d => d.Wire == _editing.DirectionWire).Label.ToLowerInvariant()));
             }
             else
             {
                 _editing = SelectedLibraryPattern();
                 if (_editing != null)
                     SetPatternStatus(_editing.OnWheel
-                        ? "Living in CUSTOM " + (_editing.Slot + 1) + " on the wheel, so it works with "
-                          + "SimHub closed. Edits are saved straight to that slot."
-                        : "Living in the plugin. Save it to a slot to keep it on the wheel itself.");
+                        ? Loc.F("PatternEditor_LivingCUSTOMWheelSo_Fmt", (_editing.Slot + 1))
+                        : Loc.T("PatternEditor_LivingPluginSaveSlot"));
             }
 
             _patternUiLoading = true;
@@ -980,8 +977,7 @@ namespace TrueforceForAll.Plugin
                 .FirstOrDefault(b => string.Equals(b.Name, _editing.Name, StringComparison.OrdinalIgnoreCase));
             if (shipped.Name == null)
             {
-                SetPatternStatus("This is your own pattern, so there is no shipped version to go back to. "
-                               + "Use Copy on a shipped one if you want a starting point you can always reset.");
+                SetPatternStatus(Loc.T("PatternEditor_OwnPatternSoThere"));
                 return;
             }
 
@@ -992,7 +988,7 @@ namespace TrueforceForAll.Plugin
             _editing.TrimExempt = false;
             _patternStore.Save(_patternLib);
             LoadSelectedPattern();
-            SetPatternStatus("\"" + shipped.Name + "\" is back to how it shipped.");
+            SetPatternStatus(Loc.F("PatternEditor_BackHowShipped_Fmt", shipped.Name));
             ShowOnWheelNow();
         }
 
@@ -1019,7 +1015,7 @@ namespace TrueforceForAll.Plugin
             _patternStore.Save(_patternLib);
             _editing = made;
             RefreshPatternList();
-            SetPatternStatus("Copied. Edit this one freely; the original stays as it was.");
+            SetPatternStatus(Loc.T("PatternEditor_CopiedEditOneFreely"));
         }
 
         private void PatternList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1070,7 +1066,7 @@ namespace TrueforceForAll.Plugin
                 // but parked the level is 0 and the strip is dark, so nothing
                 // appears to happen. Sweep it once the selection has landed.
                 _plugin.PickRevLightPattern(row.Slot + 1, previewAfter: true);
-                SetPatternStatus("Showing one of the wheel's built-in sweeps. These cannot be edited.");
+                SetPatternStatus(Loc.T("PatternEditor_ShowingOneWheelS"));
             }
             else if (row.Kind == "library" && row.Pattern != null)
             {
@@ -1081,8 +1077,7 @@ namespace TrueforceForAll.Plugin
                     // user asked for was to look at it.
                     _plugin.ReleaseBorrowedSlot();
                     _plugin.PickRevLightPattern(WheelSlotFirstEffect + row.Pattern.Slot, previewAfter: true);
-                    SetPatternStatus("Showing CUSTOM " + (row.Pattern.Slot + 1)
-                                   + ". Edits here are saved straight to that slot.");
+                    SetPatternStatus(Loc.F("PatternEditor_ShowingCUSTOMEditsHere_Fmt", (row.Pattern.Slot + 1)));
                 }
                 else
                 {
@@ -1096,8 +1091,7 @@ namespace TrueforceForAll.Plugin
                         return;
                     }
                     ShowOnWheelNow(row.Pattern, sweep: true);
-                    SetPatternStatus("Showing " + row.Pattern.Name + " through CUSTOM " + (target + 1)
-                                   + ". That slot's own pattern is saved and comes back.");
+                    SetPatternStatus(Loc.F("PatternEditor_ShowingThroughCUSTOMSlot_Fmt", row.Pattern.Name, (target + 1)));
                 }
             }
         }
@@ -1179,11 +1173,10 @@ namespace TrueforceForAll.Plugin
                     bool ok = _plugin.WriteSlotName(row.Pattern.Slot, row.Pattern.Name);
                     RefreshSlotNames();
                     SetPatternStatus(ok
-                        ? "Renamed, on the wheel too."
-                        : "Renamed here, but the wheel would not accept the name for CUSTOM "
-                          + (row.Pattern.Slot + 1) + ".");
+                        ? Loc.T("PatternEditor_RenamedWheelToo")
+                        : Loc.F("PatternEditor_RenamedHereButWheel_Fmt", (row.Pattern.Slot + 1)));
                 }
-                else SetPatternStatus("Renamed.");
+                else SetPatternStatus(Loc.T("PatternEditor_Renamed"));
             }
             RefreshPatternList();
         }
@@ -1236,7 +1229,7 @@ namespace TrueforceForAll.Plugin
             int n = WheelLedChannel.LedCount;
             if (_selectedLed < 0 || _selectedLed >= n)
             {
-                SetPatternStatus("Click an LED first, then Mirror copies it to the one opposite.");
+                SetPatternStatus(Loc.T("PatternEditor_ClickLEDFirstThen"));
                 return;
             }
             byte[] rgb = _editing.Rgb();
@@ -1245,7 +1238,7 @@ namespace TrueforceForAll.Plugin
             int i = _selectedLed, j = n - 1 - i;
             if (i == j)
             {
-                SetPatternStatus("That LED is its own opposite, so there is nothing to mirror.");
+                SetPatternStatus(Loc.T("PatternEditor_LEDOwnOppositeSo"));
                 return;
             }
             rgb[j * 3 + 0] = rgb[i * 3 + 0];
@@ -1256,7 +1249,7 @@ namespace TrueforceForAll.Plugin
             _patternStore.Save(_patternLib);
             PaintLedCells();
             ShowOnWheelThrottled();
-            SetPatternStatus("LED " + (i + 1) + " copied to LED " + (j + 1) + ".");
+            SetPatternStatus(Loc.F("PatternEditor_LEDCopiedLED_Fmt", (i + 1), (j + 1)));
         }
 
         /// <summary>Turn the whole strip back to front: LED 1 takes LED 10's
@@ -1288,7 +1281,7 @@ namespace TrueforceForAll.Plugin
             // rather than leaving the selection pointing at a different color.
             if (_selectedLed >= 0 && _selectedLed < n) SelectLed(n - 1 - _selectedLed);
             ShowOnWheelThrottled();
-            SetPatternStatus("Strip reversed.");
+            SetPatternStatus(Loc.T("PatternEditor_StripReversed"));
         }
 
         private void PatternDirection_Changed(object sender, SelectionChangedEventArgs e)
@@ -1312,8 +1305,8 @@ namespace TrueforceForAll.Plugin
             // save the way a color edit in a live slot can.
             _patternStore.Save(_patternLib);
             SetPatternStatus(_editing.TrimExempt
-                ? "Colors now go to the wheel exactly as stored, so judge this one on the rim rather than on screen."
-                : "Colors now go through the trim on the way out.");
+                ? Loc.T("PatternEditor_ColorsNowGoWheel")
+                : Loc.T("PatternEditor_ColorsNowGoThrough"));
             // Only the colors changed, not the fill, so light it rather than
             // running a sweep.
             ShowOnWheelNow();
@@ -1353,14 +1346,11 @@ namespace TrueforceForAll.Plugin
                 RefreshSlotNames();
                 SetPatternStatus(ok
                     ? (landed.Length > WheelLedChannel.SlotNameMaxLength
-                        ? "Renamed. The wheel's own menu shows \""
-                          + landed.Substring(0, WheelLedChannel.SlotNameMaxLength)
-                          + "\", since it only stores " + WheelLedChannel.SlotNameMaxLength + " characters."
-                        : "Renamed, on the wheel too.")
-                    : "Renamed here, but the wheel would not accept the name for CUSTOM "
-                      + (_editingSlot + 1) + ".");
+                        ? Loc.F("PatternEditor_RenamedWheelSOwn_Fmt", landed.Substring(0, WheelLedChannel.SlotNameMaxLength), WheelLedChannel.SlotNameMaxLength)
+                        : Loc.T("PatternEditor_RenamedWheelToo"))
+                    : Loc.F("PatternEditor_RenamedHereButWheel_Fmt", (_editingSlot + 1)));
             }
-            else SetPatternStatus("Renamed.");
+            else SetPatternStatus(Loc.T("PatternEditor_Renamed"));
 
             RefreshPatternList();
         }
@@ -1395,13 +1385,12 @@ namespace TrueforceForAll.Plugin
             bool nowOnWheel = _editing.OnWheel;
             SetPatternStatus(
                 nowOnWheel && !wasOnWheel
-                    ? _editing.Name + " is now in CUSTOM " + (_editing.Slot + 1)
-                      + " on the wheel, so it works with SimHub closed."
+                    ? Loc.F("PatternEditor_NowCUSTOMWheelSo_Fmt", _editing.Name, (_editing.Slot + 1))
               : !nowOnWheel && wasOnWheel
-                    ? _editing.Name + " has come off the wheel and lives in the plugin now."
+                    ? Loc.F("PatternEditor_HasComeOffWheel_Fmt", _editing.Name)
               : nowOnWheel
-                    ? "Moved to CUSTOM " + (_editing.Slot + 1) + ". " + msg
-                    : "Moved. This order is the order a bound button cycles through.");
+                    ? Loc.F("PatternEditor_MovedCUSTOM_Fmt", (_editing.Slot + 1), msg)
+                    : Loc.T("PatternEditor_MovedOrderOrderBound"));
         }
 
         private void PatternNew_Click(object sender, RoutedEventArgs e)
@@ -1412,14 +1401,14 @@ namespace TrueforceForAll.Plugin
             _patternStore.Save(_patternLib);
             _editing = made;
             RefreshPatternList();
-            SetPatternStatus("Click an LED, then a color.");
+            SetPatternStatus(Loc.T("PatternEditor_ClickLEDThenColor"));
         }
 
         private void PatternDelete_Click(object sender, RoutedEventArgs e)
         {
             if (_editing == null) return;
-            var answer = TrueforceDialog.Show(Window.GetWindow(this), "Delete pattern",
-                $"Delete \"{_editing.Name}\"? This cannot be undone.", DialogKind.Destructive);
+            var answer = TrueforceDialog.Show(Window.GetWindow(this), Loc.T("PatternEditor_DeletePattern"),
+                Loc.F("PatternEditor_DeleteCannotUndone_Fmt", _editing.Name), DialogKind.Destructive);
             if (answer != true) return;
 
             // Deleting one that lives on the wheel shifts everything below it up,
@@ -1445,8 +1434,8 @@ namespace TrueforceForAll.Plugin
 
             RefreshPatternList();
             SetPatternStatus(wasOnWheel
-                ? "\"" + name + "\" is gone, and the wheel has taken the next pattern into that slot."
-                : "\"" + name + "\" is gone.");
+                ? Loc.F("PatternEditor_GoneWheelHasTaken_Fmt", name)
+                : Loc.F("PatternEditor_Gone_Fmt", name));
         }
 
         private void PatternPreview_Click(object sender, RoutedEventArgs e) => PreviewCurrentPattern();
@@ -1461,7 +1450,7 @@ namespace TrueforceForAll.Plugin
             byte[] rgb = _editing.Rgb();
             if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
             {
-                SetPatternStatus("This pattern's colors are unreadable.");
+                SetPatternStatus(Loc.T("PatternEditor_PatternSColorsUnreadable"));
                 return;
             }
 
@@ -1491,7 +1480,7 @@ namespace TrueforceForAll.Plugin
                 _patternLib.StickyId = _editing.Id;
                 _patternStore.Save(_patternLib);
                 _plugin.TestRpmLeds();   // sweep, so the fill direction is visible
-                SetPatternStatus("Playing on the wheel.");
+                SetPatternStatus(Loc.T("PatternEditor_PlayingWheel"));
             }
             else SetPatternStatus(msg);
         }
