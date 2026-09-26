@@ -1,4 +1,4 @@
-// Anonymous usage-statistics transport. Fire-and-forget POST to the
+﻿// Anonymous usage-statistics transport. Fire-and-forget POST to the
 // telemetry_ping RPC (migration 0127), keyed by a random plugin-minted id
 // (Settings.AnalyticsAnonId), never an account and never hardware. Deliberately
 // anonymous: it authenticates with the plain anon key only, never a user token,
@@ -67,10 +67,11 @@ namespace TrueforceForAll.Plugin
         /// stored, or null if the response carried none, so the caller can commit
         /// per item instead of trusting the status code. The two language codes
         /// (<paramref name="uiLang"/>, <paramref name="fmtLang"/>) are stateless
-        /// and resent on every ping, so they have no receipt key.</summary>
+        /// and resent on every ping, so they have no receipt key, and the same is
+        /// true of <paramref name="firstVersion"/>.</summary>
         public void SendPing(string anonId, string pluginVersion, string wheel,
             string game, string settingsJson, string gamesJson = null, string gamePresetsJson = null,
-            string uiLang = null, string fmtLang = null,
+            string uiLang = null, string fmtLang = null, string firstVersion = null,
             Action<TelemetryReceipt> onSent = null)
         {
             if (string.IsNullOrWhiteSpace(anonId)) return;
@@ -90,6 +91,7 @@ namespace TrueforceForAll.Plugin
                     ["p_game_presets"]   = ParseOrNull(gamePresetsJson),  // [{g,p}] per-game preset bodies, only when changed
                     ["p_ui_lang"]        = NullIfEmpty(uiLang),           // two-letter Windows display language, or null
                     ["p_fmt_lang"]       = NullIfEmpty(fmtLang),          // two-letter regional-format language, or null
+                    ["p_first_version"]  = NullIfEmpty(firstVersion),     // version this INSTALL started on ("0.4.1", "<=0.4.0", "pre-0.4.1")
                 }.ToString(Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)

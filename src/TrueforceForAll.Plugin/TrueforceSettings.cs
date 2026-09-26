@@ -650,6 +650,24 @@ namespace TrueforceForAll.Plugin
         // own and counts as a second install, which is the right trade.
         public string AnalyticsAnonId { get; set; } = "";
 
+        // The version this INSTALL started on, stamped once and never rewritten.
+        // Exists because AnalyticsAnonId is minted per install and only from 0.4.0,
+        // so every 0.4.0 install looked brand new to the backend whether it was a
+        // first-timer or an upgrade from 0.3.0. That made "how many of these are new
+        // users" unanswerable: the best available proxy was "did a ships-false
+        // setting arrive already true on the first ping", which bounded it at 43%
+        // and no better.
+        //
+        // Three shapes, and the shape itself carries the meaning:
+        //   "0.4.1"    a genuinely fresh install of that version
+        //   "<=0.4.0"  already present, and LastSeenVersion said it last ran 0.4.0,
+        //              so it first installed at or before that
+        //   "pre-0.4.1" already present but never stamped a LastSeenVersion either,
+        //              so all that is known is that it predates this build
+        // Per-install, like the anon id: Excluded from backup and preserved across
+        // an import, or a restore would make PC2 claim PC1's history.
+        public string FirstInstalledVersion { get; set; } = "";
+
         // Master switch for the anonymous usage statistics: the once-a-day
         // telemetry ping (plugin version, wheel, current game, a scalar
         // settings snapshot, games played, per-game presets, and two language

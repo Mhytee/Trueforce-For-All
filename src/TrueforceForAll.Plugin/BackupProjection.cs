@@ -280,6 +280,9 @@ namespace TrueforceForAll.Plugin
             // per-install bookkeeping that goes with it. PC2 mints its own.
             "AnalyticsAnonId", "LastTelemetryPingDay", "LastTelemetrySettingsHash",
             "TelemetryGameDays", "TelemetryGamePresetHashes",
+            // Same reasoning: it describes THIS install's history, so a restore must
+            // not let a second machine inherit the first one's first-installed stamp.
+            "FirstInstalledVersion",
             // Cross-wheel FFB policy + the "apply anyway" stash. The policy governs
             // THIS device's wheel, and the stash holds ANOTHER wheel's withheld
             // tuning until the user acts, so neither may arrive from elsewhere.

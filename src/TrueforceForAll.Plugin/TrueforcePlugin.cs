@@ -4357,6 +4357,23 @@ namespace TrueforceForAll.Plugin
             // on a replug) and needs to know this PC had no settings file, so
             // first-run-only defaults can never reach an existing setup.
             _wasFreshInstall = wasFreshInstall;
+            // Stamped HERE, and nowhere else. It has to happen before the badge-seed
+            // block below, which overwrites LastSeenVersion with the running build:
+            // after that point an upgrader is indistinguishable from a fresh install,
+            // which is the exact blindness this field exists to remove.
+            try
+            {
+                if (string.IsNullOrEmpty(Settings.FirstInstalledVersion))
+                {
+                    string cur = CurrentVersionString();
+                    Settings.FirstInstalledVersion =
+                        wasFreshInstall ? cur
+                      : !string.IsNullOrEmpty(Settings.LastSeenVersion) ? "<=" + Settings.LastSeenVersion
+                      : "pre-" + cur;
+                    PersistSettingsCore();
+                }
+            }
+            catch { /* analytics bookkeeping; never fatal to boot */ }
             // Defensive nulls in case an older settings file was deserialized
             // without one of these dictionaries.
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
@@ -25841,14 +25858,15 @@ namespace TrueforceForAll.Plugin
                 // ambiguity already cost a live test. Counts and the two-letter
                 // language codes only, never content.
                 SimHub.Logging.Current.Info(string.Format(
-                    "[TF4ALL] Usage ping: game='{0}' snapshot={1} gameDays={2} presets={3} lang={4}/{5}",
+                    "[TF4ALL] Usage ping: game='{0}' snapshot={1} gameDays={2} presets={3} lang={4}/{5} firstVer={6}",
                     game ?? "(none)", sendSnapshot ? "yes" : "unchanged",
                     commitDays?.Count ?? 0, stagedPresetHashes.Count,
-                    uiLang ?? "-", fmtLang ?? "-"));
+                    uiLang ?? "-", fmtLang ?? "-",
+                    string.IsNullOrEmpty(Settings.FirstInstalledVersion) ? "-" : Settings.FirstInstalledVersion));
                 _telemetryClient.SendPing(anonId, CurrentVersionString(),
                     Settings.LastUsedWheel, game, sendSnapshot ? snapshot : null,
                     gamesJson, gamePresetsJson,
-                    uiLang, fmtLang,
+                    uiLang, fmtLang, (Settings.FirstInstalledVersion ?? "").Trim(),
                     receipt => CommitUsagePing(commitOwner, today, commitHash, commitDays,
                                                stagedPresetHashes, receipt));
             }
