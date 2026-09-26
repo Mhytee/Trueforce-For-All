@@ -1,0 +1,47 @@
+# tools/loc/cs-keep-literal.txt
+#
+# The C# literals that reach a UI sink and still stay English, because
+# docs/localization-plan.md puts them out of scope for the first pass. Every
+# entry names what the plan says about it. Read by tools/loc/sweep-cs.ps1 and by
+# LocCsLiteralBudget in src/TrueforceForAll.Core.Tests/LocalizationTests.cs.
+#
+# Three kinds, one per line, and the entry after the colon is matched exactly:
+#   file:<repo-relative path>   the whole file is out of scope
+#   value:<exact text>          that literal, wherever it is written
+#   type:<TypeName>             the entries of an object initializer of that
+#                               type, for a data record whose property happens
+#                               to be spelled like a UI sink
+#
+# This list is for scope, not for convenience. A string that is hard to
+# translate is still in scope; it gets a key.
+#
+# Three things the plan also puts out of scope need no entry here, because they
+# are not UI sinks and the sweep never sees them in the first place:
+#   - the roughly 1,000 [TF4ALL] log lines (SimHub.Logging.Current.*)
+#   - the access-code replies ExecuteAccessCode returns as strings
+#   - car and engine data tables (BuiltinCarCylinders.cs is 1,511 car-data
+#     literals and contributes zero findings: nothing in it writes to a label)
+
+# Developer tooling, by file. Phase 0 moved ExecuteAccessCode and the code
+# catalog into DevCodes.cs for exactly this reason, and the Phase 2 exit
+# criterion names both files as the allowlist's whole contents.
+file:src/TrueforceForAll.Plugin/SettingsControl.DevCodes.cs
+file:src/TrueforceForAll.Plugin/TestCodesWindow.cs
+
+# "EffectChangelog entries" are out of scope: the what's-new modal prefers the
+# GitHub release notes, which stay English. ChangelogVersion.Title is the version
+# headline inside those entries, and the only reason it shows up at all is that a
+# data record shares a name with WPF's Window.Title. The modal's own chrome and
+# the five Group labels are in scope and live in the modal, not here.
+type:ChangelogVersion
+
+# BackupFile.Text is the contents of a file being backed up, not a label. These
+# four are the fixture rows of the merge check in BackupSelfTest.cs.
+type:BackupFile
+
+# The OLED greeting's factory text, the placeholder in the greeting TextBox on
+# the Lightsync tab. OLED wheel-screen text is out of scope (the firmware maps
+# everything above 0x7F to a space and upper-cases what is left, so no
+# translation can reach the wheel), and this is also a TextBox default the code
+# reads back, which the plan says never to extract.
+value:HELLO WORLD

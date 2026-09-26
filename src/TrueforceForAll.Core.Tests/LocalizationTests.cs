@@ -83,6 +83,15 @@ namespace TrueforceForAll.Core.Tests
         // to a key, and a key built at runtime is dynamic and exempt.
         private static readonly Regex CallRegex = new Regex(@"\bLoc\.(T|F|N)\(\s*@?""((?:[^""\\]|\\.)*)""(?=\s*[,)])");
 
+        // The second C# reference form: a Binding straight to the store's
+        // indexer, new Binding("[Key]") { Source = Loc.Instance, ... }, which is
+        // how a label set once at wire time follows a language change with no
+        // relabel pass (EditableReadout's shared readout tooltip). The shape is
+        // the one TExtension.ProvideValue builds for {loc:T}, so the key sits
+        // inside the path brackets; a path built by concatenation, as TExtension
+        // itself builds one, stays dynamic and is not matched.
+        private static readonly Regex BindingRegex = new Regex(@"\bnew\s+Binding\(\s*""\[([A-Za-z][A-Za-z0-9_.]*)\]""\s*\)");
+
         // Keys looked up by a runtime identifier, never by a literal.
         private static readonly Regex DynamicFamily = new Regex(@"^(Effect_.+_Name|EngineLayout_.+)$");
 
@@ -523,10 +532,26 @@ namespace TrueforceForAll.Core.Tests
                 referenced.Add(c.Key);
                 if (!en.ContainsKey(c.Key)) failures.Add(c.Where + ": Loc." + c.Kind + "(\"" + c.Key + "\") is not in en.json");
             }
+            foreach (var b in CsBindings(repo))
+            {
+                referenced.Add(b.Key);
+                if (!en.ContainsKey(b.Key))
+                {
+                    failures.Add(b.Where + ": new Binding(\"[" + b.Key + "]\") is not in en.json");
+                    continue;
+                }
+                // A bound path carries no arguments, so a value with
+                // placeholders would reach the label as "{0}".
+                int holes = MaxPlaceholder(en[b.Key]) + 1;
+                if (holes > 0)
+                    failures.Add(b.Where + ": new Binding(\"[" + b.Key + "]\") binds a string with "
+                        + Inv(holes) + " placeholder(s); bind a key without placeholders");
+            }
             foreach (string k in en.Keys.OrderBy(k => k, StringComparer.Ordinal))
             {
                 if (referenced.Contains(k) || DynamicFamily.IsMatch(k)) continue;
-                failures.Add("en.json: '" + k + "' is referenced by no {loc:T} in XAML and no Loc.T/F/N literal in C# "
+                failures.Add("en.json: '" + k + "' is referenced by no {loc:T} in XAML, no Loc.T/F/N literal "
+                    + "in C# and no new Binding(\"[key]\") to the store "
                     + "(only Effect_*_Name and EngineLayout_* are looked up dynamically)");
             }
             AssertNoFailures(failures);
@@ -740,6 +765,734 @@ namespace TrueforceForAll.Core.Tests
                 }
             }
             AssertNoFailures(failures);
+        }
+
+        // ==================================================================
+        // 10. The C# ratchet: nothing a user reads is added in English again.
+        //
+        //     LocKeysResolve and validate.ps1 ask whether every key a call
+        //     names exists. This asks the opposite, and it is the question
+        //     Phase 2 of docs/localization-plan.md is measured by: is any string
+        //     a user reads still a bare English literal in code? Three data
+        //     files under tools/loc say what that means, and
+        //     tools/loc/sweep-cs.ps1 computes the same numbers from the same
+        //     three with its own walker, the way Get-LocInventory and the XAML
+        //     walk above mirror each other. A rule added to one belongs in the
+        //     other.
+        //
+        //       cs-ui-sinks.txt       what a UI sink is: the properties, the
+        //                             constructors, the calls and their text
+        //                             arguments, the calls whose literals never
+        //                             reach a user, and the receivers whose
+        //                             every method must be classified
+        //       cs-keep-literal.txt   what stays English, by file, by value or
+        //                             by the type of the initializer it sits in
+        //       cs-literal-budget.txt today's count per file
+        //
+        //     What makes this test fail:
+        //       - a file holds MORE than its budget: a label was written in
+        //         English, or moved into a file whose number was lower
+        //       - a file holds FEWER than its budget: a slice converted labels
+        //         without lowering its line, so the number stops being true.
+        //         Run sweep-cs.ps1 -WriteBudget and include the diff.
+        //       - a file with no budget line holds any at all
+        //       - the budget names a file that is no longer on disk
+        //       - a method on a watched receiver (TrueforceDialog) is neither a
+        //         call sink nor a nonsink, which would be a blind spot rather
+        //         than a pass
+        //       - one of the three data files is missing or malformed
+        //
+        //     Phase 2 is provably done the day the budget file holds no entries.
+        // ==================================================================
+
+        [Fact]
+        public void LocCsLiteralBudget()
+        {
+            string repo = RepoRoot();
+            var rules = ReadCsSinkRules(Path.Combine(repo, ToolsRel, "cs-ui-sinks.txt"));
+            var allow = ReadCsAllowlist(Path.Combine(repo, ToolsRel, "cs-keep-literal.txt"));
+            var common = ReadListFile(Path.Combine(repo, ToolsRel, "common-keys.txt"));
+            string budgetPath = Path.Combine(repo, ToolsRel, "cs-literal-budget.txt");
+
+            var failures = new List<string>();
+
+            // The numbers ratchet, so the rules that produce them have to be
+            // pinned too: widening a sink rule or the allowlist would lower the
+            // remainder without routing a single label, and both checkers would
+            // still pass because both read the weakened files. Changing any of
+            // these counts means editing this test in the same commit, which is
+            // what puts it in front of a reviewer.
+            if (allow.Files.Count != 2
+                || !allow.Files.Contains("src/TrueforceForAll.Plugin/SettingsControl.DevCodes.cs")
+                || !allow.Files.Contains("src/TrueforceForAll.Plugin/TestCodesWindow.cs"))
+                failures.Add("cs-keep-literal.txt: the whole-file exemptions must be exactly the two the plan's "
+                    + "Phase 2 exit criterion names, DevCodes.cs and TestCodesWindow.cs; a third one hides a "
+                    + "file's labels with no warning");
+            if (rules.PropNames.Count != 7)
+                failures.Add("cs-ui-sinks.txt: expected 7 prop rules, found " + Inv(rules.PropNames.Count)
+                    + ". A property rule decides what counts as a label write: adding or removing one moves every "
+                    + "budget number, so update this test in the same commit and say why in the message");
+
+            var found = new Dictionary<string, List<CsFinding>>(StringComparer.Ordinal);
+            foreach (string abs in PluginFiles(repo, "*.cs"))
+            {
+                string rel = RelPath(repo, abs);
+                if (allow.Files.Contains(rel)) continue;
+                var hits = SweepCsFile(ReadUtf8(abs), rel, rules, allow, common, failures);
+                if (hits.Count > 0) found[rel] = hits;
+            }
+
+            if (!File.Exists(budgetPath))
+            {
+                failures.Add("tools/loc/cs-literal-budget.txt does not exist; run tools/loc/sweep-cs.ps1 -WriteBudget to create it");
+                AssertNoFailures(failures);
+                return;
+            }
+            var budget = ReadCsBudget(budgetPath);
+
+            foreach (var kv in budget.OrderBy(k => k.Key, StringComparer.Ordinal))
+            {
+                string rel = kv.Key;
+                int want = kv.Value;
+                int got = found.TryGetValue(rel, out List<CsFinding> hits) ? hits.Count : 0;
+                if (!File.Exists(Path.Combine(repo, rel.Replace('/', Path.DirectorySeparatorChar))))
+                {
+                    failures.Add(rel + ": named in tools/loc/cs-literal-budget.txt but not on disk; drop the line");
+                    continue;
+                }
+                if (got > want)
+                    failures.Add(rel + ": " + Inv(got) + " bare English UI literal(s), budget " + Inv(want)
+                        + ". Route the new one through Loc.T/F/N (the budget only goes down). " + Examples(hits));
+                else if (got < want)
+                    failures.Add(rel + ": " + Inv(got) + " bare English UI literal(s), budget " + Inv(want)
+                        + ". Lower the budget line to " + Inv(got) + " in this commit (tools/loc/sweep-cs.ps1 -WriteBudget).");
+            }
+            foreach (var kv in found.OrderBy(k => k.Key, StringComparer.Ordinal))
+            {
+                if (budget.ContainsKey(kv.Key)) continue;
+                failures.Add(kv.Key + ": " + Inv(kv.Value.Count) + " bare English UI literal(s) and no budget line."
+                    + " Give them keys, or add a line with tools/loc/sweep-cs.ps1 -WriteBudget. " + Examples(kv.Value));
+            }
+            AssertNoFailures(failures);
+        }
+
+        private static string Examples(List<CsFinding> hits)
+        {
+            if (hits == null || hits.Count == 0) return "";
+            var parts = hits.Take(3).Select(h => h.File + ":" + Inv(h.Line) + " " + h.Sink + " [" + h.Value.Replace("\n", "\\n") + "]");
+            return "For example: " + string.Join("; ", parts);
+        }
+
+        // ==================================================================
+        // Helpers: the C# UI-sink sweep (mirror of tools/loc/sweep-cs.ps1)
+        // ==================================================================
+
+        private sealed class CsFinding
+        {
+            public string File, Sink, Frame, Value;
+            public int Line;
+        }
+
+        // One rule from cs-ui-sinks.txt that matches a call or a constructor,
+        // with the arguments it says are UI text: positions, parameter names,
+        // or both, because the same overload is called both ways.
+        private sealed class CsCallRule
+        {
+            public string Name;
+            public Regex Re;
+            public readonly HashSet<int> Positions = new HashSet<int>();
+            public readonly HashSet<string> ParamNames = new HashSet<string>(StringComparer.Ordinal);
+
+            public bool Takes(int index, string name)
+                => Positions.Contains(index) || (name.Length > 0 && ParamNames.Contains(name));
+        }
+
+        private sealed class CsSinkRules
+        {
+            public Regex PropRe;
+            public readonly List<CsCallRule> Calls = new List<CsCallRule>();
+            public readonly List<CsCallRule> Ctors = new List<CsCallRule>();
+            public readonly List<Regex> Skips = new List<Regex>();
+            public readonly List<Regex> Texts = new List<Regex>();
+            public readonly List<KeyValuePair<string, Regex>> Watches = new List<KeyValuePair<string, Regex>>();
+            public readonly HashSet<string> DottedCalls = new HashSet<string>(StringComparer.Ordinal);
+            public readonly HashSet<string> NonSinks = new HashSet<string>(StringComparer.Ordinal);
+            // The property names behind PropRe, kept so LocCsLiteralBudget can
+            // pin how many there are: a prop rule decides what counts as a
+            // label write, so adding one silently moves every budget number.
+            public readonly List<string> PropNames = new List<string>();
+        }
+
+        private sealed class CsAllowlist
+        {
+            public readonly HashSet<string> Files = new HashSet<string>(StringComparer.Ordinal);
+            public readonly HashSet<string> Values = new HashSet<string>(StringComparer.Ordinal);
+            public readonly HashSet<string> Types = new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        // "Loc.T" matches that dotted name; ".ToString" matches it on any
+        // receiver. The match ends at the '(' so its last character is the paren.
+        private static Regex CsNamedCallRegex(string name)
+        {
+            string lead = @"(?<![A-Za-z0-9_.])";
+            string body = name;
+            if (name.StartsWith(".", StringComparison.Ordinal)) { lead = @"\.\s*"; body = name.Substring(1); }
+            string parts = string.Join(@"\s*\.\s*", body.Split('.').Select(Regex.Escape));
+            return new Regex(lead + parts + @"(?![A-Za-z0-9_])\s*\(");
+        }
+
+        private static CsSinkRules ReadCsSinkRules(string path)
+        {
+            if (!File.Exists(path)) throw new InvalidOperationException("Missing sink rules: " + path);
+            var rules = new CsSinkRules();
+            var props = new List<string>();
+            int n = 0;
+            foreach (string raw in ReadUtf8(path).Split('\n'))
+            {
+                n++;
+                string line = raw.TrimEnd('\r').Trim();
+                if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal)) continue;
+                string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                string where = "cs-ui-sinks.txt:" + Inv(n);
+                if (parts.Length < 2) throw new InvalidOperationException(where + " has a directive with no name: [" + line + "]");
+                string kind = parts[0], name = parts[1];
+                string sel = parts.Length >= 3 ? parts[2] : "";
+                switch (kind)
+                {
+                    case "prop":
+                        props.Add(name);
+                        break;
+                    case "ctor":
+                        // An optional namespace qualifier, as in
+                        // "new System.Windows.Documents.Run(...)".
+                        rules.Ctors.Add(MakeCsCallRule(name, sel, where,
+                            new Regex(@"\bnew\s+(?:[A-Za-z_][A-Za-z0-9_]*\s*\.\s*)*" + Regex.Escape(name) + @"(?![A-Za-z0-9_])\s*\(")));
+                        break;
+                    case "call":
+                    {
+                        // A dotted name is matched as written; a one-part name
+                        // matches the method on any receiver, so the lookbehind
+                        // lets a dot through.
+                        string[] bits = name.Split('.');
+                        string lead = bits.Length == 1 ? @"(?<![A-Za-z0-9_])" : @"(?<![A-Za-z0-9_.])";
+                        string body = string.Join(@"\s*\.\s*", bits.Select(Regex.Escape));
+                        rules.Calls.Add(MakeCsCallRule(name, sel, where, new Regex(lead + body + @"(?![A-Za-z0-9_])\s*\(")));
+                        if (bits.Length > 1) rules.DottedCalls.Add(name);
+                        break;
+                    }
+                    case "callre":
+                        // The method name is captured so a finding names the
+                        // helper rather than the pattern that matched it.
+                        rules.Calls.Add(MakeCsCallRule(name, sel, where,
+                            new Regex(@"(?<![A-Za-z0-9_])(?<mname>" + name + @")(?![A-Za-z0-9_])\s*\(")));
+                        break;
+                    case "skipcall":
+                        rules.Skips.Add(CsNamedCallRegex(name));
+                        break;
+                    case "textcall":
+                        rules.Texts.Add(CsNamedCallRegex(name));
+                        break;
+                    case "watch":
+                        rules.Watches.Add(new KeyValuePair<string, Regex>(name,
+                            new Regex(@"(?<![A-Za-z0-9_.])" + Regex.Escape(name) + @"\s*\.\s*(?<m>[A-Za-z_][A-Za-z0-9_]*)\s*\(")));
+                        break;
+                    case "nonsink":
+                        rules.NonSinks.Add(name);
+                        break;
+                    default:
+                        throw new InvalidOperationException(where + " has an unknown directive [" + kind + "]");
+                }
+            }
+            if (props.Count == 0) throw new InvalidOperationException("cs-ui-sinks.txt names no property sink.");
+            rules.PropNames.AddRange(props);
+            string alt = string.Join("|", props.OrderByDescending(p => p.Length).Select(Regex.Escape));
+            rules.PropRe = new Regex(@"(?:(?<dot>\.)|(?<![A-Za-z0-9_.]))(?<name>" + alt + @")(?![A-Za-z0-9_])\s*(?<plus>\+)?=(?![=>])");
+            return rules;
+        }
+
+        private static CsCallRule MakeCsCallRule(string name, string sel, string where, Regex re)
+        {
+            var rule = new CsCallRule { Name = name, Re = re };
+            foreach (string token in sel.Split(','))
+            {
+                string t = token.Trim();
+                if (t.Length == 0) continue;
+                if (t.All(char.IsDigit)) rule.Positions.Add(int.Parse(t, CultureInfo.InvariantCulture));
+                else rule.ParamNames.Add(t);
+            }
+            if (rule.Positions.Count == 0 && rule.ParamNames.Count == 0)
+                throw new InvalidOperationException(where + " selects no argument for " + name);
+            return rule;
+        }
+
+        private static CsAllowlist ReadCsAllowlist(string path)
+        {
+            var allow = new CsAllowlist();
+            foreach (string entry in ReadListFile(path))
+            {
+                int colon = entry.IndexOf(':');
+                if (colon < 1) throw new InvalidOperationException("cs-keep-literal.txt: [" + entry + "] is not kind:value");
+                string kind = entry.Substring(0, colon);
+                string val = entry.Substring(colon + 1);
+                if (kind == "file") allow.Files.Add(val.Replace('\\', '/'));
+                else if (kind == "value") allow.Values.Add(val);
+                else if (kind == "type") allow.Types.Add(val);
+                else throw new InvalidOperationException("cs-keep-literal.txt: unknown kind [" + kind + "] in [" + entry + "]");
+            }
+            return allow;
+        }
+
+        private static Dictionary<string, int> ReadCsBudget(string path)
+        {
+            var budget = new Dictionary<string, int>(StringComparer.Ordinal);
+            int n = 0;
+            foreach (string raw in ReadUtf8(path).Split('\n'))
+            {
+                n++;
+                string line = raw.TrimEnd('\r').Trim();
+                if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal)) continue;
+                string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != 2)
+                    throw new InvalidOperationException("cs-literal-budget.txt:" + Inv(n) + " is not '<path> <count>': [" + line + "]");
+                string rel = parts[0].Replace('\\', '/');
+                if (budget.ContainsKey(rel)) throw new InvalidOperationException("cs-literal-budget.txt lists " + rel + " twice.");
+                budget[rel] = int.Parse(parts[1], CultureInfo.InvariantCulture);
+            }
+            return budget;
+        }
+
+        private sealed class CsSite
+        {
+            public int Index, Body;
+            public string Kind, Sink;
+            public CsCallRule Rule;
+        }
+
+        private sealed class CsSpan
+        {
+            public int Start, End;
+            public string Name = "";
+            public int Index;
+        }
+
+        // Index just past the ')', ']' or '}' that closes the group opened at
+        // open. Literals are stepped over whole.
+        private static int CsBalancedEnd(string s, int open)
+        {
+            int depth = 0, i = open;
+            while (i < s.Length)
+            {
+                if (IsLiteralStart(s, i)) { i = SkipLiteral(s, i); continue; }
+                char c = s[i];
+                if (c == '(' || c == '[' || c == '{') depth++;
+                else if (c == ')' || c == ']' || c == '}')
+                {
+                    depth--;
+                    if (depth <= 0) return i + 1;
+                }
+                i++;
+            }
+            return s.Length;
+        }
+
+        // The end of the expression that starts at start: the first ';' or ','
+        // at depth zero, or the close of the group that encloses it. That covers
+        // a statement, an object initializer entry, and an initializer written
+        // inside an argument list.
+        private static int CsExprEnd(string s, int start)
+        {
+            int depth = 0, i = start;
+            while (i < s.Length)
+            {
+                if (IsLiteralStart(s, i)) { i = SkipLiteral(s, i); continue; }
+                char c = s[i];
+                if (c == '(' || c == '[' || c == '{') depth++;
+                else if (c == ')' || c == ']' || c == '}')
+                {
+                    if (depth == 0) return i;
+                    depth--;
+                }
+                else if (depth == 0 && (c == ';' || c == ',')) return i;
+                i++;
+            }
+            return s.Length;
+        }
+
+        // The arguments of the call whose '(' is at open, with the parameter
+        // name a named argument gives them ("okLabel: \"Got it\"").
+        private static List<CsSpan> SplitCsArgs(string s, int open)
+        {
+            var raw = new List<CsSpan>();
+            int depth = 0, i = open, argStart = open + 1;
+            while (i < s.Length)
+            {
+                if (i > open && IsLiteralStart(s, i)) { i = SkipLiteral(s, i); continue; }
+                char c = s[i];
+                if (c == '(' || c == '[' || c == '{') { depth++; i++; continue; }
+                if (c == ')' || c == ']' || c == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        if (i > argStart) raw.Add(new CsSpan { Start = argStart, End = i });
+                        break;
+                    }
+                    i++;
+                    continue;
+                }
+                if (c == ',' && depth == 1)
+                {
+                    raw.Add(new CsSpan { Start = argStart, End = i });
+                    argStart = i + 1;
+                    i++;
+                    continue;
+                }
+                i++;
+            }
+            var result = new List<CsSpan>();
+            int index = 0;
+            foreach (var span in raw)
+            {
+                string body = s.Substring(span.Start, span.End - span.Start);
+                if (body.Trim().Length == 0) { index++; continue; }
+                var m = Regex.Match(body, @"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:(?!:)");
+                span.Name = m.Success ? m.Groups[1].Value : "";
+                span.Index = index++;
+                result.Add(span);
+            }
+            return result;
+        }
+
+        // The value of the C# literal at [start,end): escapes resolved in a
+        // regular string, doubled quotes folded in a verbatim one, and an
+        // interpolation hole rendered as "{}" so the letters outside it are what
+        // the real-string rule weighs.
+        private static string DecodeCsLiteral(string s, int start, int end)
+        {
+            int i = start;
+            bool verbatim = false, interpolated = false;
+            while (i < end && (s[i] == '@' || s[i] == '$'))
+            {
+                if (s[i] == '@') verbatim = true; else interpolated = true;
+                i++;
+            }
+            if (i >= end) return "";
+            char quote = s[i];
+            i++;
+            int stop = end > start && s[end - 1] == quote ? end - 1 : end;
+            var sb = new StringBuilder();
+            while (i < stop)
+            {
+                char c = s[i];
+                if (verbatim && c == quote && i + 1 < stop && s[i + 1] == quote) { sb.Append(quote); i += 2; continue; }
+                if (!verbatim && c == '\\' && i + 1 < stop)
+                {
+                    char e = s[i + 1];
+                    i += 2;
+                    if (e == 'n') sb.Append('\n');
+                    else if (e == 'r') sb.Append('\r');
+                    else if (e == 't') sb.Append('\t');
+                    else if (e == '0') sb.Append('\0');
+                    else if (e == 'a' || e == 'b' || e == 'f' || e == 'v') sb.Append(' ');
+                    else if (e == 'u' && i + 4 <= stop) { sb.Append((char)Convert.ToInt32(s.Substring(i, 4), 16)); i += 4; }
+                    else if (e == 'U' && i + 8 <= stop) { sb.Append(char.ConvertFromUtf32(Convert.ToInt32(s.Substring(i, 8), 16))); i += 8; }
+                    else if (e == 'x')
+                    {
+                        var hex = new StringBuilder();
+                        while (hex.Length < 4 && i < stop && Uri.IsHexDigit(s[i])) { hex.Append(s[i]); i++; }
+                        if (hex.Length > 0) sb.Append((char)Convert.ToInt32(hex.ToString(), 16));
+                    }
+                    else sb.Append(e);
+                    continue;
+                }
+                if (interpolated && c == '{')
+                {
+                    if (i + 1 < stop && s[i + 1] == '{') { sb.Append('{'); i += 2; continue; }
+                    int holeEnd = CsBalancedEnd(s, i);
+                    sb.Append("{}");
+                    i = holeEnd;
+                    continue;
+                }
+                if (interpolated && c == '}' && i + 1 < stop && s[i + 1] == '}') { sb.Append('}'); i += 2; continue; }
+                sb.Append(c);
+                i++;
+            }
+            return sb.ToString();
+        }
+
+        // "" means a real UI string, otherwise numeric, glyph or empty. The XAML
+        // rule (SkipReason above) asks whether the attribute and element are
+        // display before letting a two-letter value through; a C# sink write is
+        // display by definition, so two letters is the threshold here and the
+        // rest of the rule is the same. One rule the XAML side does not need:
+        // placeholders come out before the letters are counted, because XAML
+        // holds none. "{0} items" keeps " items" and stays real, while
+        // "{0:X2}{1:X2}{2:X2}" is left with nothing and is a number format.
+        private static string CsSkipReason(string value, HashSet<string> common)
+        {
+            if (value == null) return "empty";
+            string t = Regex.Replace(value, @"\{[^{}]*\}", "").Trim();
+            if (t.Length == 0) return "empty";
+            int letters = 0, digits = 0;
+            foreach (char ch in t)
+            {
+                if (char.IsLetter(ch)) letters++;
+                else if (char.IsDigit(ch)) digits++;
+            }
+            if (letters == 0) return digits > 0 ? "numeric" : "glyph";
+            if (Regex.IsMatch(t, @"\s")) return "";
+            if (letters >= 2) return "";
+            if (common != null && common.Contains(value)) return "";
+            return "glyph";
+        }
+
+        // True when the literal at [start,end) is being compared rather than
+        // shown: 'mode == "mine"', '"mine" == mode', 'is "x"', 'case "x":', or
+        // the pattern side of a switch arm. Such a literal sits at the top level
+        // of a sink expression ('Label.Text = kind == "car" ? A : B') and would
+        // otherwise read as the value; the value there is A or B.
+        private static bool CsTestOperand(string s, int start, int end)
+        {
+            int k = start - 1;
+            while (k >= 0 && char.IsWhiteSpace(s[k])) k--;
+            if (k >= 1)
+            {
+                string two = s.Substring(k - 1, 2);
+                if (two == "==" || two == "!=") return true;
+            }
+            if (k >= 0 && IsIdentifierChar(s[k]))
+            {
+                int w = k;
+                while (w >= 0 && IsIdentifierChar(s[w])) w--;
+                string word = s.Substring(w + 1, k - w);
+                if (word == "is" || word == "case") return true;
+            }
+            int j = end;
+            while (j < s.Length && char.IsWhiteSpace(s[j])) j++;
+            if (j + 1 < s.Length)
+            {
+                string two = s.Substring(j, 2);
+                if (two == "==" || two == "!=" || two == "=>") return true;
+            }
+            return false;
+        }
+
+        // Two maps over every "new" in the file. types: brace index -> the type
+        // of the object or collection initializer it opens, "" for an implicit
+        // array; everything else is a statement block, which is how a bare
+        // "Title = ..." on a window is told from an entry in a data record's
+        // initializer. ends: the index of "new" -> just past the whole
+        // construction, which a sink expression steps over because any UI text
+        // inside it sits on a sink of its own.
+        private static void CsNewSpans(string s, out Dictionary<int, string> types, out Dictionary<int, int> ends)
+        {
+            types = new Dictionary<int, string>();
+            ends = new Dictionary<int, int>();
+            foreach (Match m in Regex.Matches(s, @"\bnew\b"))
+            {
+                int j = m.Index + 3;
+                while (j < s.Length && char.IsWhiteSpace(s[j])) j++;
+                string type = "";
+                if (j < s.Length && s[j] != '[' && s[j] != '{')
+                {
+                    int nameStart = j;
+                    while (j < s.Length && (IsIdentifierChar(s[j]) || s[j] == '.')) j++;
+                    if (j == nameStart) continue;
+                    type = s.Substring(nameStart, j - nameStart);
+                }
+                while (j < s.Length)
+                {
+                    while (j < s.Length && char.IsWhiteSpace(s[j])) j++;
+                    if (j >= s.Length) break;
+                    char c = s[j];
+                    if (c == '<')
+                    {
+                        int e = GenericListEnd(s, j);
+                        if (e < 0) break;
+                        j = e;
+                        continue;
+                    }
+                    if (c == '(' || c == '[') { j = CsBalancedEnd(s, j); continue; }
+                    break;
+                }
+                int end = j;
+                while (end < s.Length && char.IsWhiteSpace(s[end])) end++;
+                if (end < s.Length && s[end] == '{')
+                {
+                    types[end] = type;
+                    ends[m.Index] = CsBalancedEnd(s, end);
+                }
+                else
+                {
+                    ends[m.Index] = j;
+                }
+            }
+        }
+
+        // One pass over the file, jumping between the characters that matter, to
+        // learn for each site whether the code reaches it at all (a site matched
+        // inside a string literal does not count) and which object initializer,
+        // if any, encloses it. "" means a statement block; a site with no entry
+        // is dead.
+        private static Dictionary<int, string> CsSiteFrames(string s, List<CsSite> sites, Dictionary<int, string> initTypes)
+        {
+            var frames = new Dictionary<int, string>();
+            if (sites.Count == 0) return frames;
+            var stack = new List<string>();
+            char[] stops = { '"', '\'', '@', '$', '{', '}' };
+            int i = 0, k = 0;
+            while (i < s.Length)
+            {
+                int n = s.IndexOfAny(stops, i);
+                if (n < 0) n = s.Length;
+                while (k < sites.Count && sites[k].Index < n)
+                {
+                    frames[sites[k].Index] = stack.Count > 0 ? stack[stack.Count - 1] : "";
+                    k++;
+                }
+                if (n >= s.Length) break;
+                i = n;
+                if (IsLiteralStart(s, i))
+                {
+                    int litEnd = SkipLiteral(s, i);
+                    while (k < sites.Count && sites[k].Index < litEnd) k++;   // matched inside a literal
+                    i = litEnd;
+                    continue;
+                }
+                char c = s[i];
+                if (c == '{') stack.Add(initTypes.TryGetValue(i, out string t) ? t : "");
+                else if (c == '}' && stack.Count > 0) stack.RemoveAt(stack.Count - 1);
+                i++;
+            }
+            return frames;
+        }
+
+        // Every string literal in [start,end) that a user actually reads.
+        // Stepped over whole: a call the rules skip (a key, a format specifier),
+        // any "new ..." construction, and any other call or indexer, because a
+        // literal handed to a method or used as a lookup key is not display
+        // text. Descended into: a grouping parenthesis, a ternary, a
+        // concatenation, and the calls the rules mark as text composers.
+        private static List<CsSpan> CsLiteralsIn(string s, int start, int end,
+            Dictionary<int, int> skipAt, Dictionary<int, int> textAt, Dictionary<int, int> newEnd)
+        {
+            var found = new List<CsSpan>();
+            int i = start;
+            while (i < end)
+            {
+                if (skipAt.TryGetValue(i, out int skipParen)) { i = CsBalancedEnd(s, skipParen); continue; }
+                if (newEnd.TryGetValue(i, out int afterNew)) { i = afterNew; continue; }
+                if (textAt.TryGetValue(i, out int textParen)) { i = textParen + 1; continue; }
+                if (IsLiteralStart(s, i))
+                {
+                    int litEnd = SkipLiteral(s, i);
+                    if (s[i] != '\'' && !CsTestOperand(s, i, litEnd))
+                        found.Add(new CsSpan { Start = i, End = litEnd });
+                    i = litEnd;
+                    continue;
+                }
+                char c = s[i];
+                if (c == '(' || c == '[')
+                {
+                    int k = i - 1;
+                    while (k >= 0 && char.IsWhiteSpace(s[k])) k--;
+                    bool isCall = k >= 0 && (IsIdentifierChar(s[k]) || s[k] == ')' || s[k] == ']');
+                    if (isCall) { i = CsBalancedEnd(s, i); continue; }
+                }
+                i++;
+            }
+            return found;
+        }
+
+        private static int[] CsLineStarts(string s)
+        {
+            var list = new List<int> { 0 };
+            for (int i = s.IndexOf('\n'); i >= 0; i = s.IndexOf('\n', i + 1)) list.Add(i + 1);
+            return list.ToArray();
+        }
+
+        private static int CsLineAt(int[] lineStarts, int index)
+        {
+            int lo = 0, hi = lineStarts.Length - 1;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) / 2;
+                if (lineStarts[mid] <= index) lo = mid; else hi = mid - 1;
+            }
+            return lo + 1;
+        }
+
+        private static List<CsFinding> SweepCsFile(string raw, string rel, CsSinkRules rules,
+            CsAllowlist allow, HashSet<string> common, List<string> failures)
+        {
+            // Comments are blanked first (newlines kept, so line numbers hold),
+            // so a sink quoted in one is never counted.
+            string text = StripComments(raw);
+
+            var sites = new List<CsSite>();
+            foreach (Match m in rules.PropRe.Matches(text))
+                sites.Add(new CsSite { Index = m.Index, Kind = "prop", Sink = m.Groups["name"].Value, Body = m.Index + m.Length });
+            foreach (var rule in rules.Calls)
+                foreach (Match m in rule.Re.Matches(text))
+                    sites.Add(new CsSite
+                    {
+                        Index = m.Index, Kind = "call", Body = m.Index + m.Length - 1, Rule = rule,
+                        Sink = m.Groups["mname"].Success ? m.Groups["mname"].Value : rule.Name,
+                    });
+            foreach (var rule in rules.Ctors)
+                foreach (Match m in rule.Re.Matches(text))
+                    sites.Add(new CsSite { Index = m.Index, Kind = "ctor", Sink = "new " + rule.Name, Body = m.Index + m.Length - 1, Rule = rule });
+            sites = sites.OrderBy(s => s.Index).ToList();
+
+            var skipAt = new Dictionary<int, int>();
+            foreach (var re in rules.Skips)
+                foreach (Match m in re.Matches(text)) skipAt[m.Index] = m.Index + m.Length - 1;
+            var textAt = new Dictionary<int, int>();
+            foreach (var re in rules.Texts)
+                foreach (Match m in re.Matches(text)) textAt[m.Index] = m.Index + m.Length - 1;
+
+            CsNewSpans(text, out Dictionary<int, string> newTypes, out Dictionary<int, int> newEnds);
+            var frames = CsSiteFrames(text, sites, newTypes);
+            int[] lineStarts = CsLineStarts(text);
+
+            var findings = new List<CsFinding>();
+            foreach (var site in sites)
+            {
+                if (!frames.TryGetValue(site.Index, out string frame)) continue;   // matched inside a literal
+                var spans = new List<CsSpan>();
+                if (site.Kind == "prop")
+                    spans.Add(new CsSpan { Start = site.Body, End = CsExprEnd(text, site.Body) });
+                else
+                    foreach (var arg in SplitCsArgs(text, site.Body))
+                        if (site.Rule.Takes(arg.Index, arg.Name)) spans.Add(arg);
+
+                foreach (var span in spans)
+                    foreach (var lit in CsLiteralsIn(text, span.Start, span.End, skipAt, textAt, newEnds))
+                    {
+                        string value = DecodeCsLiteral(text, lit.Start, lit.End);
+                        if (CsSkipReason(value, common) != "") continue;
+                        if (allow.Values.Contains(value)) continue;
+                        if (frame.Length > 0 && allow.Types.Contains(frame)) continue;
+                        findings.Add(new CsFinding
+                        {
+                            File = rel, Line = CsLineAt(lineStarts, lit.Start),
+                            Sink = site.Sink, Frame = frame, Value = value,
+                        });
+                    }
+            }
+
+            // A method on a watched receiver that nobody has classified is a
+            // blind spot, not a pass.
+            foreach (var watch in rules.Watches)
+                foreach (Match m in watch.Value.Matches(text))
+                {
+                    string full = watch.Key + "." + m.Groups["m"].Value;
+                    if (rules.DottedCalls.Contains(full) || rules.NonSinks.Contains(full)) continue;
+                    failures.Add(rel + ":" + Inv(CsLineAt(lineStarts, m.Index)) + " " + full
+                        + "(...) is neither a call sink nor a nonsink in tools/loc/cs-ui-sinks.txt");
+                }
+
+            return findings;
         }
 
         // ==================================================================
@@ -1495,6 +2248,26 @@ namespace TrueforceForAll.Core.Tests
                 }
             }
             return calls;
+        }
+
+        private sealed class CsBinding
+        {
+            public string Where, Key;
+        }
+
+        // Every new Binding("[Key]") in the plugin's C#, the store-indexer form
+        // a code-built label uses instead of assigning a Loc.T result.
+        private static List<CsBinding> CsBindings(string repo)
+        {
+            var binds = new List<CsBinding>();
+            foreach (string abs in PluginFiles(repo, "*.cs"))
+            {
+                string rel = RelPath(repo, abs);
+                string code = StripComments(ReadUtf8(abs));
+                foreach (Match m in BindingRegex.Matches(code))
+                    binds.Add(new CsBinding { Where = rel + ":" + Inv(LineOf(code, m.Index)), Key = m.Groups[1].Value });
+            }
+            return binds;
         }
 
         private static int LineOf(string text, int index)

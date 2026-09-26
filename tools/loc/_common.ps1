@@ -915,3 +915,165 @@ function Get-LocMaxPlaceholderIndex([string]$Value) {
     }
     return $max
 }
+
+# ---------------------------------------------------------------- a lexer-lite for C#
+#
+# Literals and comments, enough to blank comments without touching a string and
+# to count top-level commas inside one argument list. validate.ps1 reads keys
+# with it and sweep-cs.ps1 reads sinks with it, so there is one copy here rather
+# than one per script. LocalizationTests.cs carries the same four functions in C#
+# (IsLiteralStart, SkipLiteral, StripComments, CountArgsAfter); a rule added to
+# one belongs in the other.
+
+function Test-LocLiteralStart([string]$Text, [int]$I) {
+    # A char literal, a regular string, or a verbatim or interpolated string
+    # behind one or two of '@' and '$'.
+    $c = $Text[$I]
+    if ($c -eq '"' -or $c -eq "'") { return $true }
+    if ($c -eq '@' -or $c -eq '$') {
+        $j = $I
+        while ($j -lt $Text.Length -and ($Text[$j] -eq '@' -or $Text[$j] -eq '$')) { $j++ }
+        return (($j - $I) -le 2 -and $j -lt $Text.Length -and $Text[$j] -eq '"')
+    }
+    return $false
+}
+
+function Get-LocLiteralEnd([string]$Text, [int]$I) {
+    # Index just past the literal starting at I: a char literal, a regular
+    # string (backslash escapes), a verbatim string (doubled quotes) or an
+    # interpolated string, whose holes may hold code with literals of their
+    # own. The runs between the characters that matter are skipped with
+    # IndexOfAny, so a long string costs one loop turn per quote or escape.
+    $verbatim = $false
+    $interpolated = $false
+    while ($I -lt $Text.Length -and ($Text[$I] -eq '@' -or $Text[$I] -eq '$')) {
+        if ($Text[$I] -eq '@') { $verbatim = $true } else { $interpolated = $true }
+        $I++
+    }
+    if ($I -ge $Text.Length) { return $I }
+    $quote = $Text[$I]
+    $I++
+    if ($quote -eq "'") {
+        while ($I -lt $Text.Length -and $Text[$I] -ne "'") {
+            if ($Text[$I] -eq '\') { $I++ }
+            $I++
+        }
+        return [Math]::Min($I + 1, $Text.Length)
+    }
+    if ($quote -ne '"') { return $I }
+    $stops = New-Object System.Collections.Generic.List[char]
+    $stops.Add([char]'"')
+    if (-not $verbatim) { $stops.Add([char]'\') }
+    if ($interpolated) { $stops.Add([char]'{') }
+    $stopChars = $stops.ToArray()
+    while ($I -lt $Text.Length) {
+        $n = $Text.IndexOfAny($stopChars, $I)
+        if ($n -lt 0) { return $Text.Length }
+        $I = $n
+        $c = $Text[$I]
+        if ($c -eq '"') {
+            if ($verbatim -and $I + 1 -lt $Text.Length -and $Text[$I + 1] -eq '"') { $I += 2; continue }
+            return $I + 1
+        }
+        if ($c -eq '\') { $I += 2; continue }
+        # An interpolation hole: '{{' is a brace, anything else runs to the
+        # matching '}' with its own nesting and literals.
+        if ($I + 1 -lt $Text.Length -and $Text[$I + 1] -eq '{') { $I += 2; continue }
+        $I++
+        $depth = 0
+        while ($I -lt $Text.Length) {
+            if (Test-LocLiteralStart $Text $I) { $I = Get-LocLiteralEnd $Text $I; continue }
+            $h = $Text[$I]
+            if ($h -eq '{' -or $h -eq '(' -or $h -eq '[') { $depth++ }
+            elseif ($h -eq ')' -or $h -eq ']') { $depth-- }
+            elseif ($h -eq '}') {
+                if ($depth -eq 0) { $I++; break }
+                $depth--
+            }
+            $I++
+        }
+    }
+    return $I
+}
+
+function Remove-LocComments([string]$Text) {
+    # Comments become spaces (newlines kept, so line numbers hold); string and
+    # char literals pass through untouched, so a "//" inside one is not a
+    # comment. Only the characters that can start a literal or a comment are
+    # visited; the runs between them are copied whole.
+    $sb = New-Object System.Text.StringBuilder($Text.Length)
+    $stops = [char[]]@([char]'"', [char]"'", [char]'/', [char]'@', [char]'$')
+    $i = 0
+    while ($i -lt $Text.Length) {
+        $n = $Text.IndexOfAny($stops, $i)
+        if ($n -lt 0) { [void]$sb.Append($Text, $i, $Text.Length - $i); break }
+        if ($n -gt $i) { [void]$sb.Append($Text, $i, $n - $i); $i = $n }
+        if (Test-LocLiteralStart $Text $i) {
+            $end = Get-LocLiteralEnd $Text $i
+            [void]$sb.Append($Text, $i, $end - $i)
+            $i = $end
+            continue
+        }
+        $c = $Text[$i]
+        if ($c -eq '/' -and $i + 1 -lt $Text.Length -and $Text[$i + 1] -eq '/') {
+            $end = $Text.IndexOf("`n", $i)
+            if ($end -lt 0) { $end = $Text.Length }
+            [void]$sb.Append([char]' ', $end - $i)
+            $i = $end
+            continue
+        }
+        if ($c -eq '/' -and $i + 1 -lt $Text.Length -and $Text[$i + 1] -eq '*') {
+            $end = $Text.IndexOf('*/', $i + 2, [System.StringComparison]::Ordinal)
+            if ($end -lt 0) { $end = $Text.Length } else { $end += 2 }
+            [void]$sb.Append(($Text.Substring($i, $end - $i) -replace '[^\n]', ' '))
+            $i = $end
+            continue
+        }
+        [void]$sb.Append($c)
+        $i++
+    }
+    return $sb.ToString()
+}
+
+function Get-LocGenericListEnd([string]$Text, [int]$Open) {
+    # Index just past the '>' that closes the type argument list opened at
+    # Open, or -1 when the text up to it is not a type list (letters, digits,
+    # '_', '.', ',', '?', nested angle brackets, square brackets, whitespace).
+    $depth = 0
+    for ($j = $Open; $j -lt $Text.Length; $j++) {
+        $c = $Text[$j]
+        if ($c -eq '<') { $depth++; continue }
+        if ($c -eq '>') { $depth--; if ($depth -eq 0) { return $j + 1 }; continue }
+        if (-not ($c -match '[A-Za-z0-9_.,?\[\]\s]')) { return -1 }
+    }
+    return -1
+}
+
+function Get-LocArgCountAfter([string]$Text, [int]$Pos) {
+    # Number of arguments that follow position Pos (just past the key literal)
+    # up to the call's closing parenthesis: one per top-level comma. Nested
+    # parentheses, brackets, braces and literals are skipped whole, and so is
+    # a generic type argument list ("Foo<Dictionary<string, int>>()"): a '<'
+    # right after an identifier character opens one when everything up to the
+    # matching '>' is type-list text. A comparison written without spaces
+    # ("a<b, c>d") reads as a generic list; assign such an argument to a
+    # local first.
+    $depth = 0
+    $count = 0
+    $i = $Pos
+    while ($i -lt $Text.Length) {
+        if (Test-LocLiteralStart $Text $i) { $i = Get-LocLiteralEnd $Text $i; continue }
+        $c = $Text[$i]
+        if ($c -eq '<' -and $i -gt 0 -and ($Text[$i - 1] -match '[A-Za-z0-9_]')) {
+            $end = Get-LocGenericListEnd $Text $i
+            if ($end -gt 0) { $i = $end; continue }
+        }
+        if ($c -eq '(' -or $c -eq '[' -or $c -eq '{') { $depth++ }
+        elseif ($c -eq ')' -or $c -eq ']' -or $c -eq '}') {
+            if ($depth -eq 0) { break }
+            $depth--
+        } elseif ($c -eq ',' -and $depth -eq 0) { $count++ }
+        $i++
+    }
+    return $count
+}

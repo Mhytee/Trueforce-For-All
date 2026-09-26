@@ -775,11 +775,44 @@ namespace TrueforceForAll.Plugin
         // Status surfaced to the SettingsControl.
         public string WheelStatus    { get; private set; } = "Not detected";
 
+        /// <summary>Which of the three things WheelStatus is saying, as a token
+        /// instead of as words. The panel's status pill used to ask
+        /// WheelStatus.StartsWith("Not detected"), which made that sentence a
+        /// state name as well as copy and would start answering wrong the day
+        /// the sentence is translated. Every writer of WheelStatus sets this
+        /// beside it.</summary>
+        public enum WheelStatusKind
+        {
+            /// <summary>Discovery found no supported wheel. Also the value
+            /// before discovery has run, matching the initial WheelStatus.</summary>
+            NotDetected,
+            /// <summary>A PlayStation-mode G923 was sent the PC-mode switch and
+            /// is expected back under a different product id.</summary>
+            SwitchingToPcMode,
+            /// <summary>A supported wheel was found and named.</summary>
+            Detected,
+        }
+
+        /// <summary>WheelStatus as a token. See WheelStatusKind.</summary>
+        public WheelStatusKind WheelStatusState { get; private set; } = WheelStatusKind.NotDetected;
+
+        /// <summary>False only in the not-detected state, which is the question
+        /// the status pill asks. True while the PC-mode switch is in flight,
+        /// exactly as the prefix test it replaces was: that sentence does not
+        /// begin with "Not detected".</summary>
+        public bool WheelStatusOk => WheelStatusState != WheelStatusKind.NotDetected;
+
         // Backing field for StreamStatus. The public property overlays the
         // live device fault / recovery state so a wheel unplugged mid-session
         // is reflected the instant it happens, not on the next watchdog tick
         // (and never reads a stale "Streaming" while the wheel is dead).
         private string _streamStatus = "Stopped";
+
+        // True exactly while _streamStatus holds the "Streaming" sentence, set
+        // beside it at both of its writers so StreamStatusOk never has to read
+        // words. Not volatile, like the field it shadows: bring-up writes both
+        // and the UI thread reads both.
+        private bool _streamIsRunning;
         public string StreamStatus
         {
             get
@@ -791,6 +824,22 @@ namespace TrueforceForAll.Plugin
                 return _streamStatus;
             }
         }
+
+        /// <summary>The stream half of the status as a bool: the same live
+        /// recovery and fault overlay StreamStatus renders, in the same order,
+        /// answering with false where that property returns a sentence other
+        /// than "Streaming". What the status pill reads instead of
+        /// StreamStatus.StartsWith("Streaming").</summary>
+        public bool StreamStatusOk
+        {
+            get
+            {
+                if (System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return false;
+                var d = _device;
+                if (d != null && d.StreamFaulted) return false;
+                return _streamIsRunning;
+            }
+        }
         public string CaptureStatus  => _captureStatus();
         public string FfbTapStatus =>
             AcForceStatusPrefix()
@@ -800,6 +849,19 @@ namespace TrueforceForAll.Plugin
                 : "")
             + (_noFfbCaptureNotice != null ? "  -  " + _noFfbCaptureNotice : "");
         public int    ActiveVoiceCount => _mixer.SourceCount;
+
+        /// <summary>Whether the FFB tap is capturing, as a state rather than as
+        /// the words of FfbTapStatus. FfbTapStatus puts AcForceStatusPrefix in
+        /// front, so it does not begin with the capturing sentence in Assetto
+        /// Corsa even when the tap is live.</summary>
+        public bool FfbTapIsTapping => _ffbTap?.StatusIsTapping == true;
+
+        /// <summary>The tap looked and found no supported wheel, as a state.
+        /// Only this failure warrants the device picker; the others belong in
+        /// Diagnostics, which is the distinction the banner used to draw by
+        /// searching the sentence for its own words.</summary>
+        public bool FfbTapFoundNoWheel =>
+            _ffbTap?.StatusState == UsbPcapFfbTap.TapStatusKind.NoWheelFound;
 
         // Wire shape that produced the first captured FFB sample this session
         // (transport / report ID / feature index / encoding, and which HID++
@@ -919,11 +981,13 @@ namespace TrueforceForAll.Plugin
                 // exactly the "other failure" the comment below sends to
                 // Diagnostics, where the Reinstall button lives.
                 if (!IsUsbPcapDriverReady) return false;
-                string status = _ffbTap?.Status ?? "";
-                if (status.StartsWith("Tapping", StringComparison.OrdinalIgnoreCase)) return false;
+                if (FfbTapIsTapping) return false;
                 // Only "no supported wheel found" warrants the picker; other
-                // failures (USBPcap missing, permission denied) go to Diagnostics.
-                return status.IndexOf("No supported wheel found", StringComparison.OrdinalIgnoreCase) >= 0;
+                // failures (USBPcap missing, permission denied) go to
+                // Diagnostics. Read as a state: the sentence is due to be
+                // translated, and searching it for its own words would not
+                // survive that.
+                return FfbTapFoundNoWheel;
             }
         }
 
@@ -995,15 +1059,20 @@ namespace TrueforceForAll.Plugin
                 // 4. Wheel device state. WheelStatus is set by the discovery
                 //    + open path; "Not detected" is the default.
                 string wheel = WheelStatus ?? "";
-                if (wheel.StartsWith("Not detected", StringComparison.OrdinalIgnoreCase))
+                if (!WheelStatusOk)
                     return "Wheel not detected. Plug in your G PRO / RS50 / G923, or close any app that's holding the device exclusively.";
+                // Dead arms kept as a guard rather than removed: no writer of
+                // WheelStatus produces either word today (the three are the
+                // PC-mode, not-detected and model sentences), so this never
+                // fires. It reads the sentence, so it cannot survive the
+                // sentence being translated; retire it with that work.
                 if (wheel.StartsWith("Open failed", StringComparison.OrdinalIgnoreCase)
                  || wheel.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
                     return $"Wheel reports: {wheel}. Try unplugging and reconnecting the wheel.";
 
                 // 5. HID stream state.
                 string stream = StreamStatus ?? "";
-                if (!stream.StartsWith("Streaming", StringComparison.OrdinalIgnoreCase))
+                if (!StreamStatusOk)
                     return $"Wheel stream is '{stream}'. The plugin is opened but not actively driving the wheel. Check the Diagnostics panel.";
 
                 // 6. No game actually running. _activeGame can be a selected-
@@ -5173,7 +5242,10 @@ namespace TrueforceForAll.Plugin
                 // the recovery watchdog picks up on its next pass; nothing here
                 // waits for it.
                 if (result == WheelPcModeSwitch.Result.Sent)
+                {
                     WheelStatus = "Switching the wheel to PC mode...";
+                    WheelStatusState = WheelStatusKind.SwitchingToPcMode;
+                }
             }
             catch (Exception ex)
             {
@@ -5200,6 +5272,7 @@ namespace TrueforceForAll.Plugin
             if (matches.Count == 0)
             {
                 WheelStatus = "Not detected (open/close G HUB once, then restart SimHub)";
+                WheelStatusState = WheelStatusKind.NotDetected;
                 SimHub.Logging.Current.Warn(
                     "[TF4ALL] No supported wheel found. Make sure a supported wheel " +
                     "(G PRO / RS50 / G923) is plugged in. If it is, open G HUB once and let it " +
@@ -5248,6 +5321,7 @@ namespace TrueforceForAll.Plugin
             }
             WheelStatus = $"{modelLabel}  (VID 0x{match.Vid:X4}, PID 0x{match.Pid:X4})"
                         + (match.Unverified ? "  [unconfirmed model]" : "");
+            WheelStatusState = WheelStatusKind.Detected;
             SimHub.Logging.Current.Info($"[TF4ALL] Found {WheelStatus}.");
 
             // Remember the last wheel used on this PC for the Account "Active sessions"
@@ -5950,6 +6024,7 @@ namespace TrueforceForAll.Plugin
                 }
 
                 _streamStatus = "Streaming (4 kHz, 1000 packets/s)";
+                _streamIsRunning = true;
                 SimHub.Logging.Current.Info("[TF4ALL] Stream started.");
 
                 // Master toggle may already be off at bring-up (persisted from
@@ -5969,6 +6044,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 _streamStatus = $"Init failed: {ex.Message}";
+                _streamIsRunning = false;
                 SimHub.Logging.Current.Error("[TF4ALL] Init failed", ex);
                 CleanupDevice();
                 return false;
@@ -9733,22 +9809,46 @@ namespace TrueforceForAll.Plugin
             => !StationarySpringShipsIn(_activeGame)
                && !(Settings?.StationarySpringUnlocked ?? false);
 
-        /// <summary>Why the spring section is inert for the active game, in the
-        /// words the badge shows, or null when it is live. Ordered so the reason
-        /// the user can act on comes last: unlocking does nothing if the route
-        /// would discard the spring anyway.</summary>
-        public string StationarySpringInertReason
+        /// <summary>The five ways the stationary spring can be inert, plus None
+        /// for live. Tokens rather than sentences: the FFB tab's badge and its
+        /// tooltip both switched on the English this property used to return, so
+        /// the copy was a state name as well as copy and translating it would
+        /// have emptied the badge. The panel maps each token to its own
+        /// key.</summary>
+        public enum StationarySpringInert
+        {
+            /// <summary>Live: the spring runs for the active game.</summary>
+            None,
+            /// <summary>Forza on the capture route.</summary>
+            ForzaCapture,
+            /// <summary>An arcade cabinet, where the force is authored.</summary>
+            Arcade,
+            /// <summary>iRacing, which weights the wheel itself while parked.</summary>
+            IRacing,
+            /// <summary>Switched off outside the games this version ships it in,
+            /// with the SPRING code not entered.</summary>
+            Locked,
+            /// <summary>The takeover route renders the spring against the
+            /// plugin's own stationary friction, which is off.</summary>
+            NeedsFriction,
+        }
+
+        /// <summary>Why the spring section is inert for the active game, or None
+        /// when it is live. Ordered so the reason the user can act on comes
+        /// last: unlocking does nothing if the route would discard the spring
+        /// anyway.</summary>
+        public StationarySpringInert StationarySpringInertReason
         {
             get
             {
-                if (!ActiveSourceSupportsStationarySpring) return "not used in Forza on the capture route";
-                if (ActiveGameIsArcade) return "not used on an arcade cabinet";
-                if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)) return "not used in iRacing";
-                if (StationarySpringLockedHere) return "off outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza in this version";
+                if (!ActiveSourceSupportsStationarySpring) return StationarySpringInert.ForzaCapture;
+                if (ActiveGameIsArcade) return StationarySpringInert.Arcade;
+                if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)) return StationarySpringInert.IRacing;
+                if (StationarySpringLockedHere) return StationarySpringInert.Locked;
                 if (_forceMode == ForceModeIRacing && IsSharedMemoryTakeoverGame(_activeGame)
                     && !((Settings?.R3EStationaryDamper ?? false) && (Settings?.R3EStationaryDamperStrength ?? 0.0) > 0.0001))
-                    return "needs the stationary friction on";
-                return null;
+                    return StationarySpringInert.NeedsFriction;
+                return StationarySpringInert.None;
             }
         }
 

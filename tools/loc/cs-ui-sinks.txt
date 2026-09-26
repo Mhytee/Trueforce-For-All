@@ -1,0 +1,177 @@
+# tools/loc/cs-ui-sinks.txt
+#
+# What counts as a UI sink in C#: the one list that sweep-cs.ps1 and
+# LocCsLiteralBudget in src/TrueforceForAll.Core.Tests/LocalizationTests.cs both
+# read, so the PowerShell sweep and the test that enforces the budget can never
+# disagree about which writes are UI. The two walkers are separate code (the
+# same arrangement as Get-LocInventory and LocXamlWalker for XAML), but the
+# rules themselves live here.
+#
+# A sink is a place where a string becomes something a user reads. A literal
+# that reaches one and is not routed through Loc.T/F/N is untranslatable, which
+# is what the sweep counts. Everything else a C# string can be (a log line, a
+# JSON field, a file path, an access-code reply, a persisted identifier) is not
+# a sink and never enters the count.
+#
+# Directives, one per line; '#' starts a comment line; fields are whitespace
+# separated and an <args> field never contains a space.
+#
+#   prop <Name>              An assignment to this property name is a sink:
+#                            both "label.Text = ..." and a "Text = ..." entry
+#                            inside an object initializer. '+=' counts too.
+#   ctor <Type> <args>       "new <Type>(...)": the listed arguments are UI text.
+#                            An optional namespace qualifier is allowed
+#                            ("new System.Windows.Documents.Run(...)").
+#   call <Name.Method> <args>  A call by that exact dotted name. A name with no
+#                            dot matches the method on any receiver, so
+#                            "SetValue" covers "btn.SetValue(...)" too.
+#   callre <regex> <args>    A call whose method name matches this regex, on any
+#                            receiver or none. The regex body carries no
+#                            anchors; the reader wraps it.
+#   skipcall <Name>          A call whose own literals never reach a user, even
+#                            inside a sink expression. The whole call, arguments
+#                            and all, is stepped over. A leading '.' means any
+#                            receiver.
+#   textcall <Name>          The opposite: a call that composes the text it is
+#                            handed, so a literal inside it does reach the user.
+#                            Every other call and indexer inside a sink
+#                            expression is stepped over, and so is every "new
+#                            ..." (whatever text it holds has its own sink site
+#                            inside it, which is where it gets counted).
+#   watch <Receiver>         Every "<Receiver>.<Method>(" in the plugin must be
+#                            listed below as a call sink or as a nonsink, so a
+#                            new overload cannot quietly become a blind spot.
+#   nonsink <Name.Method>    Named under a watch, and deliberately not a sink.
+#
+# <args> selects the UI-text arguments of a call: a comma-separated list of
+# zero-based positions and C# parameter names. A name matches a named argument
+# ("okLabel: \"Got it\""), a position matches by order. Selecting an argument
+# that is never a literal costs nothing, so an overload set is covered by the
+# union of its text positions.
+
+# ---------------------------------------------------------------- properties
+# Every one of these is a WPF display property. Watermark and PlaceholderText
+# have no assignment in the tree today and are listed so the first one is caught
+# rather than discovered.
+prop Text
+prop Content
+prop Header
+prop ToolTip
+prop Title
+prop Watermark
+prop PlaceholderText
+
+# ---------------------------------------------------------------- constructors
+# TextBlock, Button and the rest take their text through a property, so Run is
+# the only WPF control the plugin builds with text in the constructor. The
+# plugin's own windows are further down, under the indirect sinks.
+ctor Run 0
+
+# ---------------------------------------------------------------- calls
+# TrueforceDialog is the plugin's MessageBox. Parameter names are listed beside
+# the positions because okLabel and cancelLabel are usually passed by name.
+# The label arguments are selected both by position and by name, because the
+# same overload is called both ways: "Show(owner, title, body, kind, "Delete",
+# "Cancel")" and "Show(owner, title, body, kind, okLabel: "Delete")".
+call TrueforceDialog.Show 1,2,4,5,okLabel,cancelLabel
+call TrueforceDialog.ShowError 1,friendly
+call TrueforceDialog.ShowChoice 1,2,3,4,5
+call TrueforceDialog.ShowConfirmWithCheckbox 1,2,3,6,7,okLabel,cancelLabel
+# System.Windows.MessageBox has no call site left in the plugin. Both overload
+# shapes are covered at once: MessageBox.Show(text) puts the text at 0,
+# MessageBox.Show(owner, text, caption) at 1 and 2, and the arguments that are
+# neither (an owner, a MessageBoxButton) are never string literals.
+call MessageBox.Show 0,1,2
+# DependencyObject.SetValue(TextBlock.TextProperty, "Delete"): the value is the
+# second argument. Only a UI dependency property is ever set this way here.
+call SetValue 1
+# The status-label helpers, by shape rather than one by one, so a new one is
+# covered the day it is written: SetBackupStatus, SetPatternStatus,
+# SetSessionsStatus, SetDevStatus, SetIRacingMaxNmStatus, SetChangeEmailStatus,
+# SetDiscordStatus/-Raw, SetPatreonStatus/-Raw. The Func<string> flavors take a
+# lambda, whose body is still inside argument 0.
+callre Set[A-Za-z]*Status[A-Za-z]* 0
+
+# ---------------------------------------------------------------- indirect sinks
+# A helper that takes text and writes it to a label is a sink at its call site,
+# which is where the literal lives. Without these lines a label routed through a
+# helper is invisible to the sweep, and the count could be lowered by moving a
+# string one call deeper instead of giving it a key. The list below was derived
+# mechanically (every method with a string parameter whose body assigns that
+# parameter to a sink property) and the argument selectors are the union across
+# that name's overloads, so a name used in two windows needs one line.
+#
+# Three families were found the same way and deliberately left out:
+#   - ApplyCommunityEmptyText(kind): its string parameter picks a message, it is
+#     not the message.
+#   - Label(t) and Input(text) in ModerationNoticesWindow: one-word names that
+#     would match anything spelled the same anywhere in the plugin.
+#   - BuildChrome, ShowChoice and the TrueforceDialog constructors: the text
+#     reaches them from the public entry points above, and a second rule on the
+#     same call would count every dialog literal twice.
+call ShowSavedStatus 1,message
+call FlashSaveStatus 1,msg
+call SetLib 1,msg
+call SetBetaUpdatesNote 0,msg
+call SetCloudBackupMessage 0,msg
+call SetBodyContent 1,shown
+call SetPerGearBoxText 2,text
+call MirrorPerGearBox 1,text
+call ShowCommunityGate 0,1,2
+call PromptForName 0,1,2
+call PromptForCarPresetName 0,1,2
+call PickFromList 0,1
+call PickMultipleFromList 0,1
+call MakeSectionHeader 0,text
+call MakeShareRow 0,label
+call MakeFactLine 0,1
+call MakeGameItem 0,gameName
+call MakeBullet 0,1
+call MakeChoiceButton 0,1
+call MakeRadio 1,2
+call MakeToggle 0,1
+call MakeIneligibleRow 0,label
+call MakeLink 0,text
+call MakeButton 0,content
+call MakeColumn 0,header
+call BuildGroupHeader 0,title
+call BuildPanelHeader 0,text
+call BuildModCard 0,title
+call BuildLabel 0,text
+call BuildInputTextBox 0,text
+call BuildPackEntryRow 2,title
+call RenderGroup 1,headerLabel
+call AddDetailRow 0,1
+call AddSection 3,label
+call EntryLine 1,subtitle
+call EqHeaderLabel 0,text
+call EqNumberBox 2,tip
+
+# The code-built windows and dialogs whose constructor takes its own chrome.
+ctor TwoLineEditWindow 0,1,2
+ctor UpdateVsNewChooserWindow 0,1
+ctor PresetMetadataDialog 0,title
+ctor EditCommunityPresetWindow 0,1
+
+# ---------------------------------------------------------------- skipped calls
+# A key is not display text.
+skipcall Loc.T
+skipcall Loc.F
+skipcall Loc.N
+# A format specifier is not display text ("F1", "N0", "HH:mm"). Localized number
+# and date display is deferred by the plan and would be a formatting helper, not
+# a language key, so these stay out of the count rather than being allowlisted
+# one value at a time.
+skipcall .ToString
+
+# ---------------------------------------------------------------- text calls
+# The two composers whose first argument is the sentence the user reads. A
+# sentence assembled by a helper of the plugin's own ("Fmt(...)", an
+# AppendLine chain three methods away) is not visible to this sweep; see the
+# blind spots in tools/loc/README.md.
+textcall string.Format
+textcall string.Concat
+
+# ---------------------------------------------------------------- watches
+watch TrueforceDialog
+nonsink TrueforceDialog.LogError

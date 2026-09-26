@@ -7,7 +7,7 @@ Design, phases and the identifier couplings they must respect are in
 and stops on the first error; `_common.ps1` holds the shared rules and is
 dot-sourced, never run.
 
-## The five scripts
+## The six scripts
 
 | Script | What it does |
 | --- | --- |
@@ -15,7 +15,8 @@ dot-sourced, never run.
 | `keys.ps1 -Inventory <csv> -Scope <spec>[,...] -Out <csv>` | Proposes `<Area>_<Meaning>[<Suffix>]` for every real string in scope, plus the translator-context columns `siblingNames`, `helpText` and `ownToolTip`. Scopes use the grammar below plus `file:<name>` for a whole file; several go as `@('a','b')` or one comma-joined string, and a spec that matches no real string is an error. The inventory must be a fresh `inventory.ps1` run, not the dated baseline. Values listed in `common-keys.txt` share `Common_<Slug>`. Collisions get `_2`, `_3` and a `reviewFlag`; so do values the code-behind overwrites (`code-assigned`) and unit-like values. TextBox and ComboBox `Text` and the values in `xaml-keep-literal.txt` are excluded and listed on the console. |
 | `convert-xaml.ps1 -Keys <csv> [-DryRun]` | Replaces each listed value with `{loc:T Key}` and merges the English into `en.json`. Each row must match exactly one occurrence on its recorded line, on the element with its recorded `x:Name` or path, or nothing is written. Files are read and written as bytes: BOM and line endings survive, nothing outside the replaced spans changes, and the result must parse as XML. Adds `xmlns:loc` to the root when missing and records the scopes it converted on the file's line in `converted-files.txt`. Element text moves to an attribute only on TextBlock, Label, Run, Button, CheckBox, RadioButton, ComboBoxItem and ListBoxItem (Hyperlink text is wrapped in a Run); a property element such as `Button.Content` or any other element is refused with "convert by hand". `-DryRun` prints the plan, including the scopes each file would get, and writes nothing. |
 | `pseudo.ps1 -In en.json -Out qps-ploc.json` | Accent-swaps every value, pads it 30 percent with `~`, wraps it in brackets and keeps `{n}` placeholders intact. |
-| `validate.ps1 [-Root <repo>]` | The test suite's checks, printed: no duplicate key in any `Languages\*.json`, every `{loc:T Key}` (positional or `Key=` form) and `Loc.T/F/N("Key")` exists in `en.json`, no unreferenced key (`Effect_*_Name` and `EngineLayout_*` exempt), `Loc.F` arity against the placeholders, `Loc.N` arity against the values after the count (the count itself is not a format argument), placeholder parity per translation, the same leading and trailing whitespace as English per translated key (a value that ends in a space butts against its neighbor in one sentence, and a translator cannot see it), and no literal left in the converted scopes of each file `converted-files.txt` lists. C# call sites use string literal keys, `Loc.T("Key")`; there is no generated constants class (decision of 2026-09-24). A key built by concatenation is dynamic: the checks never see it, and the `en.json` keys it reaches must belong to an exempt family. Exit code 1 on any failure. |
+| `validate.ps1 [-Root <repo>]` | The test suite's checks, printed: no duplicate key in any `Languages\*.json`, every `{loc:T Key}` (positional or `Key=` form) and `Loc.T/F/N("Key")` exists in `en.json`, every `new Binding("[Key]")` bound straight to the store names a key that exists and holds no placeholders, no unreferenced key (`Effect_*_Name` and `EngineLayout_*` exempt), `Loc.F` arity against the placeholders, `Loc.N` arity against the values after the count (the count itself is not a format argument), placeholder parity per translation, the same leading and trailing whitespace as English per translated key (a value that ends in a space butts against its neighbor in one sentence, and a translator cannot see it), and no literal left in the converted scopes of each file `converted-files.txt` lists. C# call sites use string literal keys, `Loc.T("Key")`; there is no generated constants class (decision of 2026-09-24). A label a helper sets once at wire time binds instead of assigning, `new Binding("[Key]") { Source = Loc.Instance, Mode = BindingMode.OneWay }`, the shape `{loc:T}` itself produces, so it follows a language change with no relabel pass; the checks count that as a reference too. A key built by concatenation is dynamic: the checks never see it, and the `en.json` keys it reaches must belong to an exempt family. Exit code 1 on any failure. |
+| `sweep-cs.ps1 [-Detail] [-Indirect] [-WriteBudget] [-NoBudget] [-Only <file>]` | The C# half: every literal that reaches a UI sink and is not routed through `Loc.T/F/N`, counted per file and held against `cs-literal-budget.txt`. Its own section is below. |
 
 ## Scopes
 
@@ -105,6 +106,120 @@ refuses to write an `en.json` under the repo from another root unless
 scopes in `<Root>\tools\loc\converted-files.txt` when that folder exists, the
 same file `validate.ps1 -Root` reads; the repo's `converted-files.txt` is never
 touched from another root.
+
+## The C# sweep and the literal budget
+
+`validate.ps1` asks whether every key a call names exists. `sweep-cs.ps1` asks
+the opposite question, the one Phase 2 of `docs/localization-plan.md` is measured
+by: is any string a user reads still a bare English literal in code? It finds
+every literal that reaches a UI sink and is not routed through `Loc.T/F/N`,
+prints the count per file and a total, and holds the per-file numbers against
+`cs-literal-budget.txt`. `LocCsLiteralBudget` in
+`src/TrueforceForAll.Core.Tests/LocalizationTests.cs` recomputes the same
+numbers in C# from the same three data files, so the budget is enforced by
+`dotnet test` as well as by hand.
+
+| Command | What it does |
+| --- | --- |
+| `.\sweep-cs.ps1` | Counts, then checks the budget. Exit 1 on any problem. |
+| `.\sweep-cs.ps1 -Detail` | Every remaining literal as `file:line sink [text]`. `-Only <filename>` narrows the listing. |
+| `.\sweep-cs.ps1 -Indirect` | The sinks whose value arrives as a bare identifier, grouped by the member they sit in. This is the tool's own blind-spot report: the literal, if any, is at the caller. |
+| `.\sweep-cs.ps1 -WriteBudget` | Rewrites `cs-literal-budget.txt` from today's counts. |
+| `.\sweep-cs.ps1 -NoBudget` | Counts only, no verdict. |
+
+The check fails when a file holds **more** than its budget (a label was written
+in English, or moved into a file whose number was lower), when it holds
+**fewer** (a slice converted labels without lowering its line, so the number
+stops being true), when a file with no budget line holds any at all, when the
+budget names a file that is gone, and when a method on a watched receiver is
+neither a call sink nor a nonsink. Lowering a number is part of the slice's own
+diff; `-WriteBudget` does it. Phase 2 is provably done the day
+`cs-literal-budget.txt` holds no entries.
+
+### The three data files
+
+- `cs-ui-sinks.txt`: what a UI sink is, and the only place the rule lives. Seven
+  display properties (`Text`, `Content`, `Header`, `ToolTip`, `Title`, plus
+  `Watermark` and `PlaceholderText` for the first one written), both as
+  `label.Text = ...` and as a `Text = ...` entry in an object initializer, `+=`
+  included; `new Run(...)`; the `TrueforceDialog` entry points with their title,
+  body and button labels, selected both by position and by parameter name
+  because the same overload is called both ways; `SetValue(X.YProperty, ...)`;
+  the status-label helpers by shape (`callre Set[A-Za-z]*Status[A-Za-z]*`); and
+  the indirect sinks, the plugin's own helpers that take text and write it to a
+  label, which is where the literal actually lives. `skipcall` names a call whose
+  literals never reach a user (a `Loc` key, a `ToString` format specifier) and
+  `textcall` one that composes the text it is handed (`string.Format`). `watch
+  TrueforceDialog` makes every method on that type either a listed sink or a
+  listed nonsink, so a new overload cannot quietly become a blind spot.
+- `cs-keep-literal.txt`: what stays English, with a comment per entry naming what
+  the plan says about it. `file:` for developer tooling (DevCodes.cs,
+  TestCodesWindow.cs), `type:` for a data record whose property is spelled like
+  a UI sink (`ChangelogVersion.Title`, `BackupFile.Text`), `value:` for a single
+  string (the OLED greeting's factory text). Scope only: a string that is merely
+  awkward to translate still gets a key.
+- `cs-literal-budget.txt`: `<repo-relative path> <count>` per line, generated.
+
+### What the sweep sees, and what it does not
+
+Covered: a dot-form or object-initializer assignment to a display property,
+including `+=` and a value built by concatenation or by a ternary; a window
+`Title` written as a bare statement; `new Run(...)`; the dialog call sites; the
+status helpers; the indirect helpers listed in `cs-ui-sinks.txt`; a literal
+inside `string.Format`. Comments are blanked before anything is matched, so a
+sink quoted in one is never counted, and a sink matched inside a string literal
+is dropped by the frame pass.
+
+Deliberately not counted: a literal being compared rather than shown
+(`kind == "car" ? A : B`), a `ToString` format specifier, a lookup key or any
+other argument to a call the rules do not name, and an interpolated string whose
+only letters come from inside its holes (an interpolated string of two holes
+and a separator has nothing to translate). Placeholders come out of the value before its letters are counted,
+so `"{0} items"` is a real string and `"{0:X2}{1:X2}{2:X2}"` is not.
+
+Not visible at all, and the reason `-Indirect` exists:
+
+- a sentence assembled into a local and written to a label later in the method
+  (`string outcome = "..."; ... Status.Text = outcome;`)
+- a sentence built by a helper of the plugin's own that the rules do not name,
+  or three methods away through an `AppendLine` chain
+- a helper called through a receiver the one-part call rules cannot reach
+- the roughly 1,000 `[TF4ALL]` log lines, the access-code replies and the car
+  data tables, which are not UI sinks and so never enter the count in the first
+  place (this is why they need no allowlist entry)
+
+Adding a rule to `cs-ui-sinks.txt` is the one legitimate reason a budget number
+goes up: the sweep starts seeing writes it was blind to. Re-run with
+`-WriteBudget` in that commit and say so in the message.
+
+### Known blind
+
+The budget counts literals written AT a sink. It is not the Phase 2 remainder,
+and an empty budget file is a necessary condition for the phase rather than a
+sufficient one. These shapes hold user-visible English that no sink rule sees
+today, measured 2026-09-26 and worth re-measuring when a shape gets a rule,
+since every count here was taken by a different method than the one that will
+enforce it:
+
+| Shape | Size | Example |
+| --- | --- | --- |
+| A member that RETURNS display text | 218 literals in 68 members (a narrower count of bare `return "..."` alone gives 49) | the "why is nothing happening" diagnostic, `EffectLabel`, `DescribeLastUploadError` |
+| A named array or list of labels | 51 collections, about 105 labels (an independent count gives 52 collections) | `EqTypeLabels`, `IdleStyleLabels`, `RevLightEffectLabels`, `OledScreenModel.ScreenOrderLabels` |
+| A display property on one of our own records | 560 literals, about 324 user-visible | `GuideEntry.ActionLabel`, `BackupOutcome.Message`, the file-dialog `Filter` strings |
+| Panel text built with a `StringBuilder` | 89 literals | the preset summary, the Diagnostics text |
+| A literal inside an interpolation hole | 123 literals, 46 of them display text | `$"...invert {(x ? "on" : "off")}"` |
+| One hop through a local or a helper | 92 sinks take a bare identifier | `-Indirect` lists these; the literal is at the caller |
+| Core and Engine | 4 sentences | `UsbPcapFfbTap.Status`, which the plugin composes into `FfbTapStatus` |
+
+The sweep is also plugin-scoped: `src/TrueforceForAll.Core` and
+`src/TrueforceForAll.Engine` are not walked at all, which is why the four Core
+sentences are listed above rather than budgeted.
+
+Two more things the number is not. It counts literals, not translation units, so
+one sentence split across four concatenated fragments counts four (real, in
+`SupportPromptWindow`). It also counts only what reaches a sink, so it is at
+once an overcount of strings a translator will type and an undercount of English
+a user can read. Treat it as a work proxy.
 
 ## Rules worth knowing
 

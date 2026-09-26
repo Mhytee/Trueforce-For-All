@@ -2869,10 +2869,13 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
 
             bool   enabled    = _plugin.PluginEnabled;
-            string wheelStr   = _plugin.WheelStatus  ?? "";
-            string streamStr  = _plugin.StreamStatus ?? "";
-            bool   wheelOk    = !wheelStr.StartsWith("Not detected");
-            bool   streamOk   = streamStr.StartsWith("Streaming");
+            // Tokens, not prefixes. These two used to be read off the front of
+            // the plugin's status sentences ("Not detected", "Streaming"), which
+            // meant the pill decided its own state from copy it also shows; the
+            // captions above are keyed already, so the sentences are next and
+            // the pill would have started reading a Spanish one.
+            bool   wheelOk    = _plugin.WheelStatusOk;
+            bool   streamOk   = _plugin.StreamStatusOk;
             bool   gameOn     = !string.IsNullOrEmpty(_plugin.ActiveGame);
 
             var    telSrc     = _plugin.TelemetrySource;
@@ -3215,8 +3218,8 @@ namespace TrueforceForAll.Plugin
         private void RefreshStationarySpringBadge()
         {
             if (_plugin == null || StationarySpringUnsupportedBadge == null) return;
-            string inert = _plugin.StationarySpringInertReason;
-            bool springLive = inert == null;
+            var inert = _plugin.StationarySpringInertReason;
+            bool springLive = inert == TrueforcePlugin.StationarySpringInert.None;
             StationarySpringUnsupportedBadge.Visibility = springLive ? Visibility.Collapsed : Visibility.Visible;
             if (!springLive)
             {
@@ -3231,45 +3234,48 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Badge text for each StationarySpringInertReason.
         ///
-        /// The plugin's reason property returns an English sentence that this
-        /// file and its tooltip twin below both switch on, so the sentence is a
-        /// token as well as copy. Turning it into an enum is a plugin-side
-        /// change Phase 2 owns; until then the token stays English and the two
-        /// switches here decide what the panel shows. An unknown reason falls
-        /// back to the sentence itself, which is what the badge showed before
-        /// the badge had keys.</summary>
-        private static string StationarySpringInertBadge(string reason)
+        /// The plugin's reason property returned an English sentence that this
+        /// file and its tooltip twin below both switched on, so the sentence was
+        /// a token as well as copy. It is an enum now, and these two switches
+        /// map each token to the key the panel shows. None is never passed:
+        /// RefreshStationarySpringBadge only calls this while the badge is
+        /// visible, which is exactly when the reason is not None. A token added
+        /// later with no key of its own shows an empty badge whose tooltip still
+        /// explains the section, rather than a stray English sentence.</summary>
+        private static string StationarySpringInertBadge(TrueforcePlugin.StationarySpringInert reason)
         {
             switch (reason)
             {
-                case "not used in Forza on the capture route":
+                case TrueforcePlugin.StationarySpringInert.ForzaCapture:
                     return Loc.T("TelemetryFfb_StationarySpringInertForzaCapture");
-                case "not used on an arcade cabinet":
+                case TrueforcePlugin.StationarySpringInert.Arcade:
                     return Loc.T("TelemetryFfb_StationarySpringInertArcade");
-                case "not used in iRacing":
+                case TrueforcePlugin.StationarySpringInert.IRacing:
                     return Loc.T("TelemetryFfb_StationarySpringInertIRacing");
-                case "needs the stationary friction on":
+                case TrueforcePlugin.StationarySpringInert.NeedsFriction:
                     return Loc.T("TelemetryFfb_StationarySpringInertFriction");
-                case "off outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza in this version":
+                case TrueforcePlugin.StationarySpringInert.Locked:
                     return Loc.T("TelemetryFfb_StationarySpringInertLocked");
                 default:
-                    return reason;
+                    return string.Empty;
             }
         }
 
         /// <summary>Badge tooltip for each StationarySpringInertReason. Kept
-        /// next to the badge because it is UI copy, not plugin logic.</summary>
-        private static string StationarySpringInertTooltip(string reason)
+        /// next to the badge because it is UI copy, not plugin logic. Arcade has
+        /// no tooltip of its own and takes the generic one, as it did when the
+        /// switch read sentences.</summary>
+        private static string StationarySpringInertTooltip(TrueforcePlugin.StationarySpringInert reason)
         {
             switch (reason)
             {
-                case "not used in Forza on the capture route":
+                case TrueforcePlugin.StationarySpringInert.ForzaCapture:
                     return Loc.T("TelemetryFfb_StationarySpringInertForzaCapture_Tip");
-                case "not used in iRacing":
+                case TrueforcePlugin.StationarySpringInert.IRacing:
                     return Loc.T("TelemetryFfb_StationarySpringInertIRacing_Tip");
-                case "needs the stationary friction on":
+                case TrueforcePlugin.StationarySpringInert.NeedsFriction:
                     return Loc.T("TelemetryFfb_StationarySpringInertFriction_Tip");
-                case "off outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza in this version":
+                case TrueforcePlugin.StationarySpringInert.Locked:
                     return Loc.T("TelemetryFfb_StationarySpringInertLocked_Tip");
                 default:
                     return Loc.T("TelemetryFfb_StationarySpringInertOther_Tip");
@@ -6144,13 +6150,14 @@ namespace TrueforceForAll.Plugin
             bool usbpcap    = _plugin.IsUsbPcapDriverReady;
             bool ghub      = _plugin.IsLogitechGHubRunning;
             string wheel   = _plugin.WheelStatus ?? "";
-            bool wheelOk   = !wheel.StartsWith("Not detected", StringComparison.OrdinalIgnoreCase)
-                          && !wheel.StartsWith("Open failed", StringComparison.OrdinalIgnoreCase)
-                          && wheel.IndexOf("error", StringComparison.OrdinalIgnoreCase) < 0;
+            // States, not words: these three sentences are due to be
+            // translated, and the tap's is composed behind a prefix, so a
+            // prefix test on it was already wrong in Assetto Corsa.
+            bool wheelOk   = _plugin.WheelStatusOk;
             string stream  = _plugin.StreamStatus ?? "";
-            bool streamOk  = stream.StartsWith("Streaming", StringComparison.OrdinalIgnoreCase);
+            bool streamOk  = _plugin.StreamStatusOk;
             string tap     = _plugin.FfbTapStatus ?? "";
-            bool tapStarted = tap.StartsWith("Tapping", StringComparison.OrdinalIgnoreCase);
+            bool tapStarted = _plugin.FfbTapIsTapping;
             bool tapLive    = _plugin.FfbTapTargetFresh(750);
             var src        = _plugin.TelemetrySource;
             double hz      = src?.MeasuredHz ?? 0;
@@ -6781,7 +6788,7 @@ namespace TrueforceForAll.Plugin
             // Live wheel first; fall back to the persisted last-used model so
             // an "it broke, I unplugged it" report still names the hardware.
             string wheel = _plugin?.WheelStatus;
-            if (string.IsNullOrEmpty(wheel) || wheel.StartsWith("Not detected", StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(wheel) || _plugin?.WheelStatusOk != true)
             {
                 string lastUsed = _plugin?.Settings?.LastUsedWheel;
                 wheel = string.IsNullOrEmpty(lastUsed)

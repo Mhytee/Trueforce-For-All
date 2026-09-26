@@ -3,7 +3,8 @@
 # Purpose: the localization checks the test suite runs, printed for a
 #          translator or a reviewer without a build: no duplicate keys in any
 #          Languages\*.json, every {loc:T Key} in XAML and every
-#          Loc.T/F/N("Key") in C# exists in en.json, no unreferenced en.json
+#          Loc.T/F/N("Key") or new Binding("[Key]") in C# exists in en.json,
+#          no unreferenced en.json
 #          key (Effect_*_Name and EngineLayout_* are dynamic and exempt), Loc.F
 #          and Loc.N arity match the {n} placeholders, placeholder parity
 #          between each translation and English, the same leading and
@@ -36,162 +37,12 @@ function Get-LocSourceFiles([string]$Dir, [string]$Filter) {
     return @(Get-ChildItem -Path $Dir -Recurse -Filter $Filter | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' })
 }
 
-# ---- a lexer-lite for C#, mirroring LocalizationTests.cs (IsLiteralStart,
-# ---- SkipLiteral, StripComments, CountArgsAfter): literals and comments,
-# ---- enough to count top-level commas inside one argument list.
-
-function Test-LocLiteralStart([string]$Text, [int]$I) {
-    # A char literal, a regular string, or a verbatim or interpolated string
-    # behind one or two of '@' and '$'.
-    $c = $Text[$I]
-    if ($c -eq '"' -or $c -eq "'") { return $true }
-    if ($c -eq '@' -or $c -eq '$') {
-        $j = $I
-        while ($j -lt $Text.Length -and ($Text[$j] -eq '@' -or $Text[$j] -eq '$')) { $j++ }
-        return (($j - $I) -le 2 -and $j -lt $Text.Length -and $Text[$j] -eq '"')
-    }
-    return $false
-}
-
-function Get-LocLiteralEnd([string]$Text, [int]$I) {
-    # Index just past the literal starting at I: a char literal, a regular
-    # string (backslash escapes), a verbatim string (doubled quotes) or an
-    # interpolated string, whose holes may hold code with literals of their
-    # own. The runs between the characters that matter are skipped with
-    # IndexOfAny, so a long string costs one loop turn per quote or escape.
-    $verbatim = $false
-    $interpolated = $false
-    while ($I -lt $Text.Length -and ($Text[$I] -eq '@' -or $Text[$I] -eq '$')) {
-        if ($Text[$I] -eq '@') { $verbatim = $true } else { $interpolated = $true }
-        $I++
-    }
-    if ($I -ge $Text.Length) { return $I }
-    $quote = $Text[$I]
-    $I++
-    if ($quote -eq "'") {
-        while ($I -lt $Text.Length -and $Text[$I] -ne "'") {
-            if ($Text[$I] -eq '\') { $I++ }
-            $I++
-        }
-        return [Math]::Min($I + 1, $Text.Length)
-    }
-    if ($quote -ne '"') { return $I }
-    $stops = New-Object System.Collections.Generic.List[char]
-    $stops.Add([char]'"')
-    if (-not $verbatim) { $stops.Add([char]'\') }
-    if ($interpolated) { $stops.Add([char]'{') }
-    $stopChars = $stops.ToArray()
-    while ($I -lt $Text.Length) {
-        $n = $Text.IndexOfAny($stopChars, $I)
-        if ($n -lt 0) { return $Text.Length }
-        $I = $n
-        $c = $Text[$I]
-        if ($c -eq '"') {
-            if ($verbatim -and $I + 1 -lt $Text.Length -and $Text[$I + 1] -eq '"') { $I += 2; continue }
-            return $I + 1
-        }
-        if ($c -eq '\') { $I += 2; continue }
-        # An interpolation hole: '{{' is a brace, anything else runs to the
-        # matching '}' with its own nesting and literals.
-        if ($I + 1 -lt $Text.Length -and $Text[$I + 1] -eq '{') { $I += 2; continue }
-        $I++
-        $depth = 0
-        while ($I -lt $Text.Length) {
-            if (Test-LocLiteralStart $Text $I) { $I = Get-LocLiteralEnd $Text $I; continue }
-            $h = $Text[$I]
-            if ($h -eq '{' -or $h -eq '(' -or $h -eq '[') { $depth++ }
-            elseif ($h -eq ')' -or $h -eq ']') { $depth-- }
-            elseif ($h -eq '}') {
-                if ($depth -eq 0) { $I++; break }
-                $depth--
-            }
-            $I++
-        }
-    }
-    return $I
-}
-
-function Remove-LocComments([string]$Text) {
-    # Comments become spaces (newlines kept, so line numbers hold); string and
-    # char literals pass through untouched, so a "//" inside one is not a
-    # comment. Only the characters that can start a literal or a comment are
-    # visited; the runs between them are copied whole.
-    $sb = New-Object System.Text.StringBuilder($Text.Length)
-    $stops = [char[]]@([char]'"', [char]"'", [char]'/', [char]'@', [char]'$')
-    $i = 0
-    while ($i -lt $Text.Length) {
-        $n = $Text.IndexOfAny($stops, $i)
-        if ($n -lt 0) { [void]$sb.Append($Text, $i, $Text.Length - $i); break }
-        if ($n -gt $i) { [void]$sb.Append($Text, $i, $n - $i); $i = $n }
-        if (Test-LocLiteralStart $Text $i) {
-            $end = Get-LocLiteralEnd $Text $i
-            [void]$sb.Append($Text, $i, $end - $i)
-            $i = $end
-            continue
-        }
-        $c = $Text[$i]
-        if ($c -eq '/' -and $i + 1 -lt $Text.Length -and $Text[$i + 1] -eq '/') {
-            $end = $Text.IndexOf("`n", $i)
-            if ($end -lt 0) { $end = $Text.Length }
-            [void]$sb.Append([char]' ', $end - $i)
-            $i = $end
-            continue
-        }
-        if ($c -eq '/' -and $i + 1 -lt $Text.Length -and $Text[$i + 1] -eq '*') {
-            $end = $Text.IndexOf('*/', $i + 2, [System.StringComparison]::Ordinal)
-            if ($end -lt 0) { $end = $Text.Length } else { $end += 2 }
-            [void]$sb.Append(($Text.Substring($i, $end - $i) -replace '[^\n]', ' '))
-            $i = $end
-            continue
-        }
-        [void]$sb.Append($c)
-        $i++
-    }
-    return $sb.ToString()
-}
-
-function Get-LocGenericListEnd([string]$Text, [int]$Open) {
-    # Index just past the '>' that closes the type argument list opened at
-    # Open, or -1 when the text up to it is not a type list (letters, digits,
-    # '_', '.', ',', '?', nested angle brackets, square brackets, whitespace).
-    $depth = 0
-    for ($j = $Open; $j -lt $Text.Length; $j++) {
-        $c = $Text[$j]
-        if ($c -eq '<') { $depth++; continue }
-        if ($c -eq '>') { $depth--; if ($depth -eq 0) { return $j + 1 }; continue }
-        if (-not ($c -match '[A-Za-z0-9_.,?\[\]\s]')) { return -1 }
-    }
-    return -1
-}
-
-function Get-LocArgCountAfter([string]$Text, [int]$Pos) {
-    # Number of arguments that follow position Pos (just past the key literal)
-    # up to the call's closing parenthesis: one per top-level comma. Nested
-    # parentheses, brackets, braces and literals are skipped whole, and so is
-    # a generic type argument list ("Foo<Dictionary<string, int>>()"): a '<'
-    # right after an identifier character opens one when everything up to the
-    # matching '>' is type-list text. A comparison written without spaces
-    # ("a<b, c>d") reads as a generic list; assign such an argument to a
-    # local first.
-    $depth = 0
-    $count = 0
-    $i = $Pos
-    while ($i -lt $Text.Length) {
-        if (Test-LocLiteralStart $Text $i) { $i = Get-LocLiteralEnd $Text $i; continue }
-        $c = $Text[$i]
-        if ($c -eq '<' -and $i -gt 0 -and ($Text[$i - 1] -match '[A-Za-z0-9_]')) {
-            $end = Get-LocGenericListEnd $Text $i
-            if ($end -gt 0) { $i = $end; continue }
-        }
-        if ($c -eq '(' -or $c -eq '[' -or $c -eq '{') { $depth++ }
-        elseif ($c -eq ')' -or $c -eq ']' -or $c -eq '}') {
-            if ($depth -eq 0) { break }
-            $depth--
-        } elseif ($c -eq ',' -and $depth -eq 0) { $count++ }
-        $i++
-    }
-    return $count
-}
+# The C# lexer-lite this file used to carry (Test-LocLiteralStart,
+# Get-LocLiteralEnd, Remove-LocComments, Get-LocGenericListEnd,
+# Get-LocArgCountAfter) moved into _common.ps1 when sweep-cs.ps1 needed the same
+# reader, so there is one copy rather than one per script. Its C# mirror is still
+# LocalizationTests.cs (IsLiteralStart, SkipLiteral, StripComments,
+# CountArgsAfter).
 
 # ---- 1. language files
 $langs = @{}
@@ -246,10 +97,17 @@ Write-Host ('XAML: {0} {{loc:T}} references' -f $xamlRefs)
 
 # ---- 3. C# references and arity
 $csRefs = 0
+$csBinds = 0
 # Literal keys only (decision C: no constants class). The literal must be the
 # whole first argument (a ',' or ')' follows it): a key built by concatenation
 # ("Effect_" + id + "_Name") is dynamic and never matches here.
 $callRe = [regex]'\bLoc\.(T|F|N)\(\s*@?"((?:[^"\\]|\\.)*)"\s*(?=[,)])'
+# The second C# reference form: a Binding straight to the store's indexer,
+# new Binding("[Key]") { Source = Loc.Instance, ... }, which is how a label set
+# once at wire time follows a language change without a relabel pass. Same
+# shape TExtension.ProvideValue builds for {loc:T}, so the key is spelled
+# inside the path brackets and a concatenated path stays dynamic.
+$bindRe = [regex]'\bnew\s+Binding\(\s*"\[([A-Za-z][A-Za-z0-9_.]*)\]"\s*\)'
 $pluralBases = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
 foreach ($cs in Get-LocSourceFiles $plugin '*.cs') {
     # Comments are blanked first (newlines kept), so a call quoted in one is
@@ -298,8 +156,20 @@ foreach ($cs in Get-LocSourceFiles $plugin '*.cs') {
             $fails.Add("$where`: Loc.T(`"$key`") returns a string with $need placeholder(s) raw; use Loc.F")
         }
     }
+    foreach ($m in $bindRe.Matches($text)) {
+        $key = $m.Groups[1].Value
+        $line = [regex]::Matches($text.Substring(0, $m.Index), "`n").Count + 1
+        $where = '{0}:{1}' -f (Get-LocRelativePath $cs.FullName $Root), $line
+        $csBinds++
+        [void]$referenced.Add($key)
+        if (-not $en.Contains($key)) { $fails.Add("$where`: new Binding(`"[$key]`") is not in en.json"); continue }
+        # A bound path cannot carry arguments, so a value with placeholders
+        # would reach the label as "{0}".
+        $need = (Get-LocMaxPlaceholderIndex ([string]$en[$key])) + 1
+        if ($need -gt 0) { $fails.Add("$where`: new Binding(`"[$key]`") binds a string with $need placeholder(s); bind a key without placeholders") }
+    }
 }
-Write-Host ('C#: {0} Loc.T/F/N references' -f $csRefs)
+Write-Host ('C#: {0} Loc.T/F/N references, {1} store binding(s)' -f $csRefs, $csBinds)
 
 # ---- 4. unreferenced English keys
 $unreferenced = 0
@@ -308,7 +178,7 @@ foreach ($k in $en.Keys) {
     if ($referenced.Contains($k)) { continue }
     if ($k -match '^Effect_.+_Name$' -or $k -match '^EngineLayout_') { continue }
     $unreferenced++
-    $fails.Add("en.json: '$k' is referenced by no XAML or C#")
+    $fails.Add("en.json: '$k' is referenced by no XAML, no Loc.T/F/N call and no store binding")
 }
 Write-Host ('en.json: {0} unreferenced key(s)' -f $unreferenced)
 
