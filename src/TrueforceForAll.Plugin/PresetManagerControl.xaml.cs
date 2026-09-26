@@ -129,8 +129,8 @@ namespace TrueforceForAll.Plugin
                 body,
                 issues > 0 ? DialogKind.Warning : DialogKind.Info);
             SetDevStatus(issues == 0
-                ? $"Validated {lines.Count} built-in(s): all OK."
-                : $"Validated {lines.Count} built-in(s): {issues} flagged (see dialog).");
+                ? Loc.F("PresetManager_ValidatedBuiltSAll_Fmt", lines.Count)
+                : Loc.F("PresetManager_ValidatedBuiltSFlagged_Fmt", lines.Count, issues));
         }
 
         private void DevRefreshLibrary_Click(object sender, RoutedEventArgs e)
@@ -182,8 +182,8 @@ namespace TrueforceForAll.Plugin
             }
             RefreshLists();
             SetDevStatus(failed == 0
-                ? (ok == 1 ? $"Promoted '{targets[0]}' to built-in." : $"Promoted {ok} preset(s) to built-in.")
-                : $"Promoted {ok}, {failed} failed (last error: {lastErr}).");
+                ? (ok == 1 ? Loc.F("PresetManager_PromotedBuilt_Fmt", targets[0]) : Loc.F("PresetManager_PromotedPresetSBuilt_Fmt", ok))
+                : Loc.F("PresetManager_PromotedFailedLastError_Fmt", ok, failed, lastErr));
         }
 
         // Same shape for cars: bulk-promote checked rows, else the selected one.
@@ -208,8 +208,8 @@ namespace TrueforceForAll.Plugin
             }
             RefreshLists();
             SetDevStatus(failed == 0
-                ? (ok == 1 ? $"Promoted car '{targets[0].CarId}' to built-in." : $"Promoted {ok} car preset(s) to built-in.")
-                : $"Promoted {ok}, {failed} failed (last error: {lastErr}).");
+                ? (ok == 1 ? Loc.F("PresetManager_PromotedCarBuilt_Fmt", targets[0].CarId) : Loc.F("PresetManager_PromotedCarPresetS_Fmt", ok))
+                : Loc.F("PresetManager_PromotedFailedLastError_Fmt", ok, failed, lastErr));
         }
 
         // Row base: IsChecked needs to notify so the ItemContainerStyle's
@@ -713,7 +713,7 @@ namespace TrueforceForAll.Plugin
             }
             UpdatesChip.Visibility = Visibility.Visible;
             UpdatesChip.Content = count == 1
-                ? "↻ 1 update available"
+                ? Loc.T("PresetManager_N1UpdateAvailable")
                 : "↻ " + count + " updates available";
         }
 
@@ -820,8 +820,8 @@ namespace TrueforceForAll.Plugin
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
                     TrueforceDialog.Show(owner,
-                        "Create pack",
-                        "Pick a username before sharing (Account tab).",
+                        Loc.T("PresetManager_CreatePack"),
+                        Loc.T("PresetManager_PickUsernameBeforeSharing"),
                         DialogKind.Info);
                     return;
                 }
@@ -832,7 +832,7 @@ namespace TrueforceForAll.Plugin
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Create pack failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't upload. Check your connection and try again.", ex);
+                    Loc.T("Share_UploadFailed"), ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -910,12 +910,11 @@ namespace TrueforceForAll.Plugin
             {
                 int total = preview.FreshCount + preview.ConflictCount;
                 var choice = TrueforceDialog.ShowChoice(owner,
-                    "Set pack as defaults",
-                    $"This pack sets {total} default binding(s). {preview.ConflictCount} of them already have a default for that game or car.\n\n"
-                    + "\"Overwrite all\" replaces every existing default. \"Skip existing\" keeps your current defaults and only fills in the ones you haven't set yet.",
-                    primaryLabel:   "Overwrite all",
-                    secondaryLabel: "Skip existing",
-                    cancelLabel:    "Cancel");
+                    Loc.T("PresetManager_SetPackAsDefaults"),
+                    Loc.F("PresetManager_PackSetsDefaultBinding_Fmt", total, preview.ConflictCount),
+                    primaryLabel:   Loc.T("PresetManager_OverwriteAll"),
+                    secondaryLabel: Loc.T("PresetManager_SkipExisting"),
+                    cancelLabel:    Loc.T("Common_Cancel"));
                 if (choice == DialogChoice.Cancel) return;
                 policy = choice == DialogChoice.Primary
                     ? SetDefaultsConflictPolicy.OverwriteAll
@@ -930,7 +929,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                if (PacksStatusLabel != null) PacksStatusLabel.Text = "Couldn't set the defaults. See the SimHub log, then try again.";
+                if (PacksStatusLabel != null) PacksStatusLabel.Text = Loc.T("PresetManager_CouldnTSetDefaults");
                 TrueforceDialog.LogError("Set pack defaults", ex);
             }
         }
@@ -962,20 +961,18 @@ namespace TrueforceForAll.Plugin
 
             // Initial confirm.
             if (TrueforceDialog.Show(owner,
-                "Remove pack",
-                $"Remove pack '{row.Name}'?\n\n"
-                + "Every preset the pack installed will be deleted, except entries you've edited (those are preserved).",
-                DialogKind.Destructive, okLabel: "Remove", cancelLabel: "Cancel") != true)
+                Loc.T("PresetManager_PacksRemove"),
+                Loc.F("PresetManager_RemovePack_Fmt", row.Name),
+                DialogKind.Destructive, okLabel: Loc.T("PresetManager_Remove"), cancelLabel: Loc.T("Common_Cancel")) != true)
                 return;
 
             // Edited entries: let the user keep their changes or remove them too.
             if (impact.EditedEntryCount > 0)
             {
                 var choice = TrueforceDialog.ShowChoice(owner,
-                    "Edited entries",
-                    $"{impact.EditedEntryCount} item(s) in this pack have changes you made since downloading. "
-                    + "Keep your edited copies, or remove them too?",
-                    primaryLabel: "Keep edited", secondaryLabel: "Remove all", cancelLabel: "Cancel");
+                    Loc.T("PresetManager_EditedEntries"),
+                    Loc.F("PresetManager_ItemSPackHave_Fmt", impact.EditedEntryCount),
+                    primaryLabel: Loc.T("PresetManager_KeepEdited"), secondaryLabel: Loc.T("PresetManager_RemoveAll"), cancelLabel: Loc.T("Common_Cancel"));
                 if (choice == DialogChoice.Cancel) return;
                 options.RemoveEditedEntries = choice == DialogChoice.Secondary;
             }
@@ -991,10 +988,9 @@ namespace TrueforceForAll.Plugin
                 string n = impact.SharedEngines.Count == 1 ? "1 custom engine" : $"{impact.SharedEngines.Count} custom engines";
 
                 var choice = TrueforceDialog.ShowChoice(owner,
-                    "Shared custom engines",
-                    $"{n} in this pack are also used by {string.Join(" and ", who)}. "
-                    + "Keep these engines, or delete them? (Anything left pointing at a deleted engine switches to Auto.)",
-                    primaryLabel: "Keep engines", secondaryLabel: "Delete engines", cancelLabel: "Cancel");
+                    Loc.T("PresetManager_SharedCustomEngines"),
+                    Loc.F("PresetManager_PackAlsoUsed_Fmt", n, string.Join(" and ", who)),
+                    primaryLabel: Loc.T("PresetManager_KeepEngines"), secondaryLabel: Loc.T("PresetManager_DeleteEngines"), cancelLabel: Loc.T("Common_Cancel"));
                 if (choice == DialogChoice.Cancel) return;
                 options.DeleteSharedEngines = choice == DialogChoice.Secondary;
             }
@@ -1006,7 +1002,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                if (PacksStatusLabel != null) PacksStatusLabel.Text = "Couldn't remove the pack. See the SimHub log, then try again.";
+                if (PacksStatusLabel != null) PacksStatusLabel.Text = Loc.T("PresetManager_CouldnTRemovePack");
                 TrueforceDialog.LogError("Remove pack", ex);
                 return;
             }
@@ -1042,16 +1038,16 @@ namespace TrueforceForAll.Plugin
             if (!enabled)
             {
                 ShowCommunityGate(
-                    "Community presets are off",
-                    "Turn on community features to browse and download presets shared by other drivers.",
+                    Loc.T("PresetManager_CommunityPresetsOff"),
+                    Loc.T("PresetManager_TurnCommunityFeaturesBrowse"),
                     Loc.T("PresetManager_CommunityGate"));
                 return true;
             }
             if (!signedIn)
             {
                 ShowCommunityGate(
-                    "Sign in to browse community presets",
-                    "Community presets need a free account. Sign in or create one to browse and download.",
+                    Loc.T("PresetManager_SignBrowseCommunityPresets"),
+                    Loc.T("PresetManager_CommunityPresetsNeedFree"),
                     Loc.T("PresetManager_CommunityGateSignIn"));
                 return true;
             }
@@ -1400,11 +1396,11 @@ namespace TrueforceForAll.Plugin
 
             var allChip = new CheckBox
             {
-                Content   = "All games",
+                Content   = Loc.T("PresetManager_AllGames"),
                 Style     = (Style)FindResource("ToggleChipButton"),
                 IsChecked = _communitySelectedGames.Count == 0,
                 Tag       = null,
-                ToolTip   = "Browse presets from every game.",
+                ToolTip   = Loc.T("PresetManager_BrowsePresetsEveryGame"),
             };
             allChip.Click += CommunityGameChip_Click;
             CommunityGameChips.Children.Add(allChip);
@@ -1452,7 +1448,7 @@ namespace TrueforceForAll.Plugin
                 Content = "+" + overflow.Count + " more",
                 Style   = (Style)FindResource("ToggleChipButton"),
                 Tag     = MoreGamesChipTag,
-                ToolTip = "Every other game with shared presets.",
+                ToolTip = Loc.T("PresetManager_EveryOtherGameShared"),
             };
             var list = new StackPanel();
             foreach (var g in overflow)
@@ -1882,7 +1878,7 @@ namespace TrueforceForAll.Plugin
 
             var all = new RadioButton
             {
-                Content   = $"All ({_carRows.Count})",
+                Content   = Loc.F("PresetManager_All_Fmt", _carRows.Count),
                 GroupName = "CarGameFilter",
                 Style     = (Style)FindResource("ChipButton"),
                 IsChecked = string.IsNullOrEmpty(_carGameFilter),
@@ -2425,8 +2421,8 @@ namespace TrueforceForAll.Plugin
             {
                 SimHub.Logging.Current.Warn($"[TF4ALL] Refresh library failed: {ex.Message}");
                 TrueforceDialog.Show(Window.GetWindow(this),
-                    "Refresh library",
-                    "Refresh failed. Check the SimHub log for details.",
+                    Loc.T("PresetManager_DevBarRefreshLibrary"),
+                    Loc.T("PresetManager_RefreshFailedCheckSimHub"),
                     DialogKind.Warning);
                 return;
             }
@@ -2764,7 +2760,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
 
             GameCheckedLabel.Text = checkedCount > 0
-                ? $"{checkedCount} checked"
+                ? Loc.F("PresetManager_Checked_Fmt", checkedCount)
                 : "";
             // Bulk delete labels: clue the user that the action applies to
             // the checked set, not the highlighted row.
@@ -2895,7 +2891,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     : Loc.T("PresetManager_CarPromoteBuiltin");
             }
 
-            CarCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
+            CarCheckedLabel.Text = checkedCount > 0 ? Loc.F("PresetManager_Checked_Fmt", checkedCount) : Loc.T("PresetManager_Text");
             CarDeleteBtn.Content = carCheckedDeletable > 0 ? Loc.F("PresetManager_DeleteCount_Fmt", carCheckedDeletable) : Loc.T("Common_Delete");
             if (!_bulkCheckInFlight)
                 UpdateSelectAllHeader(CarSelectAllCheck, GetVisible<CarRow>(_carRows));
@@ -2934,7 +2930,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             CustomDeleteBtn.IsEnabled = checkedCount > 0 || any;
 
-            CustomCheckedLabel.Text = checkedCount > 0 ? $"{checkedCount} checked" : "";
+            CustomCheckedLabel.Text = checkedCount > 0 ? Loc.F("PresetManager_Checked_Fmt", checkedCount) : Loc.T("PresetManager_Text");
             CustomDeleteBtn.Content = checkedCount > 0 ? Loc.F("PresetManager_DeleteCount_Fmt", checkedCount) : Loc.T("Common_Delete");
             if (!_bulkCheckInFlight)
                 UpdateSelectAllHeader(CustomSelectAllCheck, GetVisible<CustomRow>(_customRows));
@@ -2946,7 +2942,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             var sel = SelectedGame;
             if (sel == null || (sel.Builtin && !_devMode)) return;   // DEV may rename built-ins
-            string newName = PromptForName("Rename preset", "New name:", sel.Name, name =>
+            string newName = PromptForName(Loc.T("PresetManager_RenamePreset"), Loc.T("PresetManager_NewName"), sel.Name, name =>
                 string.IsNullOrWhiteSpace(name) ? "Enter a name."
                 : (name != sel.Name && _plugin.Settings?.Presets?.ContainsKey(name) == true)
                     ? $"A preset named '{name}' already exists." : null);
@@ -2955,12 +2951,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (newName == sel.Name) return;
             if (!_plugin.RenamePreset(sel.Name, newName))
             {
-                SetLib(GameLibStatus, "Couldn't rename. See the SimHub log.");
+                SetLib(GameLibStatus, Loc.T("PresetManager_CouldnTRenameSee"));
                 return;
             }
             ReloadGames();
             SelectGameByName(newName);
-            SetLib(GameLibStatus, $"Renamed to '{newName}'.");
+            SetLib(GameLibStatus, Loc.F("PresetManager_Renamed_Fmt", newName));
         }
 
         private void GameDuplicate_Click(object sender, RoutedEventArgs e)
@@ -2974,12 +2970,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             string newName = _plugin.DuplicatePreset(sel.Name);
             if (newName == null)
             {
-                SetLib(GameLibStatus, "Couldn't duplicate. See the SimHub log.");
+                SetLib(GameLibStatus, Loc.T("PresetManager_CouldnTDuplicateSee"));
                 return;
             }
             ReloadGames();
             SelectGameByName(newName);
-            SetLib(GameLibStatus, $"Duplicated as '{newName}'.");
+            SetLib(GameLibStatus, Loc.F("PresetManager_DuplicatedAs_Fmt", newName));
         }
 
         // Share a game preset selected in the manager. Mirrors
@@ -3031,8 +3027,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     || snap == null)
                 {
                     TrueforceDialog.Show(Window.GetWindow(this),
-                        "Share preset",
-                        $"Could not load game preset '{presetName}'.",
+                        Loc.T("PresetManager_SharePreset"),
+                        Loc.F("PresetManager_CouldNotLoadGame_Fmt", presetName),
                         DialogKind.Warning);
                     return;
                 }
@@ -3040,8 +3036,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
                     TrueforceDialog.Show(owner,
-                        "Share preset",
-                        "Pick a username before sharing (Account tab).",
+                        Loc.T("PresetManager_SharePreset"),
+                        Loc.T("PresetManager_PickUsernameBeforeSharing"),
                         DialogKind.Info);
                     return;
                 }
@@ -3092,7 +3088,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         string nextVer = NextVersionLabel(snap.CommunityUploadedVersion);
                         var chooser = new UpdateVsNewChooserWindow(
                             "Re-share '" + presetName + "'",
-                            "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
+                            Loc.T("PresetManager_AlreadyUploadedPresetCommunity"),
                             "Update existing (" + nextVer + ")",
                             "Share as new preset")
                         {
@@ -3108,8 +3104,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         else
                         {
                             string suggested = presetName + " " + nextVer;
-                            string newName = PromptForName("Share as a new preset",
-                                "Community name for this new upload (your local preset's name stays the same):",
+                            string newName = PromptForName(Loc.T("PresetManager_ShareAsNewPreset"),
+                                Loc.T("PresetManager_CommunityNameNewUpload"),
                                 suggested);
                             if (string.IsNullOrWhiteSpace(newName)) return;
                             shareName = newName.Trim();
@@ -3121,7 +3117,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         // 2026-07-13): it would only mint an identical
                         // duplicate row. No bypass on purpose; name and
                         // description edits go through Community > Edit….
-                        TrueforceDialog.Show(owner, "Already shared",
+                        TrueforceDialog.Show(owner, Loc.T("PresetManager_AlreadyShared"),
                             "'" + presetName + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
                             DialogKind.Info);
                         return;
@@ -3148,7 +3144,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Share game preset failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't share that preset. Check your connection and try again.", ex);
+                    Loc.T("PresetManager_CouldnTSharePreset"), ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -3172,11 +3168,11 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     : "";
                 string list = string.Join(", ", bulk.Take(10).Select(r => "'" + r.Name + "'"))
                     + (bulk.Count > 10 ? $" and {bulk.Count - 10} more" : "");
-                if (TrueforceDialog.Show(Window.GetWindow(this), "Delete presets", $"Delete {bulk.Count} preset(s)?\n\n{list}{detail}",
-                    DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
+                if (TrueforceDialog.Show(Window.GetWindow(this), Loc.T("PresetManager_DeletePresets"), Loc.F("PresetManager_DeletePresetS_Fmt", bulk.Count, list, detail),
+                    DialogKind.Destructive, okLabel: Loc.T("Common_Delete"), cancelLabel: Loc.T("Common_Cancel")) != true) return;
                 foreach (var r in bulk) _plugin.DeletePreset(r.Name);
                 ReloadGames();
-                SetLib(GameLibStatus, $"Deleted {bulk.Count} preset(s).");
+                SetLib(GameLibStatus, Loc.F("PresetManager_DeletedPresetS_Fmt", bulk.Count));
                 return;
             }
 
@@ -3185,12 +3181,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             string warning = sel.Defaults.Count > 0
                 ? $"Delete preset '{sel.Name}'?\n\nIt's currently the default for: {string.Join(", ", sel.Defaults)}. Those games will lose their auto-load binding."
                 : $"Delete preset '{sel.Name}'?";
-            if (TrueforceDialog.Show(Window.GetWindow(this), "Delete preset", warning, DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel")
+            if (TrueforceDialog.Show(Window.GetWindow(this), Loc.T("PresetManager_DeletePreset"), warning, DialogKind.Destructive, okLabel: Loc.T("Common_Delete"), cancelLabel: Loc.T("Common_Cancel"))
                 != true) return;
             string deleted = sel.Name;
             _plugin.DeletePreset(sel.Name);
             ReloadGames();
-            SetLib(GameLibStatus, $"Deleted '{deleted}'.");
+            SetLib(GameLibStatus, Loc.F("PresetManager_Deleted_Fmt", deleted));
         }
 
         // Export / Import: routed through SettingsControl's shared flow so this
@@ -3243,7 +3239,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             var known = CollectKnownGames();
             if (known.Count == 0)
             {
-                SetLib(GameLibStatus, "No games seen yet. Launch a game once so SimHub registers it, then bind a default.");
+                SetLib(GameLibStatus, Loc.T("PresetManager_NoGamesSeenYet"));
                 return;
             }
             var before = new HashSet<string>(sel.Defaults ?? new List<string>(),
@@ -3258,8 +3254,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             known.Sort(StringComparer.OrdinalIgnoreCase);
 
             var picked = PickMultipleFromList(
-                $"Set default games for '{sel.Name}'",
-                "Check every game this preset should auto-load for. Unchecking a game reverts it to its usual default (a game always has one: its built-in preset, or the one created when the game was first seen).",
+                Loc.F("PresetManager_SetDefaultGames_Fmt", sel.Name),
+                Loc.T("PresetManager_CheckEveryGamePreset"),
                 known, before);
             if (picked == null) return;
 
@@ -3274,7 +3270,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             ReloadGames();
             SelectGameByName(sel.Name);
-            SetLib(GameLibStatus, $"Updated default games for '{sel.Name}'.");
+            SetLib(GameLibStatus, Loc.F("PresetManager_UpdatedDefaultGames_Fmt", sel.Name));
         }
 
         private void GameEdit_Click(object sender, RoutedEventArgs e)
@@ -3407,8 +3403,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
                     TrueforceDialog.Show(owner,
-                        "Share pack",
-                        "Pick a username before sharing (Account tab).",
+                        Loc.T("PresetManager_SharePack"),
+                        Loc.T("PresetManager_PickUsernameBeforeSharing"),
                         DialogKind.Info);
                     return;
                 }
@@ -3420,7 +3416,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Share pack (car bulk) failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't share that pack. Check your connection and try again.", ex);
+                    Loc.T("PresetManager_CouldnTSharePack"), ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -3438,8 +3434,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
                     TrueforceDialog.Show(owner,
-                        "Share pack",
-                        "Pick a username before sharing (Account tab).",
+                        Loc.T("PresetManager_SharePack"),
+                        Loc.T("PresetManager_PickUsernameBeforeSharing"),
                         DialogKind.Info);
                     return;
                 }
@@ -3451,7 +3447,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Share pack (game bulk) failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't share that pack. Check your connection and try again.", ex);
+                    Loc.T("PresetManager_CouldnTSharePack"), ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -3476,8 +3472,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     || entry.Override == null)
                 {
                     TrueforceDialog.Show(Window.GetWindow(this),
-                        "Share preset",
-                        $"Could not load preset '{presetName}' for car '{carId}'.",
+                        Loc.T("PresetManager_SharePreset"),
+                        Loc.F("PresetManager_CouldNotLoadPreset_Fmt", presetName, carId),
                         DialogKind.Warning);
                     return;
                 }
@@ -3518,8 +3514,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
                     TrueforceDialog.Show(owner,
-                        "Share preset",
-                        "Pick a username before sharing (Account tab).",
+                        Loc.T("PresetManager_SharePreset"),
+                        Loc.T("PresetManager_PickUsernameBeforeSharing"),
                         DialogKind.Info);
                     return;
                 }
@@ -3539,7 +3535,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         string nextVer = NextVersionLabel(entry.Override.CommunityUploadedVersion);
                         var chooser = new UpdateVsNewChooserWindow(
                             "Re-share '" + presetName + "'",
-                            "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
+                            Loc.T("PresetManager_AlreadyUploadedPresetCommunity"),
                             "Update existing (" + nextVer + ")",
                             "Share as new preset")
                         {
@@ -3555,8 +3551,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         else
                         {
                             string suggested = presetName + " " + nextVer;
-                            string newName = PromptForName("Share as a new preset",
-                                "Community name for this new upload (your local preset's name stays the same):",
+                            string newName = PromptForName(Loc.T("PresetManager_ShareAsNewPreset"),
+                                Loc.T("PresetManager_CommunityNameNewUpload"),
                                 suggested);
                             if (string.IsNullOrWhiteSpace(newName)) return;
                             shareName = newName.Trim();
@@ -3566,7 +3562,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     {
                         // Unchanged uploads never re-share (owner rule,
                         // 2026-07-13); see the game-preset handler.
-                        TrueforceDialog.Show(owner, "Already shared",
+                        TrueforceDialog.Show(owner, Loc.T("PresetManager_AlreadyShared"),
                             "'" + presetName + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
                             DialogKind.Info);
                         return;
@@ -3596,7 +3592,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Share preset failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't share that preset. Check your connection and try again.", ex);
+                    Loc.T("PresetManager_CouldnTSharePreset"), ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -3713,8 +3709,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             foreach (var r in _carRows)
                 if (string.Equals(r.CarId, sel.CarId, StringComparison.Ordinal))
                     existing.Add(r.PresetName);
-            string newName = PromptForName("Rename car preset",
-                $"New name for '{sel.CarId}' preset:", sel.PresetName, name =>
+            string newName = PromptForName(Loc.T("PresetManager_RenameCarPreset"),
+                Loc.F("PresetManager_NewNamePreset_Fmt", sel.CarId), sel.PresetName, name =>
                     string.IsNullOrWhiteSpace(name) ? "Enter a name."
                     : (name != sel.PresetName && existing.Contains(name))
                         ? $"A preset named '{name}' already exists for this car." : null);
@@ -3723,12 +3719,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (newName == sel.PresetName) return;
             if (!_plugin.RenameCarPreset(sel.CarId, sel.PresetName, newName))
             {
-                SetLib(CarLibStatus, "Couldn't rename. See the SimHub log.");
+                SetLib(CarLibStatus, Loc.T("PresetManager_CouldnTRenameSee"));
                 return;
             }
             ReloadCars();
             SelectCarRow(sel.CarId, newName);
-            SetLib(CarLibStatus, $"Renamed to '{newName}'.");
+            SetLib(CarLibStatus, Loc.F("PresetManager_Renamed_Fmt", newName));
         }
 
         private void CarDuplicate_Click(object sender, RoutedEventArgs e)
@@ -3740,12 +3736,12 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             string newName = _plugin.DuplicateCarPreset(sel.CarId, sel.PresetName);
             if (newName == null)
             {
-                SetLib(CarLibStatus, "Couldn't duplicate. See the SimHub log.");
+                SetLib(CarLibStatus, Loc.T("PresetManager_CouldnTDuplicateSee"));
                 return;
             }
             ReloadCars();
             SelectCarRow(sel.CarId, newName);
-            SetLib(CarLibStatus, $"Duplicated as '{newName}'.");
+            SetLib(CarLibStatus, Loc.F("PresetManager_DuplicatedAs_Fmt", newName));
         }
 
         private void CarDelete_Click(object sender, RoutedEventArgs e)
@@ -3763,16 +3759,16 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     ? $"\n\n{active} of the selected preset(s) are currently the default for their car. Those cars will fall back to their built-in default or globals."
                     : "";
                 if (TrueforceDialog.Show(Window.GetWindow(this),
-                    "Delete car presets",
-                    $"Delete {bulk.Count} car preset(s)?{detail}",
-                    DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
+                    Loc.T("PresetManager_DeleteCarPresets"),
+                    Loc.F("PresetManager_DeleteCarPresetS_Fmt", bulk.Count, detail),
+                    DialogKind.Destructive, okLabel: Loc.T("Common_Delete"), cancelLabel: Loc.T("Common_Cancel")) != true) return;
                 int deletedCount = 0;
                 foreach (var r in bulk)
                     if (_plugin.DeleteCarPreset(r.CarId, r.PresetName)) deletedCount++;
                 ReloadCars();
                 SetLib(CarLibStatus, deletedCount == bulk.Count
-                    ? $"Deleted {deletedCount} car preset(s)."
-                    : $"Deleted {deletedCount} of {bulk.Count} car preset(s); the rest couldn't be removed (see the SimHub log).");
+                    ? Loc.F("PresetManager_DeletedCarPresetS_Fmt", deletedCount)
+                    : Loc.F("PresetManager_DeletedCarPresetS_Fmt2", deletedCount, bulk.Count));
                 return;
             }
 
@@ -3781,14 +3777,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             string warning = sel.Active
                 ? $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?\n\nIt's currently the default for this car; the car will fall back to its built-in default (or globals)."
                 : $"Delete preset '{sel.PresetName}' for car '{sel.CarId}'?";
-            if (TrueforceDialog.Show(Window.GetWindow(this), "Delete car preset", warning,
-                DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel") != true) return;
+            if (TrueforceDialog.Show(Window.GetWindow(this), Loc.T("PresetManager_DeleteCarPreset"), warning,
+                DialogKind.Destructive, okLabel: Loc.T("Common_Delete"), cancelLabel: Loc.T("Common_Cancel")) != true) return;
             string deleted = sel.PresetName;
             bool ok = _plugin.DeleteCarPreset(sel.CarId, sel.PresetName);
             ReloadCars();
             SetLib(CarLibStatus, ok
-                ? $"Deleted '{deleted}'."
-                : $"Couldn't delete '{deleted}' (see the SimHub log).");
+                ? Loc.F("PresetManager_Deleted_Fmt", deleted)
+                : Loc.F("PresetManager_CouldnTDeleteSee_Fmt", deleted));
         }
 
         private void CarSetActive_Click(object sender, RoutedEventArgs e)
@@ -3801,7 +3797,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 _plugin.SetCarDefaultPreset(sel.CarId, sel.PresetName);
                 ReloadCars();
                 SelectCarRow(sel.CarId, sel.PresetName);
-                SetLib(CarLibStatus, $"Set '{sel.PresetName}' as this car's default.");
+                SetLib(CarLibStatus, Loc.F("PresetManager_SetAsCarS_Fmt", sel.PresetName));
                 return;
             }
 
@@ -3832,7 +3828,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (applied + alreadyActive > 1)
             {
                 string suffix = alreadyActive > 0 ? $" ({alreadyActive} already the default)" : "";
-                SetLib(CarLibStatus, $"Set {applied} preset(s) as their car's default{suffix}.");
+                SetLib(CarLibStatus, Loc.F("PresetManager_SetPresetSAs_Fmt", applied, suffix));
             }
         }
 
@@ -3862,8 +3858,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 var lastRow = checkedActive.Last();
                 SelectCarRow(lastRow.CarId, lastRow.PresetName);
                 SetLib(CarLibStatus, carIds.Count == 1
-                    ? $"Cleared the default for '{carIds[0]}'. It uses the game preset now."
-                    : $"Cleared the default for {carIds.Count} cars. They use the game preset now.");
+                    ? Loc.F("PresetManager_ClearedDefaultUsesGame_Fmt", carIds[0])
+                    : Loc.F("PresetManager_ClearedDefaultCarsThey_Fmt", carIds.Count));
                 return;
             }
 
@@ -3873,7 +3869,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             _plugin.ClearCarDefaultPreset(sel.CarId);
             ReloadCars();
             SelectCarRow(sel.CarId, sel.PresetName);
-            SetLib(CarLibStatus, $"Cleared the default for '{sel.CarId}'. It uses the game preset now.");
+            SetLib(CarLibStatus, Loc.F("PresetManager_ClearedDefaultUsesGame_Fmt", sel.CarId));
         }
 
         // Clearing the ACTIVE car's default also discards its unsaved live
@@ -3888,9 +3884,9 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (!carIds.Contains(active, StringComparer.Ordinal)) return true;
             if (!_plugin.IsActiveCarPresetDirty()) return true;
             return TrueforceDialog.Show(Window.GetWindow(this),
-                "Clear car preset?",
-                "Clearing the current car's default also discards its unsaved tuning.\n\nCancel to keep editing and save first.",
-                DialogKind.Destructive, okLabel: "Discard", cancelLabel: "Cancel") == true;
+                Loc.T("PresetManager_ClearCarPreset"),
+                Loc.T("PresetManager_ClearingCurrentCarS"),
+                DialogKind.Destructive, okLabel: Loc.T("PresetManager_Discard"), cancelLabel: Loc.T("Common_Cancel")) == true;
         }
 
         private void CarEdit_Click(object sender, RoutedEventArgs e)
@@ -3962,8 +3958,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
                 {
                     TrueforceDialog.Show(owner,
-                        "Share custom engine",
-                        "Pick a username before sharing (Account tab).",
+                        Loc.T("PresetManager_ShareCustomEngine"),
+                        Loc.T("PresetManager_PickUsernameBeforeSharing"),
                         DialogKind.Info);
                     return;
                 }
@@ -3987,7 +3983,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         string nextVer = NextVersionLabel(def.CommunityUploadedVersion);
                         var chooser = new UpdateVsNewChooserWindow(
                             "Re-share '" + baseName + "'",
-                            "You already uploaded this engine to the community. Update your existing upload, or share a fresh copy as a new engine?",
+                            Loc.T("PresetManager_AlreadyUploadedEngineCommunity"),
                             "Update existing (" + nextVer + ")",
                             "Share as new engine")
                         {
@@ -4003,8 +3999,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                         else
                         {
                             string suggested = baseName + " " + nextVer;
-                            string newName = PromptForName("Share as a new engine",
-                                "Community name for this new upload (your local engine's name stays the same):",
+                            string newName = PromptForName(Loc.T("PresetManager_ShareAsNewEngine"),
+                                Loc.T("PresetManager_CommunityNameNewUpload2"),
                                 suggested);
                             if (string.IsNullOrWhiteSpace(newName)) return;
                             shareName = newName.Trim();
@@ -4014,7 +4010,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     {
                         // Unchanged uploads never re-share (owner rule,
                         // 2026-07-13); see the game-preset handler.
-                        TrueforceDialog.Show(owner, "Already shared",
+                        TrueforceDialog.Show(owner, Loc.T("PresetManager_AlreadyShared"),
                             "'" + baseName + "' is already shared to the community and hasn't changed since. Tweak the engine first, or use Edit… on your upload in the Community list to change its name or description.",
                             DialogKind.Info);
                         return;
@@ -4041,7 +4037,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Share custom engine failed: " + ex.Message);
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't share that custom engine. Check your connection and try again.", ex);
+                    Loc.T("PresetManager_CouldnTShareCustom"), ex);
             }
             finally { _shareInProgress = false; }
         }
@@ -4093,7 +4089,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             if (TrueforceDialog.Show(Window.GetWindow(this),
                 title, head + usageClause,
-                DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel")
+                DialogKind.Destructive, okLabel: Loc.T("Common_Delete"), cancelLabel: Loc.T("Common_Cancel"))
                 != true) return;
 
             _plugin.DeleteCustomEngines(ids);
@@ -4199,8 +4195,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 14, 0, 0),
             };
-            var ok = new Button { Content = "OK", Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel", Width = 70, IsCancel = true };
+            var ok = new Button { Content = Loc.T("PresetManager_OK"), Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 70, IsCancel = true };
             btnRow.Children.Add(ok);
             btnRow.Children.Add(cancel);
             sp.Children.Add(btnRow);
@@ -4264,8 +4260,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 12, 0, 0),
             };
-            var ok = new Button { Content = "OK", Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel", Width = 70, IsCancel = true };
+            var ok = new Button { Content = Loc.T("PresetManager_OK"), Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 70, IsCancel = true };
             btnRow.Children.Add(ok);
             btnRow.Children.Add(cancel);
             Grid.SetRow(btnRow, 2);
@@ -4337,8 +4333,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 12, 0, 0),
             };
-            var ok = new Button { Content = "OK", Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel", Width = 70, IsCancel = true };
+            var ok = new Button { Content = Loc.T("PresetManager_OK"), Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 70, IsCancel = true };
             btnRow.Children.Add(ok);
             btnRow.Children.Add(cancel);
             Grid.SetRow(btnRow, 2);
@@ -4738,7 +4734,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             try
             {
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = "Loading...";
+                CommunityStatusLabel.Text = Loc.T("PresetManager_Loading");
             StartRefreshSpin();
 
             string capturedMode = _communityMode;
@@ -4832,7 +4828,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Couldn't load the community list. Check your connection, then Refresh.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_CouldnTLoadCommunity");
                 TrueforceDialog.LogError("Community fetch", ex);
                 _communityFetchInFlight = false;
                 return;
@@ -4922,8 +4918,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     // Load-more failure keeps the rows already on screen, so don't
                     // claim a hard outage; only the initial/refresh case is empty.
                     CommunityStatusLabel.Text = offset > 0
-                        ? $"{_communityRows.Count} preset(s) found (couldn't load more right now)."
-                        : "Could not reach the community backend.";
+                        ? Loc.F("PresetManager_PresetSFoundCouldn_Fmt", _communityRows.Count)
+                        : Loc.T("PresetManager_CouldNotReachCommunity");
                 CommunityList_SelectionChanged(null, null);
                 _communityFetchInFlight = false;
                 return;
@@ -5123,7 +5119,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Couldn't load the community list. Check your connection, then Refresh.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_CouldnTLoadCommunity");
                 TrueforceDialog.LogError("Community list", ex);
             }
             finally
@@ -5303,7 +5299,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             bool? ok = dlg.ShowDialog();
             if (ok != true) return;
 
-            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "Updating...";
+            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = Loc.T("PresetShare_Updating");
             bool success;
             try
             {
@@ -5326,14 +5322,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Couldn't save your changes. Check your connection and try again.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_CouldnTSaveChanges");
                 TrueforceDialog.LogError("Community update", ex);
                 return;
             }
             if (!success)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Update failed (sign in expired or permission denied).";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_UpdateFailedSignExpired");
                 return;
             }
             // Drop the cached browse list so the edited name/body don't linger
@@ -5354,13 +5350,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 CommunityList.SelectedIndex = idx;
             }
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = dlg.NewBody != null ? "Updated (body replaced)." : "Updated.";
+                CommunityStatusLabel.Text = dlg.NewBody != null ? Loc.T("PresetManager_UpdatedBodyReplaced") : Loc.T("PresetManager_Updated");
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] CommunityEdit failed: " + ex.Message);
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Couldn't save your changes. Check your connection and try again.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_CouldnTSaveChanges");
                 TrueforceDialog.LogError("Community edit", ex);
             }
         }
@@ -5402,14 +5398,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (_communityFetchInFlight)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Refresh in progress. Try deleting again in a moment.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_RefreshProgressTryDeleting");
                 return;
             }
 
             var confirm = TrueforceDialog.Show(Window.GetWindow(this),
-                "Delete preset",
-                $"Delete '{sel.Summary.Name}'? Other drivers won't see it anymore.",
-                DialogKind.Destructive, okLabel: "Delete", cancelLabel: "Cancel");
+                Loc.T("PresetManager_DeletePreset"),
+                Loc.F("PresetManager_DeleteOtherDriversWon_Fmt", sel.Summary.Name),
+                DialogKind.Destructive, okLabel: Loc.T("Common_Delete"), cancelLabel: Loc.T("Common_Cancel"));
             if (confirm != true) return;
 
             // Outer guard: this is an async void handler, so anything escaping
@@ -5420,21 +5416,21 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // cancel is never logged as an error.
             try
             {
-            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "Deleting...";
+            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = Loc.T("PresetManager_Deleting");
             bool success;
             string delKind = sel.Summary.Kind ?? _communityKind ?? "car";
             try { success = await _plugin.DeleteCommunityItemAsync(delKind, sel.Summary.Id); }
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Couldn't delete that. Check your connection and try again.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_CouldnTDeleteCheck");
                 TrueforceDialog.LogError("Community delete", ex);
                 return;
             }
             if (!success)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Delete failed (sign in expired or permission denied).";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_DeleteFailedSignExpired");
                 return;
             }
             _communityRows.Remove(sel);
@@ -5451,13 +5447,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (string.IsNullOrEmpty(sel.Summary.Kind) || sel.Summary.Kind == "car")
                 CarCommunityListRefreshed?.Invoke();
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = "Deleted.";
+                CommunityStatusLabel.Text = Loc.T("PresetManager_CommunityDeleted");
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Delete post-processing failed: " + ex.Message);
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Deleted, but the local list may be stale. Refresh to resync.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_DeletedButLocalList");
             }
         }
 
@@ -5480,7 +5476,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (!_plugin.AuthIsSignedIn)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Sign in (Account tab) to vote.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_SignAccountTabVote");
                 return;
             }
             // A refresh mid-fetch would replace _communityRows with new
@@ -5491,7 +5487,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (_communityFetchInFlight)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Refresh in progress. Try voting again in a moment.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_RefreshProgressTryVoting");
                 return;
             }
             // Server gate: a FRESH vote requires the user to have downloaded
@@ -5502,7 +5498,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (!_plugin.HasDownloadedCommunity(row.Summary.Id) && row.MyVote == 0)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Download this preset first to rate it.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_DownloadPresetFirstRate");
                 return;
             }
 
@@ -5523,8 +5519,8 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             RepaintCommunityRow(row);
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = next == 0
-                    ? "Sending vote retraction..."
-                    : (next == 1 ? "Sending upvote..." : "Sending downvote...");
+                    ? Loc.T("PresetManager_SendingVoteRetraction")
+                    : (next == 1 ? Loc.T("PresetManager_SendingUpvote") : Loc.T("PresetManager_SendingDownvote"));
 
             // Await the server. On failure roll the counters back to
             // 'prev' so the row doesn't lie about being voted on.
@@ -5556,14 +5552,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 row.MyVote = prev;
                 RepaintCommunityRow(row);
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Vote didn't go through. Sign-in may have expired; try again.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_VoteDidnTGo");
                 return;
             }
 
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text = next == 0
-                    ? "Vote retracted."
-                    : (next == 1 ? "Upvote recorded." : "Downvote recorded.");
+                    ? Loc.T("PresetManager_VoteRetracted")
+                    : (next == 1 ? Loc.T("PresetManager_UpvoteRecorded") : Loc.T("PresetManager_DownvoteRecorded"));
             // A vote changes Wilson rank -> reorders the cached browse list. Drop
             // the affected family so the new order shows on the next open.
             _plugin.InvalidateBrowseCacheForKind(kind, row.Summary.Game, row.Summary.CarId);
@@ -5576,7 +5572,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Vote post-processing failed: " + ex.Message);
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Vote hit a local error. Refresh to resync the list.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_VoteHitLocalError");
             }
         }
 
@@ -5623,7 +5619,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // boolean here. Phrase the status as "submitted" rather
             // than "received" so we don't claim a confirmed delivery.
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = "Report submitted. Thanks for flagging.";
+                CommunityStatusLabel.Text = Loc.T("PresetManager_ReportSubmittedThanksFlagging");
         }
 
         // Open the preview window: read-only view of the preset's
@@ -5635,7 +5631,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             var sel = SelectedCommunity;
             if (sel?.Summary == null || _plugin == null) return;
-            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = "Loading preview...";
+            if (CommunityStatusLabel != null) CommunityStatusLabel.Text = Loc.T("PresetManager_LoadingPreview");
 
             string capturedId   = sel.Summary.Id;
             string capturedKind = sel.Summary.Kind ?? _communityKind ?? "car";
@@ -5656,14 +5652,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Couldn't open the preview. Check your connection and try again.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_CouldnTOpenPreview");
                 TrueforceDialog.LogError("Community preview", ex);
                 return;
             }
             if (full?.Body == null)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Preview returned no body.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_PreviewReturnedNoBody");
                 return;
             }
             // The preview window parses the server-supplied body JSON in its
@@ -5690,7 +5686,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Couldn't open the preview. Check your connection and try again.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_CouldnTOpenPreview");
                 TrueforceDialog.LogError("Community preview", ex);
             }
         }
@@ -5709,7 +5705,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             var sel = SelectedCommunity;
             if (sel?.Summary == null || _plugin == null) return;
             if (CommunityStatusLabel != null)
-                CommunityStatusLabel.Text = "Downloading...";
+                CommunityStatusLabel.Text = Loc.T("PresetManager_Downloading");
 
             // Consume any pending pack selection from a preview hand-off.
             var packSelection = _pendingPackSelection;
@@ -5734,14 +5730,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Couldn't download that preset. Check your connection and try again.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_CouldnTDownloadPreset");
                 TrueforceDialog.LogError("Community download", ex);
                 return;
             }
             if (full?.Body == null || full.Summary == null)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Download returned no body.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_DownloadReturnedNoBody");
                 return;
             }
 
@@ -5769,14 +5765,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 catch (Exception ex)
                 {
                     if (CommunityStatusLabel != null)
-                        CommunityStatusLabel.Text = "That preset's data couldn't be read (it may be from a newer version).";
+                        CommunityStatusLabel.Text = Loc.T("PresetManager_PresetSDataCouldn");
                     TrueforceDialog.LogError("Community body parse", ex);
                     return;
                 }
                 if (snap == null)
                 {
                     if (CommunityStatusLabel != null)
-                        CommunityStatusLabel.Text = "Body had no snapshot section.";
+                        CommunityStatusLabel.Text = Loc.T("PresetManager_BodyHadNoSnapshot");
                     return;
                 }
 
@@ -5795,7 +5791,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                                              StringComparison.Ordinal))
                         {
                             if (CommunityStatusLabel != null)
-                                CommunityStatusLabel.Text = $"You already have this preset as '{kv.Key}'.";
+                                CommunityStatusLabel.Text = Loc.F("PresetManager_AlreadyHavePresetAs_Fmt", kv.Key);
                             return;
                         }
                 }
@@ -5805,7 +5801,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (dupName != null)
                 {
                     if (CommunityStatusLabel != null)
-                        CommunityStatusLabel.Text = $"You already have an identical preset: '{dupName}'.";
+                        CommunityStatusLabel.Text = Loc.F("PresetManager_AlreadyHaveIdenticalPreset_Fmt", dupName);
                     return;
                 }
 
@@ -5826,7 +5822,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     if (CommunityStatusLabel != null)
                         CommunityStatusLabel.Text =
-                            "Couldn't save the preset. Check disk space and permissions, then try again.";
+                            Loc.T("PresetManager_CouldnTSavePreset");
                     return;
                 }
                 _plugin.RecordCommunityGamePresetDownload(capturedId);
@@ -5838,7 +5834,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     originalBodyHash: PresetBodyHasher.ComputeGameSnapshotBodyHash(snap),
                     ownerUserId: full.Summary.OwnerUserId);
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = $"Saved as '{gpName}'.";
+                    CommunityStatusLabel.Text = Loc.F("PresetManager_SavedAs_Fmt", gpName);
                 LibraryChanged?.Invoke();
                 return;
             }
@@ -6161,14 +6157,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 catch (Exception ex)
                 {
                     if (CommunityStatusLabel != null)
-                        CommunityStatusLabel.Text = "That preset's data couldn't be read (it may be from a newer version).";
+                        CommunityStatusLabel.Text = Loc.T("PresetManager_PresetSDataCouldn");
                     TrueforceDialog.LogError("Community body parse", ex);
                     return;
                 }
                 if (def == null || string.IsNullOrWhiteSpace(def.Name))
                 {
                     if (CommunityStatusLabel != null)
-                        CommunityStatusLabel.Text = "Engine body was empty or invalid.";
+                        CommunityStatusLabel.Text = Loc.T("PresetManager_EngineBodyWasEmpty");
                     return;
                 }
                 // Dedup against the local engine library by server uuid.
@@ -6180,7 +6176,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                                 || string.Equals(local.Id, full.Summary.Id, StringComparison.Ordinal)))
                         {
                             if (CommunityStatusLabel != null)
-                                CommunityStatusLabel.Text = $"You already have this engine as '{local.Name}'.";
+                                CommunityStatusLabel.Text = Loc.F("PresetManager_AlreadyHaveEngineAs_Fmt", local.Name);
                             return;
                         }
                 }
@@ -6196,7 +6192,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     originalBodyHash: PresetBodyHasher.ComputeCustomEngineHash(def),
                     ownerUserId: full.Summary.OwnerUserId);
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = $"Saved engine '{def.Name}' to your library.";
+                    CommunityStatusLabel.Text = Loc.F("PresetManager_SavedEngineLibrary_Fmt", def.Name);
                 LibraryChanged?.Invoke();
                 return;
             }
@@ -6216,14 +6212,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             catch (Exception ex)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "That preset's data couldn't be read (it may be from a newer version).";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_PresetSDataCouldn");
                 TrueforceDialog.LogError("Community body parse", ex);
                 return;
             }
             if (ovr == null)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = "Body had no override section.";
+                    CommunityStatusLabel.Text = Loc.T("PresetManager_BodyHadNoOverride");
                 return;
             }
 
@@ -6276,7 +6272,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                                          StringComparison.Ordinal))
                     {
                         if (CommunityStatusLabel != null)
-                            CommunityStatusLabel.Text = $"You already have this preset as '{kv.Key}'.";
+                            CommunityStatusLabel.Text = Loc.F("PresetManager_AlreadyHavePresetAs_Fmt", kv.Key);
                         return;
                     }
             }
@@ -6286,7 +6282,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             if (carDupName != null)
             {
                 if (CommunityStatusLabel != null)
-                    CommunityStatusLabel.Text = $"You already have an identical preset: '{carDupName}'.";
+                    CommunityStatusLabel.Text = Loc.F("PresetManager_AlreadyHaveIdenticalPreset_Fmt", carDupName);
                 return;
             }
 
@@ -6322,7 +6318,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
 
             if (CommunityStatusLabel != null)
                 CommunityStatusLabel.Text =
-                    $"Saved as '{presetName}'. Open it on the Car presets tab to use.";
+                    Loc.F("PresetManager_SavedAsOpenCar_Fmt", presetName);
             ReloadCars();
             LibraryChanged?.Invoke();
         }
