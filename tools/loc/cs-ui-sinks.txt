@@ -181,7 +181,10 @@ nonsink TrueforceDialog.LogError
 # Three shapes are regions rather than assignments, so each needs a directive:
 #
 #   labels <Identifier>      every entry of that declared collection is a label
-#   textmember <Name>        every literal that member returns is display text
+#   textmember <Name>        every literal that member RETURNS is display text.
+#                            Return position only: a member that returns display
+#                            text may still switch on string case labels, and a
+#                            case label is an identifier, not copy.
 #   recordprop <Type>.<Prop> an initializer entry on one of our own records,
 #                            counted only inside that type's initializer
 #
@@ -227,6 +230,13 @@ textmember EffectLabel
 textmember DescribeLastUploadError
 textmember SendErrorCopy
 textmember VerifyErrorCopy
+# Added with the settings code-behind. FormatRemoval returns a duration phrase
+# ("less than a day", "about 2 months") and RedlineSourceFriendly returns the
+# parenthetical that says where a redline came from; both are read by a user
+# wherever they are used. NotePresetComboContents is deliberately absent: its
+# strings go to the log, not to a label.
+textmember FormatRemoval
+textmember RedlineSourceFriendly
 
 # Display fields on our own records, which are spelled like data and read like
 # labels. GameNames.Display is deliberately absent: those are product names.

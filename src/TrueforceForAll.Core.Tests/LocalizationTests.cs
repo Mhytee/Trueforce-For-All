@@ -652,6 +652,9 @@ namespace TrueforceForAll.Core.Tests
             // lead fragment ends where its link begins.
             { "SignIn_PrivacyLead", "runs into the Privacy policy hyperlink" },
             { "SignIn_DidntGetIt", "runs into the Resend code link" },
+            // Appended as its own Run to the mode note, after a sentence
+            // already in that paragraph, so it opens with the separating space.
+            { "Settings_NormalModeAlsoUnlocks", "continues the mode note paragraph" },
             // The two help lines under the usage-statistics and community
             // checkboxes on the Settings tab. Each is a Run followed by the
             // "Privacy policy" Hyperlink in the same sentence.
@@ -1521,6 +1524,23 @@ namespace TrueforceForAll.Core.Tests
             return found;
         }
 
+        // The spans a member actually returns: what follows "return" or "=>" up to
+        // the end of that expression. Mirrors Get-LocCsReturnSpans in sweep-cs.ps1.
+        private static readonly Regex CsReturnRe = new Regex(@"(?<![A-Za-z0-9_])return(?![A-Za-z0-9_])|=>");
+
+        private static List<CsSpan> CsReturnSpans(string s, int start, int end)
+        {
+            var found = new List<CsSpan>();
+            foreach (Match m in CsReturnRe.Matches(s))
+            {
+                if (m.Index < start || m.Index >= end) continue;
+                int from = m.Index + m.Length;
+                int to = Math.Min(CsExprEnd(s, from), end);
+                if (to > from) found.Add(new CsSpan { Start = from, End = to });
+            }
+            return found;
+        }
+
         private sealed class CsRegion
         {
             public int Start;
@@ -1591,7 +1611,9 @@ namespace TrueforceForAll.Core.Tests
             {
                 if (!frames.TryGetValue(site.Index, out string frame)) continue;   // matched inside a literal
                 var spans = new List<CsSpan>();
-                if (site.Kind == "textmember" || site.Kind == "labels")
+                if (site.Kind == "textmember")
+                    spans.AddRange(CsReturnSpans(text, site.Body, site.RegionEnd));
+                else if (site.Kind == "labels")
                     spans.Add(new CsSpan { Start = site.Body, End = site.RegionEnd });
                 else if (site.Kind == "recordprop")
                 {

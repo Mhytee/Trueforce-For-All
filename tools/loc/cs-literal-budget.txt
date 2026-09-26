@@ -15,9 +15,9 @@
 # sweep see writes it was blind to. Re-run with -WriteBudget in that commit and
 # say so in the message.
 #
-# Written 2026-09-26 from 126 plugin file(s): 1274 literal(s) left.
+# Written 2026-09-26 from 126 plugin file(s): 826 literal(s) left.
 
-src/TrueforceForAll.Plugin/SettingsControl.xaml.cs 570
+src/TrueforceForAll.Plugin/SettingsControl.xaml.cs 122
 src/TrueforceForAll.Plugin/TrueforcePlugin.cs 88
 src/TrueforceForAll.Plugin/SettingsControl.Guides.cs 84
 src/TrueforceForAll.Plugin/PresetPreviewWindow.cs 68

@@ -165,27 +165,27 @@ namespace TrueforceForAll.Plugin
         {
             switch (which)
             {
-                case EffectKind.Master:         return "Master";
-                case EffectKind.Ducking:        return "Sidechain ducking";
-                case EffectKind.Audio:          return "Audio rumble";
-                case EffectKind.Engine:         return "Engine pulse";
-                case EffectKind.Bumps:          return "Road bumps";
-                case EffectKind.Traction:       return "Traction loss";
-                case EffectKind.Shift:          return "Gear shift";
-                case EffectKind.Abs:            return "ABS pulse";
-                case EffectKind.SpikeReduction: return "FFB spike reduction";
-                case EffectKind.StationarySpring: return "Stationary spring";
-                case EffectKind.PitLimiter:     return "Pit limiter";
-                case EffectKind.Drs:            return "DRS";
-                case EffectKind.Collision:      return "Collision";
-                case EffectKind.RevLimiter:     return "Redline buzz";
-                case EffectKind.Airborne:       return "Airborne ducking";
-                case EffectKind.AxleSlip:       return "Axle slip";
-                case EffectKind.KerbThump:      return "Curb thump";
-                case EffectKind.LockupJudder:   return "Lockup judder";
-                case EffectKind.ImplementThud:  return "Implement thud";
+                case EffectKind.Master:         return Loc.T("Effects_Master");
+                case EffectKind.Ducking:        return Loc.T("Effects_DuckingEnabled");
+                case EffectKind.Audio:          return Loc.T("Effects_AudioEnabled");
+                case EffectKind.Engine:         return Loc.T("Effects_AirborneDuckEngine");
+                case EffectKind.Bumps:          return Loc.T("Effects_AirborneDuckRoadBumps");
+                case EffectKind.Traction:       return Loc.T("Effects_AirborneDuckTraction");
+                case EffectKind.Shift:          return Loc.T("Effects_AirborneDuckGearShift");
+                case EffectKind.Abs:            return Loc.T("Effects_AbsEnabled");
+                case EffectKind.SpikeReduction: return Loc.T("Settings_FFBSpikeReduction");
+                case EffectKind.StationarySpring: return Loc.T("TelemetryFfb_StationarySpring");
+                case EffectKind.PitLimiter:     return Loc.T("Effects_AirborneDuckPitLimiter");
+                case EffectKind.Drs:            return Loc.T("Effects_AirborneDuckDrs");
+                case EffectKind.Collision:      return Loc.T("Effects_AirborneDuckCollision");
+                case EffectKind.RevLimiter:     return Loc.T("Effects_AirborneDuckRevLimiter");
+                case EffectKind.Airborne:       return Loc.T("Effects_AirborneEnabled");
+                case EffectKind.AxleSlip:       return Loc.T("Effects_AxleSlipEnabled");
+                case EffectKind.KerbThump:      return Loc.T("Effects_KerbThumpEnabled");
+                case EffectKind.LockupJudder:   return Loc.T("Effects_LockupJudderEnabled");
+                case EffectKind.ImplementThud:  return Loc.T("Effects_ImplementThud");
             }
-            return "section";
+            return Loc.T("Settings_Section");
         }
         // Master + Ducking + SpikeReduction are global-only. The save popover
         // hides the per-car option for these (no override concept).
@@ -1247,15 +1247,15 @@ namespace TrueforceForAll.Plugin
                     if (!mbSupported && ModeBUnsupportedBadgeText != null)
                     {
                         ModeBUnsupportedBadgeText.Text = string.IsNullOrEmpty(mbGame)
-                            ? "No supported game is running. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25."
-                            : $"Not available in {ModeBGameDisplayName(mbGame)}. Telemetry Based FFB works in Forza Motorsport (2023), Forza Horizon 4, 5, and 6, and Farming Simulator 22 and 25.";
+                            ? Loc.T("Settings_NoSupportedGameRunning")
+                            : Loc.F("Settings_NotAvailableTelemetryBased_Fmt", ModeBGameDisplayName(mbGame));
                         // The badge's two states dropped a sentence each when the
                         // copy was trimmed; the hover carries them. Set here rather
                         // than in XAML because one host serves both states.
                         if (ModeBUnsupportedBadge != null)
                             ModeBUnsupportedBadge.ToolTip = string.IsNullOrEmpty(mbGame)
-                                ? "You can pre-tune the controls below without a game; the per-game Enable box unlocks when a supported game starts."
-                                : "Telemetry Based FFB also enables your wheel's rev lights and screen in these games.";
+                                ? Loc.T("Settings_CanPreTuneControls")
+                                : Loc.T("Settings_TelemetryBasedFFBAlso");
                     }
                     if (ModeBGameNote != null)
                     {
@@ -1987,7 +1987,7 @@ namespace TrueforceForAll.Plugin
                         // as the car's default (built into SaveActiveCarPresetAs).
                         if (!_plugin.ExitOfflineEditCarSaveAsAndApply(carClean))
                         {
-                            TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                            TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                             return;
                         }
                     }
@@ -1999,7 +1999,7 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (!_plugin.ExitOfflineEditCarSave())
                 {
-                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                     return;
                 }
             }
@@ -2016,7 +2016,7 @@ namespace TrueforceForAll.Plugin
                         // the game default.
                         if (!_plugin.ExitOfflineEditSaveAsAndApply(clean))
                         {
-                            TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                            TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                             return;
                         }
                     }
@@ -2028,7 +2028,7 @@ namespace TrueforceForAll.Plugin
                 }
                 else if (!_plugin.ExitOfflineEditSave())
                 {
-                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                     return;
                 }
             }
@@ -2047,21 +2047,21 @@ namespace TrueforceForAll.Plugin
                 ? TrueforcePlugin.ToDiskName(suggestedBaseName)
                 : suggestedBaseName;
             string suggested = string.IsNullOrEmpty(baseName) ? "My preset" : baseName + " (edited)";
-            string newName = PromptForName("Save as new car preset", "New preset name:", suggested);
+            string newName = PromptForName(Loc.T("Settings_SaveAsNewCar"), Loc.T("Settings_NewPresetName"), suggested);
             if (string.IsNullOrWhiteSpace(newName)) return;
             newName = newName.Trim();
             var existing = _plugin.GetCarPresets(carId);
             if (existing != null && existing.ContainsKey(newName))
             {
                 if (TrueforceDialog.Show(Window.GetWindow(this),
-                    "Overwrite preset?",
-                    $"A preset called '{newName}' already exists for this car. Overwrite?",
+                    Loc.T("Settings_OverwritePreset"),
+                    Loc.F("Settings_PresetCalledAlreadyExists_Fmt", newName),
                     DialogKind.Confirm) != true) return;
                 _plugin.DeleteCarPreset(carId, newName);
             }
             if (!_plugin.ExitOfflineEditCarSaveAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -2079,20 +2079,20 @@ namespace TrueforceForAll.Plugin
             string suggested = string.IsNullOrEmpty(baseName)
                 ? "My preset"
                 : baseName + " (edited)";
-            string newName = PromptForName("Save as new preset", "New preset name:", suggested);
+            string newName = PromptForName(Loc.T("Settings_SaveAsNewPreset"), Loc.T("Settings_NewPresetName"), suggested);
             if (string.IsNullOrWhiteSpace(newName)) return;
             newName = newName.Trim();
             if (_plugin.Settings?.Presets?.ContainsKey(newName) == true)
             {
                 if (TrueforceDialog.Show(Window.GetWindow(this),
-                    "Overwrite preset?",
-                    $"A preset called '{newName}' already exists. Overwrite?",
+                    Loc.T("Settings_OverwritePreset"),
+                    Loc.F("Settings_PresetCalledAlreadyExists_Fmt2", newName),
                     DialogKind.Confirm) != true) return;
                 _plugin.DeletePreset(newName);
             }
             if (!_plugin.ExitOfflineEditSaveAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -2465,7 +2465,7 @@ namespace TrueforceForAll.Plugin
                         // Pin agrees with auto-detect (or no auto value yet):
                         // still mark the type as the user's own pick.
                         EngineLayoutAutoText.Text =
-                            $"Your pick: {DescribePinnedEngine(pinnedPick, pinnedCustomId)}";
+                            Loc.F("Settings_Pick_Fmt", DescribePinnedEngine(pinnedPick, pinnedCustomId));
                     }
                     else
                     {
@@ -3474,7 +3474,7 @@ namespace TrueforceForAll.Plugin
         {
             var win = new Window
             {
-                Title = "Spread the word",
+                Title = Loc.T("Support_SpreadTheWord"),
                 Width = 460,
                 SizeToContent = SizeToContent.Height,
                 ResizeMode = ResizeMode.NoResize,
@@ -3489,7 +3489,7 @@ namespace TrueforceForAll.Plugin
 
             root.Children.Add(new TextBlock
             {
-                Text = "Help another driver find TF4ALL",
+                Text = Loc.T("Settings_HelpAnotherDriverFind"),
                 FontSize = 16,
                 FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 8),
@@ -3558,32 +3558,32 @@ namespace TrueforceForAll.Plugin
                 string original = label.Text;
                 // Retry-based copy; on a genuine failure say so instead of
                 // claiming "Link copied" over an empty clipboard.
-                label.Text = TryCopyToClipboard(url) ? "Link copied" : "Copy failed, try again";
+                label.Text = TryCopyToClipboard(url) ? Loc.T("Settings_LinkCopied") : Loc.T("Settings_CopyFailedTryAgain");
                 var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.6) };
                 t.Tick += (_, __) => { label.Text = original; t.Stop(); };
                 t.Start();
             }
 
             var darkBorder = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A));
-            root.Children.Add(MakeShareRow("Post on X", XLogoPath,
+            root.Children.Add(MakeShareRow(Loc.T("Settings_PostX"), XLogoPath,
                 new SolidColorBrush(Color.FromRgb(0x00, 0x00, 0x00)), darkBorder,
                 _ => OpenUrl(XIntentUrl)));
-            root.Children.Add(MakeShareRow("Post on Reddit", RedditLogoPath,
+            root.Children.Add(MakeShareRow(Loc.T("Settings_PostReddit"), RedditLogoPath,
                 new SolidColorBrush(Color.FromRgb(0xFF, 0x45, 0x00)), null,
                 _ => OpenUrl(RedditSubmitUrl)));
-            root.Children.Add(MakeShareRow("Share on Facebook", FacebookLogoPath,
+            root.Children.Add(MakeShareRow(Loc.T("Settings_ShareFacebook"), FacebookLogoPath,
                 new SolidColorBrush(Color.FromRgb(0x18, 0x77, 0xF2)), null,
                 _ => OpenUrl(FacebookShareUrl)));
-            root.Children.Add(MakeShareRow("Copy GitHub link", GithubLogoPath,
+            root.Children.Add(MakeShareRow(Loc.T("Settings_CopyGitHubLink"), GithubLogoPath,
                 new SolidColorBrush(Color.FromRgb(0x1B, 0x1F, 0x23)), darkBorder,
                 lbl => CopyLink(ShareProjectUrl, lbl)));
-            root.Children.Add(MakeShareRow("Copy Nexus link", NexusLogoPath,
+            root.Children.Add(MakeShareRow(Loc.T("Settings_CopyNexusLink"), NexusLogoPath,
                 new SolidColorBrush(Color.FromRgb(0xC7, 0x7D, 0x33)), null,
                 lbl => CopyLink(ShareNexusUrl, lbl)));
 
             var closeBtn = new System.Windows.Controls.Button
             {
-                Content = "Close",
+                Content = Loc.T("Settings_Close"),
                 Width = 90,
                 Height = 28,
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -3954,8 +3954,8 @@ namespace TrueforceForAll.Plugin
                 || snap == null)
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share preset",
-                    "No game preset is currently active. Save your tuning as a preset first.",
+                    Loc.T("PresetManager_SharePreset"),
+                    Loc.T("Settings_NoGamePresetCurrently"),
                     DialogKind.Warning);
                 return;
             }
@@ -3963,8 +3963,8 @@ namespace TrueforceForAll.Plugin
             if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
             {
                 TrueforceDialog.Show(owner,
-                    "Share preset",
-                    "Pick a username before sharing (Account tab).",
+                    Loc.T("PresetManager_SharePreset"),
+                    Loc.T("PresetManager_PickUsernameBeforeSharing"),
                     DialogKind.Info);
                 return;
             }
@@ -4019,7 +4019,7 @@ namespace TrueforceForAll.Plugin
                     string nextVer = PresetManagerControl.NextVersionLabel(snap.CommunityUploadedVersion);
                     var chooser = new UpdateVsNewChooserWindow(
                         "Re-share '" + name + "'",
-                        "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
+                        Loc.T("PresetManager_AlreadyUploadedPresetCommunity"),
                         "Update existing (" + nextVer + ")",
                         "Share as new preset")
                     {
@@ -4035,8 +4035,8 @@ namespace TrueforceForAll.Plugin
                     else
                     {
                         string suggested = name + " " + nextVer;
-                        string newName = _presetManager?.PromptForName("Share as a new preset",
-                            "Community name for this new upload (your local preset's name stays the same):",
+                        string newName = _presetManager?.PromptForName(Loc.T("PresetManager_ShareAsNewPreset"),
+                            Loc.T("PresetManager_CommunityNameNewUpload"),
                             suggested);
                         if (string.IsNullOrWhiteSpace(newName)) return;
                         shareName = newName.Trim();
@@ -4046,7 +4046,7 @@ namespace TrueforceForAll.Plugin
                 {
                     // Unchanged uploads never re-share (owner rule, 2026-07-13);
                     // mirrors the Preset Manager handlers.
-                    TrueforceDialog.Show(owner, "Already shared",
+                    TrueforceDialog.Show(owner, Loc.T("PresetManager_AlreadyShared"),
                         "'" + name + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
                         DialogKind.Info);
                     return;
@@ -4077,7 +4077,7 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn("[TF4ALL] Share preset failed: " + ex.Message);
                 var owner = Window.GetWindow(this);
                 TrueforceDialog.ShowError(owner,
-                    "Couldn't share that preset. Check your connection and try again.",
+                    Loc.T("PresetManager_CouldnTSharePreset"),
                     ex);
             }
             finally { _headerShareInProgress = false; }
@@ -4106,8 +4106,8 @@ namespace TrueforceForAll.Plugin
                 || string.IsNullOrEmpty(pick.Name) || string.IsNullOrEmpty(pick.CarId))
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share preset",
-                    "Pick a real car preset (not \"None\") before sharing.",
+                    Loc.T("PresetManager_SharePreset"),
+                    Loc.T("Settings_PickRealCarPreset"),
                     DialogKind.Info);
                 return;
             }
@@ -4119,8 +4119,8 @@ namespace TrueforceForAll.Plugin
                 || entry.Override == null)
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
-                    "Share preset",
-                    $"Could not load preset '{pick.Name}' for car '{pick.CarId}'.",
+                    Loc.T("PresetManager_SharePreset"),
+                    Loc.F("PresetManager_CouldNotLoadPreset_Fmt", pick.Name, pick.CarId),
                     DialogKind.Warning);
                 return;
             }
@@ -4128,8 +4128,8 @@ namespace TrueforceForAll.Plugin
             if (!await PickUsernameWindow.EnsureUsernameBeforeShareAsync(_plugin, owner))
             {
                 TrueforceDialog.Show(owner,
-                    "Share preset",
-                    "Pick a username before sharing (Account tab).",
+                    Loc.T("PresetManager_SharePreset"),
+                    Loc.T("PresetManager_PickUsernameBeforeSharing"),
                     DialogKind.Info);
                 return;
             }
@@ -4190,7 +4190,7 @@ namespace TrueforceForAll.Plugin
                     string nextVer = PresetManagerControl.NextVersionLabel(entry.Override.CommunityUploadedVersion);
                     var chooser = new UpdateVsNewChooserWindow(
                         "Re-share '" + pick.Name + "'",
-                        "You already uploaded this preset to the community. Update your existing upload, or share a fresh copy as a new preset?",
+                        Loc.T("PresetManager_AlreadyUploadedPresetCommunity"),
                         "Update existing (" + nextVer + ")",
                         "Share as new preset")
                     {
@@ -4206,8 +4206,8 @@ namespace TrueforceForAll.Plugin
                     else
                     {
                         string suggested = pick.Name + " " + nextVer;
-                        string newName = _presetManager?.PromptForName("Share as a new preset",
-                            "Community name for this new upload (your local preset's name stays the same):",
+                        string newName = _presetManager?.PromptForName(Loc.T("PresetManager_ShareAsNewPreset"),
+                            Loc.T("PresetManager_CommunityNameNewUpload"),
                             suggested);
                         if (string.IsNullOrWhiteSpace(newName)) return;
                         shareName = newName.Trim();
@@ -4217,7 +4217,7 @@ namespace TrueforceForAll.Plugin
                 {
                     // Unchanged uploads never re-share (owner rule, 2026-07-13);
                     // mirrors the Preset Manager handlers.
-                    TrueforceDialog.Show(owner, "Already shared",
+                    TrueforceDialog.Show(owner, Loc.T("PresetManager_AlreadyShared"),
                         "'" + pick.Name + "' is already shared to the community and hasn't changed since. Tweak the preset first, or use Edit… on your upload in the Community list to change its name or description.",
                         DialogKind.Info);
                     return;
@@ -4250,7 +4250,7 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn("[TF4ALL] Share preset failed: " + ex.Message);
                 var ownerWnd = Window.GetWindow(this);
                 TrueforceDialog.ShowError(ownerWnd,
-                    "Couldn't share that preset. Check your connection and try again.",
+                    Loc.T("PresetManager_CouldnTSharePreset"),
                     ex);
             }
             finally { _headerShareInProgress = false; }
@@ -4641,7 +4641,7 @@ namespace TrueforceForAll.Plugin
                     // pins that car for editing so edits + Save target it.
                     var prompt = new System.Windows.Controls.ComboBoxItem
                     {
-                        Content = "Select a car preset to edit…",
+                        Content = Loc.T("Settings_SelectCarPresetEdit"),
                         Tag = null, IsEnabled = false, IsHitTestVisible = false,
                         Opacity = 0.6, FontStyle = FontStyles.Italic,
                     };
@@ -4660,13 +4660,13 @@ namespace TrueforceForAll.Plugin
                         : $"use game preset: {ToBuiltinDisplay(gameDefault)}";
                     var noneRow = new System.Windows.Controls.ComboBoxItem
                     {
-                        Content = $"None ({inherit})",
+                        Content = Loc.F("Settings_None_Fmt", inherit),
                         Tag = new PresetPick { IsCar = true, CarId = carId, ClearCar = true },
                     };
                     HeaderCarPresetCombo.Items.Add(noneRow);
                     toSelect = noneRow;
 
-                    HeaderCarPresetCombo.Items.Add(MakeSectionHeader($"── This car: {carId} ──"));
+                    HeaderCarPresetCombo.Items.Add(MakeSectionHeader(Loc.F("Settings_Car_Fmt", carId)));
                     int localCount = 0;
                     foreach (var entry in Ordered(_plugin.GetCarPresets(carId)))
                     {
@@ -4696,15 +4696,15 @@ namespace TrueforceForAll.Plugin
                         && _cachedTopForActiveCar.Count > 0)
                     {
                         HeaderCarPresetCombo.Items.Add(MakeSectionHeader(localCount > 0
-                            ? "── Top community presets ──"
-                            : "── Top community presets (no local presets yet) ──"));
+                            ? Loc.T("Settings_TopCommunityPresets")
+                            : Loc.T("Settings_TopCommunityPresetsNo")));
                         foreach (var s in _cachedTopForActiveCar)
                         {
                             if (s == null || string.IsNullOrEmpty(s.Id)) continue;
                             string author = string.IsNullOrEmpty(s.Author) ? "anonymous" : s.Author;
                             HeaderCarPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem
                             {
-                                Content = $"{s.Name} - by {author}",
+                                Content = Loc.F("Settings_By_Fmt", s.Name, author),
                                 Tag     = new PresetPick { IsCar = true, CarId = carId, Name = s.Name, CommunityId = s.Id },
                             });
                         }
@@ -4918,7 +4918,7 @@ namespace TrueforceForAll.Plugin
             if (!_plugin.AuthIsSignedIn)
             {
                 if (CommunityVoteStatus != null)
-                    CommunityVoteStatus.Text = "Sign in (Account tab) to vote.";
+                    CommunityVoteStatus.Text = Loc.T("PresetManager_SignAccountTabVote");
                 return;
             }
 
@@ -4938,7 +4938,7 @@ namespace TrueforceForAll.Plugin
             RenderActiveCardVote(next);
             if (CommunityVoteStatus != null)
                 CommunityVoteStatus.Text = next == 0
-                    ? "Sending..." : (next == 1 ? "Sending..." : "Sending...");
+                    ? Loc.T("Settings_Sending") : (next == 1 ? Loc.T("Settings_Sending") : Loc.T("Settings_Sending"));
 
             _activeCardVoteInFlight = true;
             bool ok = false;
@@ -4965,7 +4965,7 @@ namespace TrueforceForAll.Plugin
                 if (prev == -1) _activeCardVoteDown += 1;
                 RenderActiveCardVote(prev);
                 if (CommunityVoteStatus != null)
-                    CommunityVoteStatus.Text = "Vote didn't go through; try again.";
+                    CommunityVoteStatus.Text = Loc.T("Settings_VoteDidnTGo");
                 return;
             }
 
@@ -4986,7 +4986,7 @@ namespace TrueforceForAll.Plugin
             _plugin.InvalidateBrowseCacheForKind("car", _plugin.ActiveGame, _plugin.ActiveCarId);
             if (CommunityVoteStatus != null)
                 CommunityVoteStatus.Text = next == 0
-                    ? "Vote retracted." : (next == 1 ? "Thanks for the upvote." : "Downvote recorded.");
+                    ? Loc.T("PresetManager_VoteRetracted") : (next == 1 ? Loc.T("Settings_ThanksUpvote") : Loc.T("PresetManager_DownvoteRecorded"));
 
             // A successful downvote offers to remove the preset + revert.
             if (next == -1)
@@ -5010,8 +5010,8 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(name)) name = "this preset";
 
             if (TrueforceDialog.Show(Window.GetWindow(this),
-                "Remove preset",
-                $"Remove \"{name}\" and revert to your previous setup?",
+                Loc.T("Settings_RemovePreset"),
+                Loc.F("Settings_RemoveRevertPreviousSetup_Fmt", name),
                 DialogKind.Confirm) != true) return;   // keep the downvote, leave it applied
 
             _plugin.ClearActiveCarPreset(carId);
@@ -5194,9 +5194,9 @@ namespace TrueforceForAll.Plugin
             if (_dirty)
             {
                 if (TrueforceDialog.Show(Window.GetWindow(this),
-                        "Discard unsaved tuning?",
-                        $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nCancel to keep editing and Save first.",
-                        DialogKind.Destructive, okLabel: "Discard", cancelLabel: "Cancel") != true)
+                        Loc.T("Settings_DiscardUnsavedTuning"),
+                        Loc.F("Settings_ApplyPresetUnsavedTuning_Fmt", pick.Name),
+                        DialogKind.Destructive, okLabel: Loc.T("PresetManager_Discard"), cancelLabel: Loc.T("Common_Cancel")) != true)
                 {
                     // Cancelled: revert the picker selection without re-entering
                     // this handler.
@@ -5207,7 +5207,7 @@ namespace TrueforceForAll.Plugin
 
             if (!_plugin.ApplyPreset(pick.Name))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", $"Could not apply '{pick.Name}' (preset missing).", DialogKind.Error);
+                TrueforceDialog.Show(null, "Trueforce For All", Loc.F("Settings_CouldNotApplyPreset_Fmt", pick.Name), DialogKind.Error);
                 return;
             }
             // No active game (browsing presets from the menu / no game
@@ -5268,9 +5268,9 @@ namespace TrueforceForAll.Plugin
                 if (_dirty)
                 {
                     if (TrueforceDialog.Show(Window.GetWindow(this),
-                            "Clear car preset?",
-                            "Clear this car's preset and use the game preset? Your unsaved tuning will be discarded.\n\nCancel to keep editing and Save first.",
-                            DialogKind.Destructive, okLabel: "Discard", cancelLabel: "Cancel") != true)
+                            Loc.T("PresetManager_ClearCarPreset"),
+                            Loc.T("Settings_ClearCarSPreset"),
+                            DialogKind.Destructive, okLabel: Loc.T("PresetManager_Discard"), cancelLabel: Loc.T("Common_Cancel")) != true)
                     { RefreshCarPresetPicker(); return; }
                 }
                 _plugin.ClearActiveCarPreset(pick.CarId);
@@ -5292,9 +5292,9 @@ namespace TrueforceForAll.Plugin
             if (_dirty)
             {
                 if (TrueforceDialog.Show(Window.GetWindow(this),
-                        "Discard unsaved tuning?",
-                        $"Apply preset '{pick.Name}'? Your unsaved tuning will be discarded.\n\nCancel to keep editing and Save first.",
-                        DialogKind.Destructive, okLabel: "Discard", cancelLabel: "Cancel") != true)
+                        Loc.T("Settings_DiscardUnsavedTuning"),
+                        Loc.F("Settings_ApplyPresetUnsavedTuning_Fmt", pick.Name),
+                        DialogKind.Destructive, okLabel: Loc.T("PresetManager_Discard"), cancelLabel: Loc.T("Common_Cancel")) != true)
                 {
                     // Cancelled: revert the picker selection without re-entering
                     // this handler.
@@ -5423,10 +5423,10 @@ namespace TrueforceForAll.Plugin
                 MasterModeNote.Inlines.Add(new Run(_plugin.NativeTrueforceStreamFromMaira
                     ? "Lightsync only for this session: MAIRA is streaming to the wheel. Running both at the "
                       + "same time is not supported; close MAIRA, then pick Normal. "
-                    : "Lightsync only for this session: " + (_plugin.ActiveGameIsReshapeGame ? ModeBGameDisplayName(_plugin.ActiveGame) : "the game")
+                    : "Lightsync only for this session: " + (_plugin.ActiveGameIsReshapeGame ? ModeBGameDisplayName(_plugin.ActiveGame) : Loc.T("Settings_Game"))
                       + " is streaming its own Trueforce, and two streams on one wheel make it whine. "
                       + "Pick Normal to try again. "));
-                var why = new Hyperlink(new Run("Open the guide"));
+                var why = new Hyperlink(new Run(Loc.T("Settings_OpenGuide")));
                 why.Click += (s2, e2) => OpenGuides(guideKey);
                 MasterModeNote.Inlines.Add(why);
                 MasterModeNote.Inlines.Add(new Run("."));
@@ -5444,12 +5444,12 @@ namespace TrueforceForAll.Plugin
                 MasterModeNote.Inlines.Add(new Run(
                     "iRacing supports Trueforce natively. If you want to use our effects instead, "
                     + "switch to Normal and follow the "));
-                var steps = new Hyperlink(new Run("iRacing setup instructions"));
+                var steps = new Hyperlink(new Run(Loc.T("Settings_IRacingSetupInstructions")));
                 steps.Click += (s2, e2) => _plugin?.ShowIracingNotice(Window.GetWindow(this), force: true);
                 MasterModeNote.Inlines.Add(steps);
                 MasterModeNote.Inlines.Add(new Run("."));
                 if (_plugin.WheelHasOledScreen)
-                    MasterModeNote.Inlines.Add(new Run(" Normal mode also unlocks dynamic OLED support."));
+                    MasterModeNote.Inlines.Add(new Run(Loc.T("Settings_NormalModeAlsoUnlocks")));
                 return;
             }
 
@@ -5464,8 +5464,8 @@ namespace TrueforceForAll.Plugin
                     // entry is read.
                     MasterModeNote.Text =
                         _plugin.StoredMasterMode == TrueforceMasterMode.Off
-                        ? "Off: fully disables all plugin features, in every game."
-                        : "Off: fully disables all plugin features for this game.";
+                        ? Loc.T("Settings_OffFullyDisablesAll")
+                        : Loc.T("Settings_OffFullyDisablesAll2");
                     break;
                 case TrueforceMasterMode.LightsyncOnly:
                     // Says what it switches OFF first, deliberately: describing the
@@ -5491,8 +5491,8 @@ namespace TrueforceForAll.Plugin
                         "Lightsync only: disables the plugin's Trueforce effects and FFB tap, "
                         + "and still sets your wheel's pattern and colors for the car you are in. "
                         + (string.IsNullOrEmpty(game)
-                            ? "Chosen here, with no game running, it applies everywhere."
-                            : "Chosen while a game is running, it is remembered for that game alone.");
+                            ? Loc.T("Settings_ChosenHereNoGame")
+                            : Loc.T("Settings_ChosenWhileGameRunning"));
                     break;
                 default:
                     // Deliberately does not list the features. It is the default and
@@ -5509,7 +5509,7 @@ namespace TrueforceForAll.Plugin
                     // whose setup is already fine. The header's guide list covers
                     // the one case they miss, someone setting Forza up before
                     // starting it, without a condition and without the noise.
-                    MasterModeNote.Text = "Normal: all plugin features enabled. The one to use in most games.";
+                    MasterModeNote.Text = Loc.T("Settings_NormalAllPluginFeatures");
                     break;
             }
         }
@@ -5901,9 +5901,9 @@ namespace TrueforceForAll.Plugin
             string which = spring ? "Farming Simulator" : "Forza";
             string other = spring ? "Forza" : "Farming Simulator";
             bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
-                "Reset FFB tuning",
+                Loc.T("Settings_ResetFFBTuning"),
                 "Reset the " + which + " tuning and FFB spike reduction to the defaults?\n\nThis puts every slider and feel-feature toggle on this tab back to the shipped defaults (Telemetry Based FFB uses your wheel's own: the G PRO, RS50, and G923 each have their own). Your " + other + " setup is left alone, and so are your per-game on/off choices, each car's learned grip calibration, and your rev lights and screen settings.",
-                DialogKind.Confirm, okLabel: "Reset", cancelLabel: "Cancel");
+                DialogKind.Confirm, okLabel: Loc.T("Common_Reset"), cancelLabel: Loc.T("Common_Cancel"));
             if (ok != true) return;
             _plugin.ResetModeBTuningToDefaults();
             // Spike reduction is global rather than per-game, so it resets
@@ -5959,8 +5959,8 @@ namespace TrueforceForAll.Plugin
             // two methods can be told apart by reading one clause of each.
             if (SpikeModeDescription != null)
                 SpikeModeDescription.Text = slew
-                    ? "Slows how fast the force can change. Nothing is made weaker: a sharp hit still reaches full strength, it just arrives over a few more milliseconds."
-                    : "Caps how hard a hit lands. Measures each moment against the force of the last fifth of a second: a corner builds gradually and passes through at full strength, while a hit outruns that average and only the part above it gets flattened. A hit above the minimum reference is also slowed, so a long scrape along a wall arrives as shoves rather than slams.";
+                    ? Loc.T("Settings_SlowsHowFastForce")
+                    : Loc.T("Settings_CapsHowHardHit");
             var show = System.Windows.Visibility.Visible;
             var hide = System.Windows.Visibility.Collapsed;
             if (SpikeRateRow  != null) SpikeRateRow.Visibility  = slew ? show : hide;
@@ -5984,7 +5984,7 @@ namespace TrueforceForAll.Plugin
             double lsbPerMs = FfbSpikeLimitSlider.Value;
             if (lsbPerMs <= 0)
             {
-                FfbSpikeLimitHelp.Text = "Off: force changes as fast as the game sends it.";
+                FfbSpikeLimitHelp.Text = Loc.T("Settings_OffForceChangesAs");
                 return;
             }
             double fullRangeMs = TrueforceSettings.FfbFullScaleLsb / lsbPerMs;
@@ -6008,7 +6008,7 @@ namespace TrueforceForAll.Plugin
             // rather than describing a limiter that is not running.
             if (maxHit <= 0 || floor <= 0)
             {
-                SpikePeakSummary.Text = "Either one at zero turns the peak limiter off, and hits pass through as the game sent them.";
+                SpikePeakSummary.Text = Loc.T("Settings_EitherOneZeroTurns");
                 return;
             }
             double full = TrueforceSettings.FfbFullScaleLsb;
@@ -6452,8 +6452,8 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 12, 0, 0),
             };
-            var ok     = new Button { Content = "Save", Width = 80, Height = 26, Margin = new Thickness(0, 0, 6, 0), IsDefault = true };
-            var cancel = new Button { Content = "Cancel", Width = 80, Height = 26, IsCancel = true };
+            var ok     = new Button { Content = Loc.T("Common_Save"), Width = 80, Height = 26, Margin = new Thickness(0, 0, 6, 0), IsDefault = true };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 80, Height = 26, IsCancel = true };
             btnRow.Children.Add(ok); btnRow.Children.Add(cancel);
             sp.Children.Add(btnRow);
             win.Content = sp;
@@ -6462,15 +6462,15 @@ namespace TrueforceForAll.Plugin
             ok.Click += (_, __) =>
             {
                 string name = (box.Text ?? "").Trim();
-                if (string.IsNullOrEmpty(name)) { error.Text = "Name can't be empty."; return; }
+                if (string.IsNullOrEmpty(name)) { error.Text = Loc.T("Settings_NameCanTEmpty"); return; }
                 if (name.EndsWith("(default)", StringComparison.OrdinalIgnoreCase))
                 {
-                    error.Text = "Names ending with '(default)' are reserved for built-ins.";
+                    error.Text = Loc.T("Settings_NamesEndingDefaultReserved");
                     return;
                 }
                 if (existing != null && existing.ContainsKey(name))
                 {
-                    error.Text = $"A preset named '{name}' already exists for this car.";
+                    error.Text = Loc.F("Settings_PresetNamedAlreadyExists_Fmt", name);
                     return;
                 }
                 chosen = name;
@@ -6556,7 +6556,7 @@ namespace TrueforceForAll.Plugin
                 FxTuneLpfSlider.Value = Math.Max(0, Math.Min(500, hz));
                 FxTuneLpfSlider.IsEnabled = uses;
                 FxTuneLpfSlider.Opacity = uses ? 1.0 : 0.5;
-                if (FxTuneLpfText != null) FxTuneLpfText.Text = $"{hz:F0} Hz";
+                if (FxTuneLpfText != null) FxTuneLpfText.Text = Loc.F("Settings_Hz_Fmt", hz);
             }
             finally { _suppressEvents = prev; }
         }
@@ -6597,7 +6597,7 @@ namespace TrueforceForAll.Plugin
             if (FxTestStrengthText != null && FxTestStrengthSlider != null)
                 FxTestStrengthText.Text = $"{(int)FxTestStrengthSlider.Value}%";
             if (FxTestPeriodText != null && FxTestPeriodSlider != null)
-                FxTestPeriodText.Text = $"{(int)FxTestPeriodSlider.Value} ms";
+                FxTestPeriodText.Text = Loc.F("Settings_Ms_Fmt", (int)FxTestPeriodSlider.Value);
         }
 
         private void FxTestNative_Click(object sender, RoutedEventArgs e) => FxTestStart("NATIVE");
@@ -6612,7 +6612,7 @@ namespace TrueforceForAll.Plugin
             string err = _plugin.StartFxTest(mode, kind, pct, per);
             if (FxTestStatus != null)
                 FxTestStatus.Text = err == null
-                    ? $"{mode} {kind} playing at {pct}% (auto-off after 30 s)."
+                    ? Loc.F("Settings_PlayingAutoOffAfter_Fmt", mode, kind, pct)
                     : "Could not start: " + err + ".";
         }
 
@@ -6620,7 +6620,7 @@ namespace TrueforceForAll.Plugin
         {
             _plugin?.CancelAutoTune();
             _plugin?.StopFxTest();
-            if (FxTestStatus != null) FxTestStatus.Text = "Stopped.";
+            if (FxTestStatus != null) FxTestStatus.Text = Loc.T("Settings_Stopped");
         }
 
         // The same trace the TRACE access code arms, on the surface where the
@@ -6715,7 +6715,7 @@ namespace TrueforceForAll.Plugin
         private void FxTuneLpf_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (FxTuneLpfText != null && FxTuneLpfSlider != null)
-                FxTuneLpfText.Text = $"{(int)FxTuneLpfSlider.Value} Hz";
+                FxTuneLpfText.Text = Loc.F("Settings_Hz_Fmt2", (int)FxTuneLpfSlider.Value);
             if (_suppressEvents || _plugin == null) return;
             // Per-effect: the filter belongs to the picked condition family, so
             // tune -> switch -> tune leaves the others intact, like the gain row.
@@ -6731,7 +6731,7 @@ namespace TrueforceForAll.Plugin
             FxLoadGainForSelectedKind();
             FxLoadLpfForSelectedKind();
             if (FxTestStatus != null)
-                FxTestStatus.Text = $"{kind} gain ({v:F2}) and filter back to defaults. Save tuning to keep it.";
+                FxTestStatus.Text = Loc.F("Settings_GainFilterBackDefaults_Fmt", kind, v);
         }
 
         private void FxTuneResetAll_Click(object sender, RoutedEventArgs e)
@@ -6759,12 +6759,12 @@ namespace TrueforceForAll.Plugin
             // length limits mean we can't paste logs into the body anyway; the
             // user attaches the zip after the form opens.
             var choice = TrueforceDialog.Show(Window.GetWindow(this),
-                "Include logs?",
+                Loc.T("Settings_IncludeLogs"),
                 "Attach your SimHub logs to this bug report? They make wheel and USBPcap issues much "
                 + "easier to diagnose. Logs export to a zip on your Desktop; drag it into the GitHub "
                 + "issue after the form opens.\n\n"
                 + "Close this window to cancel the report.",
-                DialogKind.Confirm, okLabel: "Attach logs", cancelLabel: "Skip logs",
+                DialogKind.Confirm, okLabel: Loc.T("Settings_AttachLogs"), cancelLabel: Loc.T("Settings_SkipLogs"),
                 goldOk: true);
             if (choice == null) return;          // closed/Esc = cancel the whole report
             string zipPath = null;
@@ -7011,7 +7011,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(null,
-                    "Couldn't export the logs. Make sure the folder is writable, then try again.",
+                    Loc.T("Settings_CouldnTExportLogs"),
                     ex);
                 return null;
             }
@@ -7314,7 +7314,7 @@ namespace TrueforceForAll.Plugin
             {
                 if (IRacingAutoMaxForceStatus != null)
                 {
-                    SetIRacingMaxNmStatus("Nothing to nudge yet: press Auto after a clean lap, or type a number.", false);
+                    SetIRacingMaxNmStatus(Loc.T("Settings_NothingNudgeYetPress"), false);
                     IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
                 }
                 return;
@@ -7390,8 +7390,8 @@ namespace TrueforceForAll.Plugin
                 if (IRacingAutoMaxForceStatus != null)
                 {
                     SetIRacingMaxNmStatus(_plugin.IRacingObservedPeakNm <= 0.5
-                        ? "Drive a lap first, then press this."
-                        : "Still learning what this car pushes. Keep driving; this lights up when the reading has held steady.", false);
+                        ? Loc.T("Settings_DriveLapFirstThen")
+                        : Loc.T("Settings_StillLearningWhatCar"), false);
                     IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
                 }
                 return;
@@ -7401,7 +7401,7 @@ namespace TrueforceForAll.Plugin
             {
                 SetIRacingMaxNmStatus(applied > 0.5
                     ? "Set to " + applied.ToString("F1") + " Nm. Watching again from now."
-                    : "Drive a lap first, then press this.", applied > 0.5);
+                    : Loc.T("Settings_DriveLapFirstThen"), applied > 0.5);
                 IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
             }
             _irAutoReadyShown = null;   // force the readiness line to redraw
@@ -7540,7 +7540,7 @@ namespace TrueforceForAll.Plugin
             {
                 if (!wasReady)
                 {
-                    SetIRacingMaxNmStatus("Ready. Finish a clean lap, then take that number.", false);
+                    SetIRacingMaxNmStatus(Loc.T("Settings_ReadyFinishCleanLap"), false);
                     IRacingAutoMaxForceStatus.Visibility = Visibility.Visible;
                 }
             }
@@ -7594,12 +7594,12 @@ namespace TrueforceForAll.Plugin
             if (ready)
             {
                 if (!wasReady)
-                    R3EAutoStrengthStatus.Text = "Ready. Press to use what this car pushes.";
+                    R3EAutoStrengthStatus.Text = Loc.T("Settings_ReadyPressUseWhat");
             }
             else if (pct > 0)
                 R3EAutoStrengthStatus.Text = "Learning what this car pushes: " + pct + " percent.";
             else
-                R3EAutoStrengthStatus.Text = "Drive a couple of clean laps.";
+                R3EAutoStrengthStatus.Text = Loc.T("Settings_DriveCoupleCleanLaps");
         }
 
         private void R3EApplyStrength_Click(object sender, RoutedEventArgs e)
@@ -7609,7 +7609,7 @@ namespace TrueforceForAll.Plugin
             if (applied > 0.01f)
             {
                 if (R3EAutoStrengthStatus != null)
-                    R3EAutoStrengthStatus.Text = $"Set this car's max to {applied:0.00}. Watching again from now.";
+                    R3EAutoStrengthStatus.Text = Loc.F("Settings_SetCarSMax_Fmt", applied);
                 if (R3EMaxBox != null && !R3EMaxBox.IsKeyboardFocused)
                     R3EMaxBox.Text = _plugin.R3EEffectivePeak.ToString("0.00");
                 R3EApplyStrengthBtn.Content = Loc.T("Common_Apply");
@@ -7624,7 +7624,7 @@ namespace TrueforceForAll.Plugin
             }
             else if (R3EAutoStrengthStatus != null)
             {
-                R3EAutoStrengthStatus.Text = "Not settled yet. Drive a couple of clean laps first.";
+                R3EAutoStrengthStatus.Text = Loc.T("Settings_NotSettledYetDrive");
             }
         }
 
@@ -7712,8 +7712,8 @@ namespace TrueforceForAll.Plugin
                 if (!MaxNmBoxBeingEdited)
                     IRacingMaxNmBox.Text = shown.ToString("F1");
                 IRacingMaxNmText.Text = string.IsNullOrEmpty(src)
-                    ? "for every car"
-                    : "for this car";
+                    ? Loc.T("Settings_EveryCar")
+                    : Loc.T("Settings_ForThisCar");
                 return;
             }
             // Nothing set: we fall back to whatever iRacing itself is using, so
@@ -7725,7 +7725,7 @@ namespace TrueforceForAll.Plugin
                 ? "no number for this car yet; " + live.ToString("F0") + " Nm is full force until Auto"
                 : live > 0.5
                 ? "following iRacing, which says " + live.ToString("F1")
-                : "following iRacing";
+                : Loc.T("Settings_FollowingIRacing");
         }
 
         // Feel only means anything with the 360 Hz feed on: without the six
@@ -7748,16 +7748,16 @@ namespace TrueforceForAll.Plugin
             switch (IRacingFeelIndexFromSettings())
             {
                 case 0:
-                    IRacingFeelHelp.Text = "Each update is used exactly as the sim sends it, and held until the next one arrives. Nothing is filled in and nothing is added.";
+                    IRacingFeelHelp.Text = Loc.T("Settings_EachUpdateUsedExactly");
                     break;
                 case 1:
-                    IRacingFeelHelp.Text = "Fills the time between updates by continuing the force along its own trend, so it keeps moving instead of holding still.";
+                    IRacingFeelHelp.Text = Loc.T("Settings_FillsTimeBetweenUpdates");
                     break;
                 case 2:
-                    IRacingFeelHelp.Text = "Fills the gaps as above, and brings in the detail the sim solves between updates, so curbs and surface texture reach your hands.";
+                    IRacingFeelHelp.Text = Loc.T("Settings_FillsGapsAsAbove");
                     break;
                 default:
-                    IRacingFeelHelp.Text = "Curbs and texture arrive whole and in step with the steering weight, instead of split from it. Keeping them together costs a frame of delay, which the plugin predicts forward to cancel.";
+                    IRacingFeelHelp.Text = Loc.T("Settings_CurbsTextureArriveWhole");
                     break;
             }
         }
@@ -7946,8 +7946,8 @@ namespace TrueforceForAll.Plugin
             _plugin.PersistSettings();
             if (AccessCodeStatus != null)
                 AccessCodeStatus.Text = on
-                    ? "Driver testing mode ON (restart SimHub / re-detect to apply). Needs the TFFA filter driver installed."
-                    : "Driver testing mode OFF (restart SimHub / re-detect to apply).";
+                    ? Loc.T("Settings_DriverTestingModeRestart")
+                    : Loc.T("Settings_DriverTestingModeOFF");
         }
 
         // Open the manual USB-device picker dialog. Always available, not
@@ -7963,7 +7963,7 @@ namespace TrueforceForAll.Plugin
             // device; this was the half that still did work.
             if (_plugin.MasterMode != TrueforceMasterMode.Normal)
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Pick device manually",
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Settings_PickDeviceManually"),
                     $"The master mode is {TrueforcePlugin.ModeLabel(_plugin.MasterMode)}, so the plugin is not "
                     + "capturing USB traffic and there is nothing to pick a device for. Switch to Normal first.",
                     DialogKind.Info);
@@ -8050,7 +8050,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(null,
-                    $"Couldn't open your browser. Copy this link into it instead:\n\n{url}",
+                    Loc.F("Settings_CouldnTOpenBrowser_Fmt", url),
                     ex);
             }
         }
@@ -8284,11 +8284,11 @@ namespace TrueforceForAll.Plugin
             if (maxRpm < 500) return true;                 // no ceiling to compare against
             if (redlineRpm < maxRpm * 0.98) return true;   // comfortably below the limiter
             return TrueforceDialog.Show(Window.GetWindow(this),
-                "That looks like the rev limiter",
+                Loc.T("Settings_LooksLikeRevLimiter"),
                 $"{redlineRpm} RPM is right at this car's max RPM ({(int)Math.Round(maxRpm)}), which is "
                 + "usually the rev limiter cutoff, not the redline. The redline is where the tachometer "
                 + "turns red and you should upshift, a little below the limiter. Submit anyway?",
-                DialogKind.Warning, okLabel: "Submit anyway", cancelLabel: "Cancel") == true;
+                DialogKind.Warning, okLabel: Loc.T("Settings_SubmitAnyway"), cancelLabel: Loc.T("Common_Cancel")) == true;
         }
 
         // CONFIRM cases (agrees with detection) and "no data" skip the prompt.
@@ -8516,7 +8516,7 @@ namespace TrueforceForAll.Plugin
 
             int supporters = _engineCommunityCache.SupportingSubmissions;
             string countTag = supporters > 0 ? $" ({supporters})" : "";
-            EngineCommunityText.Text = $"Community: {layoutDisplay}{countTag}";
+            EngineCommunityText.Text = Loc.F("Settings_Community_Fmt", layoutDisplay, countTag);
             EngineCommunityText.Visibility = System.Windows.Visibility.Visible;
         }
 
@@ -8809,7 +8809,7 @@ namespace TrueforceForAll.Plugin
                 // No variant signature yet (telemetry hasn't identified the
                 // engine). Snap the dropdown back and tell the user why.
                 RebuildEngineLayoutDropdown();
-                TrueforceDialog.Show(Window.GetWindow(this), "Engine type",
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Settings_EngineType"),
                     "Drive the car for a moment first. The plugin identifies the engine "
                     + "variant from telemetry, then your pick sticks to that variant.",
                     DialogKind.Info);
@@ -8891,7 +8891,7 @@ namespace TrueforceForAll.Plugin
             if (UdpSetupBanner == null) return;
             if (forzaNeedsSetup)
             {
-                UdpSetupBannerText.Text = "Forza is running but no telemetry is reaching the plugin. Forza sends telemetry over UDP, which has to be turned on in-game (Data Out) and pointed at the plugin.";
+                UdpSetupBannerText.Text = Loc.T("Settings_ForzaRunningButNo");
                 UdpSetupBanner.Visibility = Visibility.Visible;
             }
             else
@@ -9191,7 +9191,7 @@ namespace TrueforceForAll.Plugin
         // here shows as "Tab 6" in the editor, and worse, reads as an invalid
         // default and gets quietly reset the next time the editor rebuilds.
         private static readonly string[] RemoteDashTabNames =
-            { "Gains", "Car facts", "Effects", "Presets", "Visualizer", "Tele-FFB", "Drive" };
+            { Loc.T("Settings_Gains"), Loc.T("Settings_CarFacts"), Loc.T("Effects_Effects"), Loc.T("Presets_PresetsTab_Header"), Loc.T("Settings_Visualizer"), Loc.T("Settings_TeleFFB"), Loc.T("Settings_Drive") };
 
         private static string RemoteDashTabName(int tab) =>
             tab >= 0 && tab < RemoteDashTabNames.Length ? RemoteDashTabNames[tab] : "Tab " + tab;
@@ -9365,18 +9365,18 @@ namespace TrueforceForAll.Plugin
         // Style and color are fixed lists rather than free text: both feed a
         // dash formula, and a typo there fails silently as a blank card.
         private static readonly string[] IdleStyleKeys   = { "Pipes", "Fractal", "Topo", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
-        private static readonly string[] IdleStyleLabels = { "Pipes", "Fractal zoom", "Contours", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
+        private static readonly string[] IdleStyleLabels = { Loc.T("Settings_Pipes"), Loc.T("Settings_FractalZoom"), Loc.T("Settings_Contours"), Loc.T("Settings_Caustics"), Loc.T("Settings_Bubbles"), Loc.T("Settings_Ribbon"), Loc.T("Settings_Wave"), Loc.T("Settings_Pulse"), Loc.T("Settings_Aurora"), Loc.T("Settings_Streaks"), Loc.T("TelemetryFfb_IRacingForceModePlain") };
         // Families that ship broadly enough to be there on a phone, a tablet
         // and a PC alike. Empty is the dashboard's own font.
         private static readonly string[] IdleFontValues =
             { "", "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet MS" };
         private static readonly string[] IdleFontLabels =
-            { "Default", "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet" };
+            { Loc.T("PresetManager_CarListDefault_Header"), "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet" };
 
         private static readonly string[] IdleColorHex =
             { "#FFF2F4F8", "#FFE8C547", "#FF37D67A", "#FF4FA3F7", "#FFE5484D", "#FFC77DF5" };
         private static readonly string[] IdleColorNames =
-            { "White", "Gold", "Green", "Blue", "Red", "Violet" };
+            { Loc.T("Settings_White"), Loc.T("Settings_Gold"), Loc.T("Settings_Green"), Loc.T("Settings_Blue"), Loc.T("Settings_Red"), Loc.T("Settings_Violet") };
 
         private void RemoteDashIdle_Changed(object sender, RoutedEventArgs e)
         {
@@ -9602,7 +9602,7 @@ namespace TrueforceForAll.Plugin
                         Content = "▲", Width = 26, Height = 20, FontSize = 10,
                         Padding = new Thickness(0),
                         IsEnabled = pos > 0,
-                        ToolTip = "Move this tab left on the dash",
+                        ToolTip = Loc.T("Settings_MoveTabLeftDash"),
                     };
                     int posUp = pos;
                     up.Click += (s, args) => RemoteDashTabMove(posUp, -1);
@@ -9612,7 +9612,7 @@ namespace TrueforceForAll.Plugin
                         Content = "▼", Width = 26, Height = 20, FontSize = 10,
                         Padding = new Thickness(0), Margin = new Thickness(4, 0, 0, 0),
                         IsEnabled = pos < order.Count - 1,
-                        ToolTip = "Move this tab right on the dash",
+                        ToolTip = Loc.T("Settings_MoveTabRightDash"),
                     };
                     int posDown = pos;
                     down.Click += (s, args) => RemoteDashTabMove(posDown, +1);
@@ -9628,7 +9628,7 @@ namespace TrueforceForAll.Plugin
                         IsEnabled = !(on && enabledCount == 1),
                     };
                     if (on && enabledCount == 1)
-                        check.ToolTip = "At least one tab must stay on";
+                        check.ToolTip = Loc.T("Settings_LeastOneTabMust");
                     int tabId = tab;
                     check.Checked += (s, args) => RemoteDashTabToggle(tabId, true);
                     check.Unchecked += (s, args) => RemoteDashTabToggle(tabId, false);
@@ -9851,7 +9851,7 @@ namespace TrueforceForAll.Plugin
                 // The Mode B / FFB controls (and the policy combo, if remembered)
                 // now reflect the applied tuning.
                 RefreshFromPlugin();
-                SetBackupStatus("FFB tuning applied.");
+                SetBackupStatus(Loc.T("Settings_FFBTuningApplied"));
             }
         }
 
@@ -9868,7 +9868,7 @@ namespace TrueforceForAll.Plugin
         private async void BackupNow_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
-            SetBackupStatus("Backing up…");
+            SetBackupStatus(Loc.T("Settings_BackingUp"));
             if (BackupNowBtn != null) BackupNowBtn.IsEnabled = false;
             try
             {
@@ -9881,7 +9881,7 @@ namespace TrueforceForAll.Plugin
                     };
                     bool? ok = dlg.ShowDialog();
                     if (ok != true || dlg.Choice == BackupConflictChoice.Cancel) { SetBackupStatus(""); return; }
-                    SetBackupStatus("Resolving…");
+                    SetBackupStatus(Loc.T("Settings_Resolving"));
                     var resolved = await _plugin.ResolveBackupConflictAsync(dlg.Choice, dlg.KeepCloudSettings);
                     SetBackupStatus(resolved.Message);
                 }
@@ -9890,7 +9890,7 @@ namespace TrueforceForAll.Plugin
                     SetBackupStatus(outcome.Message);
                 }
             }
-            catch (Exception ex) { SetBackupStatus("Couldn't back up. Check your connection and try again."); TrueforceDialog.LogError("Backup", ex); }
+            catch (Exception ex) { SetBackupStatus(Loc.T("Settings_CouldnTBackUp")); TrueforceDialog.LogError("Backup", ex); }
             finally { if (BackupNowBtn != null) BackupNowBtn.IsEnabled = true; }
         }
 
@@ -9898,18 +9898,18 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             var confirm = TrueforceDialog.Show(Window.GetWindow(this),
-                "Restore from cloud",
-                "Download your cloud backup and apply it to this PC? Your local-only presets are kept; global settings are replaced by the cloud's.",
-                DialogKind.Destructive, okLabel: "Restore", cancelLabel: "Cancel");
+                Loc.T("Settings_RestoreFromCloud"),
+                Loc.T("Settings_DownloadCloudBackupApply"),
+                DialogKind.Destructive, okLabel: Loc.T("Settings_Restore2"), cancelLabel: Loc.T("Common_Cancel"));
             if (confirm != true) return;
-            SetBackupStatus("Restoring…");
+            SetBackupStatus(Loc.T("Settings_Restoring"));
             if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = false;
             try
             {
                 var outcome = await _plugin.RestoreFromCloudAsync();
                 SetBackupStatus(outcome.Message);
             }
-            catch (Exception ex) { SetBackupStatus("Couldn't restore. Check your connection and try again."); TrueforceDialog.LogError("Restore", ex); }
+            catch (Exception ex) { SetBackupStatus(Loc.T("Settings_CouldnTRestoreCheck")); TrueforceDialog.LogError("Restore", ex); }
             finally { if (RestoreFromCloudBtn != null) RestoreFromCloudBtn.IsEnabled = true; }
         }
 
@@ -9947,7 +9947,7 @@ namespace TrueforceForAll.Plugin
             {
                 block.Inlines.Add(new System.Windows.Documents.Run("   "));
                 var link = new System.Windows.Documents.Hyperlink(
-                    new System.Windows.Documents.Run("Show in folder"))
+                    new System.Windows.Documents.Run(Loc.T("Settings_ShowFolder")))
                 {
                     Foreground = new System.Windows.Media.SolidColorBrush(
                         System.Windows.Media.Color.FromRgb(0x6F, 0xB1, 0xFF)),
@@ -10024,9 +10024,9 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             var confirm = TrueforceDialog.Show(Window.GetWindow(this),
-                "Unlink Discord",
-                "Unlink your Discord account from Trueforce For All? You can re-link any time.",
-                DialogKind.Destructive, okLabel: "Unlink", cancelLabel: "Cancel");
+                Loc.T("Settings_UnlinkDiscord"),
+                Loc.T("Settings_UnlinkDiscordAccountTrueforce"),
+                DialogKind.Destructive, okLabel: Loc.T("Account_UnlinkDiscord"), cancelLabel: Loc.T("Common_Cancel"));
             if (confirm != true) return;
             if (UnlinkDiscordBtn != null) UnlinkDiscordBtn.IsEnabled = false;
             try
@@ -10217,14 +10217,14 @@ namespace TrueforceForAll.Plugin
             if (retain.HasValue)
             {
                 // Lapsed supporter whose backup is still inside the 2-year retention window.
-                SetCloudBackupMessage("Your support has paused, so new cloud backups are off. You can still use \"Restore from cloud\" to download any backup you saved.");
+                SetCloudBackupMessage(Loc.T("Settings_SupportHasPausedSo"));
                 double daysLeft = (retain.Value - DateTime.UtcNow).TotalDays;
                 SetRemovalCountdown(daysLeft <= 180 ? retain : (DateTime?)null);   // surface the countdown as removal approaches
             }
             else
             {
                 // Never a supporter: nothing is stored, so don't pitch a restore. Just explain the gate.
-                SetCloudBackupMessage("Support on Patreon (Account tab) to enable cloud backup.");
+                SetCloudBackupMessage(Loc.T("Settings_SupportPatreonAccountTab"));
                 SetRemovalCountdown(null);
             }
         }
@@ -10251,11 +10251,11 @@ namespace TrueforceForAll.Plugin
             if (BetaUpdatesCheck?.IsChecked == true && !_plugin.Settings.BetaUpdatesEnabled)
             {
                 bool? ok = TrueforceDialog.Show(Window.GetWindow(this),
-                    "Get beta updates?",
+                    Loc.T("Settings_GetBetaUpdates"),
                     "Beta builds bring new effects and fixes first, but they are "
                     + "less tested than stable releases. You can switch back to "
                     + "the main release any time by turning this off.",
-                    DialogKind.Confirm, "Get beta updates", "Not now");
+                    DialogKind.Confirm, Loc.T("Settings_GetBetaUpdates2"), Loc.T("SupportPrompt_NotNow"));
                 if (ok != true)
                 {
                     _suppressEvents = true;
@@ -10297,7 +10297,7 @@ namespace TrueforceForAll.Plugin
             SetBetaUpdatesNote(BetaUpdatesCheck.IsChecked == true
                 ? (string)null
                 : (_plugin?.UpdateChecker?.CurrentVersionIsPrerelease == true
-                    ? "Beta is off: the updater offers the newest main release so you can switch back."
+                    ? Loc.T("Settings_BetaOffUpdaterOffers")
                     : null));
 
             _plugin?.ApplyUpdateChannel();
@@ -10348,12 +10348,12 @@ namespace TrueforceForAll.Plugin
 
         private static string FormatRemoval(double days)
         {
-            if (days < 1) return "less than a day";
+            if (days < 1) return Loc.T("Settings_LessThanDay");
             int d = (int)Math.Round(days);
-            if (d == 1) return "1 day";
+            if (d == 1) return Loc.T("Settings_N1Day");
             if (d < 45) return d + " days";
             int months = (int)Math.Round(days / 30.0);
-            return months <= 1 ? "about 1 month" : "about " + months + " months";
+            return months <= 1 ? Loc.T("Settings_About1Month") : "about " + months + " months";
         }
 
         // Tab lazy-load. The Account block is expanded by default on its own tab, so
@@ -11164,7 +11164,7 @@ namespace TrueforceForAll.Plugin
                 // A Patreon row can arrive with no entitled tier (legacy or
                 // custom pledges): still a patron, so never label them
                 // one-time.
-                border.ToolTip = patreon ? "Patreon supporter" : "One-time supporter";
+                border.ToolTip = patreon ? Loc.T("Settings_PatreonSupporter") : Loc.T("Settings_OneTimeSupporter");
             }
             var text = new System.Windows.Controls.TextBlock
             {
@@ -11230,8 +11230,8 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             if (!_plugin.AuthIsSignedIn)
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Achievements",
-                    "Sign in to see your achievements.",
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Header_AchievementCrown_Tip"),
+                    Loc.T("Settings_SignSeeAchievements"),
                     DialogKind.Info);
                 return;
             }
@@ -11252,8 +11252,8 @@ namespace TrueforceForAll.Plugin
                 catch { }
                 if (list == null)
                 {
-                    TrueforceDialog.Show(Window.GetWindow(this), "Achievements",
-                        "Couldn't load your achievements right now. Try again in a moment.",
+                    TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Header_AchievementCrown_Tip"),
+                        Loc.T("Settings_CouldnTLoadAchievements"),
                         DialogKind.Info);
                     return;
                 }
@@ -11519,9 +11519,9 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             var confirm = TrueforceDialog.Show(Window.GetWindow(this),
-                "Unlink Patreon",
-                "Unlink your Patreon account from Trueforce For All? You can re-link any time.",
-                DialogKind.Destructive, okLabel: "Unlink", cancelLabel: "Cancel");
+                Loc.T("Settings_UnlinkPatreon"),
+                Loc.T("Settings_UnlinkPatreonAccountTrueforce"),
+                DialogKind.Destructive, okLabel: Loc.T("Account_UnlinkDiscord"), cancelLabel: Loc.T("Common_Cancel"));
             if (confirm != true) return;
             if (UnlinkPatreonBtn != null) UnlinkPatreonBtn.IsEnabled = false;
             try
@@ -11758,18 +11758,18 @@ namespace TrueforceForAll.Plugin
             }
 
             var menu = new ContextMenu();
-            var achievements = new MenuItem { Header = "Achievements…" };
+            var achievements = new MenuItem { Header = Loc.T("Settings_Achievements") };
             achievements.Click += (s, ev) => { _ = OpenAchievementsWindowAsync(); };
-            var manage = new MenuItem { Header = "Account settings…" };
+            var manage = new MenuItem { Header = Loc.T("Settings_AccountSettings") };
             manage.Click += (s, ev) => OpenAccountSection();
-            var signOut = new MenuItem { Header = "Sign out" };
+            var signOut = new MenuItem { Header = Loc.T("Account_AccountAuthSignOut") };
             signOut.Click += (s, ev) =>
             {
                 var confirm = TrueforceDialog.Show(
                     Window.GetWindow(this),
-                    "Sign out",
-                    "Sign out of your community account?",
-                    DialogKind.Destructive, okLabel: "Sign out", cancelLabel: "Cancel");
+                    Loc.T("Account_AccountAuthSignOut"),
+                    Loc.T("Settings_SignOutCommunityAccount"),
+                    DialogKind.Destructive, okLabel: Loc.T("Account_AccountAuthSignOut"), cancelLabel: Loc.T("Common_Cancel"));
                 if (confirm != true) return;
                 _plugin.AuthSignOut();
                 RefreshAccountRow();
@@ -11833,9 +11833,9 @@ namespace TrueforceForAll.Plugin
             {
                 var confirm = TrueforceDialog.Show(
                     Window.GetWindow(this),
-                    "Sign out",
-                    "Sign out of your community account?",
-                    DialogKind.Destructive, okLabel: "Sign out", cancelLabel: "Cancel");
+                    Loc.T("Account_AccountAuthSignOut"),
+                    Loc.T("Settings_SignOutCommunityAccount"),
+                    DialogKind.Destructive, okLabel: Loc.T("Account_AccountAuthSignOut"), cancelLabel: Loc.T("Common_Cancel"));
                 if (confirm != true) return;
                 try { _discordLinkCts?.Cancel(); } catch { }
                 _plugin.AuthSignOut();
@@ -12025,7 +12025,7 @@ namespace TrueforceForAll.Plugin
                 // existing CommitAuthorName backfill prompt).
                 if (AuthorNameBox != null) AuthorNameBox.Text = newAuthor;
                 CommitAuthorName();
-                if (AccountAuthorStatus != null) AccountAuthorStatus.Text = "Saved.";
+                if (AccountAuthorStatus != null) AccountAuthorStatus.Text = Loc.T("Settings_Saved");
                 return;
             }
 
@@ -12033,7 +12033,7 @@ namespace TrueforceForAll.Plugin
             if (AccountAuthorStatus != null)
             {
                 AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x9F, 0xB4, 0xD8));
-                AccountAuthorStatus.Text = "Saving...";
+                AccountAuthorStatus.Text = Loc.T("PickUsername_Saving");
             }
             UsernameAvailability result;
             try { result = await _plugin.AuthSetUsernameAsync(newAuthor); }
@@ -12042,7 +12042,7 @@ namespace TrueforceForAll.Plugin
                 if (AccountAuthorStatus != null)
                 {
                     AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
-                    AccountAuthorStatus.Text = "Couldn't save your username. Check your connection and try again.";
+                    AccountAuthorStatus.Text = Loc.T("PickUsername_SaveFailed");
                 }
                 TrueforceDialog.LogError("Username save", ex);
                 AccountAuthorBox.Text = oldAuthor;
@@ -12076,12 +12076,12 @@ namespace TrueforceForAll.Plugin
                     if (persisted)
                     {
                         AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0xCC, 0x88));
-                        AccountAuthorStatus.Text = "Saved.";
+                        AccountAuthorStatus.Text = Loc.T("Settings_Saved");
                     }
                     else
                     {
                         AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
-                        AccountAuthorStatus.Text = "Accepted on the server, but the local save failed.";
+                        AccountAuthorStatus.Text = Loc.T("Settings_AcceptedServerButLocal");
                     }
                 }
                 return;
@@ -12094,13 +12094,13 @@ namespace TrueforceForAll.Plugin
                 switch (result)
                 {
                     case UsernameAvailability.Format:
-                        AccountAuthorStatus.Text = "3-32 chars; letters / numbers / underscore."; break;
+                        AccountAuthorStatus.Text = Loc.T("Settings_N332CharsLetters"); break;
                     case UsernameAvailability.Reserved:
-                        AccountAuthorStatus.Text = "Reserved name. Pick another."; break;
+                        AccountAuthorStatus.Text = Loc.T("Settings_ReservedNamePickAnother"); break;
                     case UsernameAvailability.Taken:
-                        AccountAuthorStatus.Text = "Taken. Pick another."; break;
+                        AccountAuthorStatus.Text = Loc.T("Settings_TakenPickAnother"); break;
                     default:
-                        AccountAuthorStatus.Text = "Could not save."; break;
+                        AccountAuthorStatus.Text = Loc.T("Settings_CouldNotSave"); break;
                 }
             }
             }
@@ -12110,7 +12110,7 @@ namespace TrueforceForAll.Plugin
                 if (AccountAuthorStatus != null)
                 {
                     AccountAuthorStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x96, 0x55));
-                    AccountAuthorStatus.Text = "Couldn't save your username. Check your connection and try again.";
+                    AccountAuthorStatus.Text = Loc.T("PickUsername_SaveFailed");
                 }
                 TrueforceDialog.LogError("Username save", ex);
             }
@@ -12150,8 +12150,8 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null || !_plugin.AuthIsSignedIn) return;
             string current = _plugin.AuthSignedInEmail ?? "(unknown)";
             var dlg = new TwoLineEditWindow(
-                title:      "Change email",
-                line1Label: "New email address",
+                title:      Loc.T("Settings_ChangeEmail"),
+                line1Label: Loc.T("Settings_NewEmailAddress"),
                 line1Init:  "",
                 line2Label: null,
                 line2Init:  null)
@@ -12164,27 +12164,27 @@ namespace TrueforceForAll.Plugin
             string newEmail = (dlg.Line1Result ?? "").Trim();
             if (!newEmail.Contains("@") || newEmail.IndexOf('.', newEmail.IndexOf('@')) <= newEmail.IndexOf('@'))
             {
-                SetChangeEmailStatus("Enter a valid email address.", true);
+                SetChangeEmailStatus(Loc.T("SignIn_EmailInvalid"), true);
                 return;
             }
             if (string.Equals(newEmail.ToLowerInvariant(), current.ToLowerInvariant(),
                               StringComparison.Ordinal))
             {
-                SetChangeEmailStatus("That's already your email.", false);
+                SetChangeEmailStatus(Loc.T("Settings_SAlreadyEmail"), false);
                 return;
             }
             AuthCallResult result;
             try { result = await _plugin.AuthUpdateEmailAsync(newEmail); }
             catch (Exception ex)
             {
-                SetChangeEmailStatus("Couldn't update your email. Check your connection and try again.", true);
+                SetChangeEmailStatus(Loc.T("Settings_CouldnTUpdateEmail"), true);
                 TrueforceDialog.LogError("Change email", ex);
                 return;
             }
             if (result == AuthCallResult.Ok)
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
-                    "Change email",
+                    Loc.T("Settings_ChangeEmail"),
                     "We sent a confirmation link to " + newEmail + ". "
                     + "Click it from that inbox to finish the change. "
                     + "Your current address keeps working until then.",
@@ -12251,7 +12251,7 @@ namespace TrueforceForAll.Plugin
             if (AccountDangerZone != null) AccountDangerZone.Visibility = Visibility.Visible;
             int gen = unchecked(++_accountStatsGen);
             // Initial copy while the RPC runs.
-            AccountStatsCreated.Text   = "Loading...";
+            AccountStatsCreated.Text   = Loc.T("PresetManager_Loading");
             AccountStatsUploads.Text   = "";
             AccountStatsDownloads.Text = "";
             AccountStatsVotes.Text     = "";
@@ -12267,7 +12267,7 @@ namespace TrueforceForAll.Plugin
             if (gen != _accountStatsGen) return;
             if (root == null)
             {
-                AccountStatsCreated.Text = "Could not load stats.";
+                AccountStatsCreated.Text = Loc.T("Settings_CouldNotLoadStats");
                 return;
             }
             string createdRaw = root["created_at"]?.ToString();
@@ -12289,7 +12289,7 @@ namespace TrueforceForAll.Plugin
             }
             else
             {
-                AccountStatsCreated.Text = "Joined: " + (createdRaw ?? "(unknown)");
+                AccountStatsCreated.Text = "Joined: " + (createdRaw ?? Loc.T("Settings_Unknown"));
             }
             int uploads   = root["upload_count"]?.ToObject<int>() ?? 0;
             long dls      = root["downloads_received"]?.ToObject<long>() ?? 0;
@@ -12311,7 +12311,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] RefreshAccountStats failed: " + ex.Message);
-                if (AccountStatsCreated != null) AccountStatsCreated.Text = "Could not load stats.";
+                if (AccountStatsCreated != null) AccountStatsCreated.Text = Loc.T("Settings_CouldNotLoadStats");
             }
         }
 
@@ -12333,7 +12333,7 @@ namespace TrueforceForAll.Plugin
                 int gen = unchecked(++_accountSessionsGen);
                 if (AccountSessionsList != null) AccountSessionsList.Children.Clear();
                 if (AccountSignOutOthersBtn != null) AccountSignOutOthersBtn.Visibility = Visibility.Collapsed;
-                SetSessionsStatus("Loading sessions…");
+                SetSessionsStatus(Loc.T("Settings_LoadingSessions"));
 
                 System.Collections.Generic.List<SessionClient.SessionRow> sessions = null;
                 try { sessions = await _plugin.AuthGetSessionsAsync(System.Threading.CancellationToken.None); }
@@ -12346,8 +12346,8 @@ namespace TrueforceForAll.Plugin
                 // heartbeat gates) instead of making a separate get_my_sessions probe.
                 try { _plugin.ApplySessionsForPresence(sessions); } catch { }
 
-                if (sessions == null) { SetSessionsStatus("Couldn't load your sessions."); return; }
-                if (sessions.Count == 0) { SetSessionsStatus("No active sessions found."); return; }
+                if (sessions == null) { SetSessionsStatus(Loc.T("Settings_CouldnTLoadSessions")); return; }
+                if (sessions.Count == 0) { SetSessionsStatus(Loc.T("Settings_NoActiveSessionsFound")); return; }
 
                 SetSessionsStatus(null);   // hide status, show the rows
                 int others = 0;
@@ -12366,7 +12366,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] RefreshAccountSessions failed: " + ex.Message);
-                SetSessionsStatus("Couldn't load your sessions.");
+                SetSessionsStatus(Loc.T("Settings_CouldnTLoadSessions"));
             }
         }
 
@@ -12397,7 +12397,7 @@ namespace TrueforceForAll.Plugin
 
             var deviceLine = new TextBlock
             {
-                Text = s.IsCurrent ? "This device" : DescribeSession(s),
+                Text = s.IsCurrent ? Loc.T("Settings_Device") : DescribeSession(s),
                 FontSize = 11,
                 FontWeight = s.IsCurrent ? FontWeights.SemiBold : FontWeights.Normal,
                 Foreground = s.IsCurrent
@@ -12449,14 +12449,14 @@ namespace TrueforceForAll.Plugin
             {
                 var revoke = new Button
                 {
-                    Content = "Revoke",
+                    Content = Loc.T("Settings_Revoke"),
                     Tag = s.Id,
                     Padding = new Thickness(8, 1, 8, 1),
                     Height = 22,
                     FontSize = 10,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(8, 0, 0, 0),
-                    ToolTip = "Sign this device out of your account.",
+                    ToolTip = Loc.T("Settings_SignDeviceOutAccount"),
                 };
                 revoke.Click += AccountRevokeSession_Click;
                 Grid.SetColumn(revoke, 1);
@@ -12497,12 +12497,12 @@ namespace TrueforceForAll.Plugin
                 if (string.IsNullOrEmpty(id) || _plugin == null) return;
 
                 var confirm = TrueforceDialog.Show(null,
-                    "Revoke session",
-                    "Sign this device out of your account? A running device signs out within a few minutes; an offline or sleeping one signs out the next time it comes online.",
-                    DialogKind.Destructive, okLabel: "Revoke", cancelLabel: "Cancel");
+                    Loc.T("Settings_RevokeSession"),
+                    Loc.T("Settings_SignDeviceOutAccount2"),
+                    DialogKind.Destructive, okLabel: Loc.T("Settings_Revoke"), cancelLabel: Loc.T("Common_Cancel"));
                 if (confirm != true) return;
 
-                if (btn != null) { btn.IsEnabled = false; btn.Content = "Revoking..."; }
+                if (btn != null) { btn.IsEnabled = false; btn.Content = Loc.T("Settings_Revoking"); }
                 bool ok = await _plugin.AuthRevokeSessionAsync(id, System.Threading.CancellationToken.None);
                 if (ok)
                 {
@@ -12510,8 +12510,8 @@ namespace TrueforceForAll.Plugin
                 }
                 else
                 {
-                    if (btn != null) { btn.IsEnabled = true; btn.Content = "Revoke"; }
-                    SetSessionsStatus("Couldn't revoke that session. It may have already ended.");
+                    if (btn != null) { btn.IsEnabled = true; btn.Content = Loc.T("Settings_Revoke"); }
+                    SetSessionsStatus(Loc.T("Settings_CouldnTRevokeSession"));
                 }
             }
             catch (Exception ex)
@@ -12520,8 +12520,8 @@ namespace TrueforceForAll.Plugin
                 // Don't leave the button stuck on "Revoking..."; restore it and
                 // tell the user it didn't go through. (btn is scoped to the try,
                 // so re-derive it from sender here.)
-                if (sender is Button b) { b.IsEnabled = true; b.Content = "Revoke"; }
-                SetSessionsStatus("Couldn't revoke that session. Check your connection and try again.");
+                if (sender is Button b) { b.IsEnabled = true; b.Content = Loc.T("Settings_Revoke"); }
+                SetSessionsStatus(Loc.T("Settings_CouldnTRevokeSession2"));
             }
         }
 
@@ -12535,9 +12535,9 @@ namespace TrueforceForAll.Plugin
             {
                 if (_plugin == null) return;
                 var confirm = TrueforceDialog.Show(null,
-                    "Sign out everywhere else",
-                    "Sign out every other device? Running devices sign out within a few minutes; offline ones when they next come online. This device stays signed in.",
-                    DialogKind.Destructive, okLabel: "Sign out", cancelLabel: "Cancel");
+                    Loc.T("Account_AccountSignOutOthers"),
+                    Loc.T("Settings_SignOutEveryOther"),
+                    DialogKind.Destructive, okLabel: Loc.T("Account_AccountAuthSignOut"), cancelLabel: Loc.T("Common_Cancel"));
                 if (confirm != true) return;
 
                 _signingOutOthers = true;
@@ -12551,7 +12551,7 @@ namespace TrueforceForAll.Plugin
                 else
                 {
                     if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = Loc.T("Account_AccountSignOutOthers"); }
-                    SetSessionsStatus("Couldn't sign out the other devices. Check your connection and try again.");
+                    SetSessionsStatus(Loc.T("Settings_CouldnTSignOut"));
                 }
             }
             catch (Exception ex)
@@ -12559,7 +12559,7 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Warn("[TF4ALL] Sign-out-others failed: " + ex.Message);
                 _signingOutOthers = false;
                 if (AccountSignOutOthersBtn != null) { AccountSignOutOthersBtn.IsEnabled = true; AccountSignOutOthersBtn.Content = Loc.T("Account_AccountSignOutOthers"); }
-                SetSessionsStatus("Couldn't sign out the other devices. Check your connection and try again.");
+                SetSessionsStatus(Loc.T("Settings_CouldnTSignOut"));
             }
         }
 
@@ -12573,7 +12573,7 @@ namespace TrueforceForAll.Plugin
             {
                 FileName = "trueforce-export-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json",
                 Filter = "JSON file (*.json)|*.json",
-                Title = "Export my data",
+                Title = Loc.T("Account_AccountExport"),
             };
             if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
 
@@ -12582,14 +12582,14 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't export your data. Make sure the file isn't open and you can write to that folder, then try again.",
+                    Loc.T("Settings_CouldnTExportData"),
                     ex);
                 return;
             }
             if (string.IsNullOrEmpty(json))
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
-                    "Export my data", "Export returned nothing.",
+                    Loc.T("Account_AccountExport"), Loc.T("Settings_ExportReturnedNothing"),
                     DialogKind.Warning);
                 return;
             }
@@ -12597,7 +12597,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't export your data. Make sure the file isn't open and you can write to that folder, then try again.",
+                    Loc.T("Settings_CouldnTExportData"),
                     ex);
                 return;
             }
@@ -12618,16 +12618,16 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null || !_plugin.AuthIsSignedIn) return;
             string email = _plugin.AuthSignedInEmail ?? "(unknown)";
             var confirm1 = TrueforceDialog.Show(Window.GetWindow(this),
-                "Delete account",
+                Loc.T("Account_AccountDelete"),
                 "Delete the account for " + email + "?\n\n"
                 + "Your presets stay (people who downloaded them keep them), but your name comes off them and your account is gone for good. Your vote and car-fact contribution history is anonymized, and your cloud backup is deleted.",
-                DialogKind.Destructive, okLabel: "Delete account", cancelLabel: "Cancel");
+                DialogKind.Destructive, okLabel: Loc.T("Account_AccountDelete"), cancelLabel: Loc.T("Common_Cancel"));
             if (confirm1 != true) return;
 
             // Hard sanity gate: require the user to type DELETE.
             var dlg = new TwoLineEditWindow(
-                title:      "Confirm account deletion",
-                line1Label: "Type DELETE to confirm",
+                title:      Loc.T("Settings_ConfirmAccountDeletion"),
+                line1Label: Loc.T("Settings_TypeDELETEConfirm"),
                 line1Init:  "",
                 line2Label: null,
                 line2Init:  null)
@@ -12639,8 +12639,8 @@ namespace TrueforceForAll.Plugin
             if (!string.Equals((dlg.Line1Result ?? "").Trim(), "DELETE", StringComparison.Ordinal))
             {
                 TrueforceDialog.Show(Window.GetWindow(this),
-                    "Delete account",
-                    "Cancelled. Type DELETE exactly to confirm next time.",
+                    Loc.T("Account_AccountDelete"),
+                    Loc.T("Settings_CancelledTypeDELETEExactly"),
                     DialogKind.Info);
                 return;
             }
@@ -12661,15 +12661,15 @@ namespace TrueforceForAll.Plugin
                 catch (Exception ex)
                 {
                     TrueforceDialog.ShowError(Window.GetWindow(this),
-                        "Couldn't delete your account. Check your connection and try again.",
+                        Loc.T("Settings_CouldnTDeleteAccount"),
                         ex);
                     return;
                 }
                 if (!ok)
                 {
                     TrueforceDialog.Show(Window.GetWindow(this),
-                        "Delete account",
-                        "Delete failed. The server might be unreachable; try again.",
+                        Loc.T("Account_AccountDelete"),
+                        Loc.T("Settings_DeleteFailedServerMight"),
                         DialogKind.Warning);
                     return;
                 }
@@ -12686,8 +12686,8 @@ namespace TrueforceForAll.Plugin
                 RefreshAccountRow();
                 if (AccountDetailsExpander?.IsExpanded == true) RefreshAccountStats();
                 TrueforceDialog.Show(Window.GetWindow(this),
-                    "Delete account",
-                    "Account deleted.",
+                    Loc.T("Account_AccountDelete"),
+                    Loc.T("Settings_AccountDeleted"),
                     DialogKind.Info);
             }
             finally
@@ -12790,7 +12790,7 @@ namespace TrueforceForAll.Plugin
                 if (autoApplied > 0) summary += ", " + autoApplied + " auto-updated";
                 summary += ".";
                 TrueforceDialog.Show(owner,
-                    "Community preset updates",
+                    Loc.T("Settings_CommunityPresetUpdates"),
                     summary,
                     DialogKind.Info);
             }
@@ -12880,7 +12880,7 @@ namespace TrueforceForAll.Plugin
                 if (autoApplied > 0) summary += ", " + autoApplied + " auto-updated";
                 summary += ".";
                 TrueforceDialog.Show(owner,
-                    "Community preset updates",
+                    Loc.T("Settings_CommunityPresetUpdates"),
                     summary,
                     DialogKind.Info);
             }
@@ -13040,14 +13040,14 @@ namespace TrueforceForAll.Plugin
                       + "wheel settings, so the plugin is the only force on the wheel."
                       + (canActivate ? " Then activate it below." : "");
                 bool? r = TrueforceDialog.Show(owner,
-                    lmu     ? "Let the plugin carry Le Mans Ultimate's force feedback"
-                  : r3e     ? "Let the plugin carry RaceRoom's force feedback"
-                  : reshape ? "Let the plugin carry iRacing's force feedback"
-                            : "Telemetry Based FFB is available",
+                    lmu     ? Loc.T("Settings_LetPluginCarryLe")
+                  : r3e     ? Loc.T("Settings_LetPluginCarryRaceRoom")
+                  : reshape ? Loc.T("Settings_LetPluginCarryIRacing")
+                            : Loc.T("Settings_TelemetryBasedFFBAvailable"),
                     body,
                     DialogKind.Info,
-                    okLabel: canActivate ? "Activate for this game" : "Got it",
-                    cancelLabel: canActivate ? "Not now" : null,
+                    okLabel: canActivate ? Loc.T("Settings_ActivateGame") : Loc.T("Settings_Got"),
+                    cancelLabel: canActivate ? Loc.T("SupportPrompt_NotNow") : null,
                     goldOk: true);
                 // One-time: mark seen on any outcome so it never re-nags.
                 _plugin.Settings.HasSeenModeBIntro = true;
@@ -13541,7 +13541,7 @@ namespace TrueforceForAll.Plugin
                 bool showNudge = _plugin.Settings?.CommunityEnabled == true
                                  && !s.CommunityRedline.HasValue;
                 if (showNudge)
-                    CarFactsNoCommunityNudge.Text = "No community redline exists for this car yet.";
+                    CarFactsNoCommunityNudge.Text = Loc.T("Settings_NoCommunityRedlineExists");
                 CarFactsNoCommunityNudge.Visibility = showNudge ? Visibility.Visible : Visibility.Collapsed;
             }
         }
@@ -13555,10 +13555,10 @@ namespace TrueforceForAll.Plugin
                 // A value the user set themselves needs no label: they set
                 // it, the box shows it. Labels are for external sources.
                 case "user":                  return "";
-                case "community":             return "(from the community)";
-                case "community_unconfirmed": return "(from the community, unconfirmed)";
-                case "game":                  return "(from the game)";
-                case "estimated":             return "(estimated guess)";
+                case "community":             return Loc.T("Settings_RedlineFromCommunity");
+                case "community_unconfirmed": return Loc.T("Settings_CommunityUnconfirmed");
+                case "game":                  return Loc.T("Settings_Game2");
+                case "estimated":             return Loc.T("Settings_EstimatedGuess");
                 // Auto % of max (including the 0.85 default): no suffix.
                 // "(from your % setting)" explained plumbing nobody asked
                 // about; the number speaks for itself.
@@ -13593,8 +13593,8 @@ namespace TrueforceForAll.Plugin
             string name = (CarFactsNameBox.Text ?? "").Trim();
             if (name.Length < 2)
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Car name",
-                    "Enter a name of at least 2 characters.", DialogKind.Info);
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Header_CarFactsRowsCarName"),
+                    Loc.T("Settings_EnterNameLeast2"), DialogKind.Info);
                 return;
             }
             // Unified official-name flow: local write + a self-gating silent
@@ -13630,14 +13630,14 @@ namespace TrueforceForAll.Plugin
             if (!int.TryParse((CarFactsRedlineBox.Text ?? "").Trim(), out int rpm)
                 || rpm < 500 || rpm > 25000)
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Redline",
-                    "Enter the redline start (where the tachometer turns red), from 500 to 25000 RPM.", DialogKind.Info);
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Header_CarFactsRowsRedline"),
+                    Loc.T("Settings_EnterRedlineStartWhere"), DialogKind.Info);
                 return;
             }
             int? saved = _plugin.SaveActiveVariantUserRedline(rpm);
             if (saved == null)
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Redline",
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Header_CarFactsRowsRedline"),
                     "Couldn't identify this car's engine variant yet. Drive for a moment so the "
                     + "plugin sees the rev range, then set it again.", DialogKind.Info);
                 return;
@@ -13722,9 +13722,9 @@ namespace TrueforceForAll.Plugin
                 box.LostFocus += PerGearRpm_Commit;
                 box.KeyDown += PerGearRpm_KeyDown;
                 Grid.SetColumn(box, 1);
-                var rpmLbl = new TextBlock { Text = "RPM", FontSize = 11, Opacity = 0.6, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) };
+                var rpmLbl = new TextBlock { Text = Loc.T("Header_CarFactsRowsRpm"), FontSize = 11, Opacity = 0.6, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) };
                 Grid.SetColumn(rpmLbl, 2);
-                var rm = new Button { Content = "Remove", Tag = gr.Gear, Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(8, 1, 8, 1), VerticalAlignment = VerticalAlignment.Center };
+                var rm = new Button { Content = Loc.T("PresetManager_Remove"), Tag = gr.Gear, Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(8, 1, 8, 1), VerticalAlignment = VerticalAlignment.Center };
                 rm.Click += PerGearRemove_Click;
                 Grid.SetColumn(rm, 3);
                 row.Children.Add(lbl); row.Children.Add(box); row.Children.Add(rpmLbl); row.Children.Add(rm);
@@ -13800,7 +13800,7 @@ namespace TrueforceForAll.Plugin
             int g = _plugin.AddActiveVariantGear();
             if (g == 0)
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Add gear",
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Settings_AddGear"),
                     "Couldn't add a gear yet. Drive for a moment so the plugin identifies this car's "
                     + "engine variant (or you're already at the 16-gear limit).", DialogKind.Info);
                 return;
@@ -13818,14 +13818,14 @@ namespace TrueforceForAll.Plugin
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return;
             if (_plugin.Settings?.UseCommunityCarFacts != true)
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Refresh community facts",
-                    "Turn on 'Use community car facts' to use community data for your cars.", DialogKind.Info);
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Settings_RefreshCommunityFacts"),
+                    Loc.T("Settings_TurnUseCommunityCar"), DialogKind.Info);
                 return;
             }
             if (_plugin.Settings?.CommunityEnabled != true)
             {
-                TrueforceDialog.Show(Window.GetWindow(this), "Refresh community facts",
-                    "Turn on 'Enable community features (online)' to refresh from the server. Your cached values keep working offline.",
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Settings_RefreshCommunityFacts"),
+                    Loc.T("Settings_TurnEnableCommunityFeatures"),
                     DialogKind.Info);
                 return;
             }
@@ -14406,12 +14406,12 @@ namespace TrueforceForAll.Plugin
                     int n = _plugin.BackfillAuthorOnLocalPresets(newAuthor);
                     if (AuthorNameStatus != null)
                         AuthorNameStatus.Text = n == 0
-                            ? "Saved. Nothing needed backfilling."
-                            : $"Saved. Stamped {n} existing preset(s).";
+                            ? Loc.T("Settings_SavedNothingNeededBackfilling")
+                            : Loc.F("Settings_SavedStampedExistingPreset_Fmt", n);
                     return;
                 }
             }
-            if (AuthorNameStatus != null) AuthorNameStatus.Text = "Saved.";
+            if (AuthorNameStatus != null) AuthorNameStatus.Text = Loc.T("Settings_Saved");
         }
 
         private void ResetNotices_Click(object sender, RoutedEventArgs e)
@@ -14424,7 +14424,7 @@ namespace TrueforceForAll.Plugin
             WelcomeWindow.ShownThisSession = false;
             try { RefreshFromPlugin(); } catch { }
             if (ResetNoticesStatus != null)
-                ResetNoticesStatus.Text = "Done. One-time messages will show again.";
+                ResetNoticesStatus.Text = Loc.T("Settings_DoneOneTimeMessages");
         }
 
         // ---------- Developer panel (built-in folder maintenance) ----------
@@ -14450,13 +14450,13 @@ namespace TrueforceForAll.Plugin
             {
                 var (ok, lines) = BackupSelfTest.RunRoundTrip();
                 TrueforceDialog.Show(null,
-                    ok ? "Backup self-test: PASS" : "Backup self-test: FAIL",
+                    ok ? Loc.T("Settings_BackupSelfTestPASS") : Loc.T("Settings_BackupSelfTestFAIL"),
                     string.Join(Environment.NewLine, lines),
                     ok ? DialogKind.Info : DialogKind.Warning);
             }
             catch (Exception ex)
             {
-                TrueforceDialog.Show(null, "Backup self-test",
+                TrueforceDialog.Show(null, Loc.T("Settings_BackupSelfTest2"),
                     "Backup self-test threw: " + ex.Message,
                     DialogKind.Error);
             }
@@ -14479,7 +14479,7 @@ namespace TrueforceForAll.Plugin
         // vocabulary means one sentence of help and one thing to learn.
         private static readonly string[] AmbientLedModeLabels =
         {
-            "Off", "Sweep", "Audio level",
+            Loc.T("Header_MasterModeOff"), Loc.T("Settings_Sweep"), Loc.T("Settings_AudioLevel"),
         };
 
         private void FillAmbientLedCombos()
@@ -14603,11 +14603,11 @@ namespace TrueforceForAll.Plugin
         // other three are eyeball-checkable in seconds via the pick preview.
         private static readonly string[] RevLightEffectLabels =
         {
-            "(unused)",
-            "Inside-out (built-in 1)", "Outside-in (built-in 2)",
-            "Left to right (built-in 3)", "Right to left (built-in 4)",
-            "Custom slot 1", "Custom slot 2", "Custom slot 3",
-            "Custom slot 4", "Custom slot 5",
+            Loc.T("Settings_Unused"),
+            Loc.T("Settings_InsideOutBuilt1"), Loc.T("Settings_OutsideBuilt2"),
+            Loc.T("Settings_LeftRightBuilt3"), Loc.T("Settings_RightLeftBuilt4"),
+            Loc.T("Settings_CustomSlot1"), Loc.T("Settings_CustomSlot2"), Loc.T("Settings_CustomSlot3"),
+            Loc.T("Settings_CustomSlot4"), Loc.T("Settings_CustomSlot5"),
         };
 
         // Fill a pattern combo with effects 1-9 (Tag = effect number).
@@ -14812,7 +14812,7 @@ namespace TrueforceForAll.Plugin
                         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                         var lbl = new TextBlock
                         {
-                            Text = "Next pattern",
+                            Text = Loc.T("Lightsync_LightsyncCycleNextPattern"),
                             Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0)),
                             FontSize = 12,
                             VerticalAlignment = VerticalAlignment.Center,
@@ -14833,8 +14833,8 @@ namespace TrueforceForAll.Plugin
                     catch { binder = null; }
                 }
 
-                TrueforceDialog.Show(owner, "What your wheel can do from here", body,
-                    DialogKind.Info, okLabel: "Got it", cancelLabel: null,
+                TrueforceDialog.Show(owner, Loc.T("Settings_WhatWheelCanDo"), body,
+                    DialogKind.Info, okLabel: Loc.T("Settings_Got"), cancelLabel: null,
                     goldOk: true, extraContent: binder);
 
                 // One-time on ANY outcome. Nothing here is a decision, so there is
@@ -15380,7 +15380,7 @@ namespace TrueforceForAll.Plugin
                     if (i >= n) continue;
 
                     if (labels[i] != null)
-                        labels[i].Text = $"Slot {i + 1} ({OledScreenModel.SlotHint(kind, i)}):";
+                        labels[i].Text = Loc.F("Settings_Slot_Fmt", i + 1, OledScreenModel.SlotHint(kind, i));
 
                     // A meter slot offers meters, a text slot offers text
                     // fields. Rebuilt whenever the slot changes kind, which a
@@ -15453,7 +15453,7 @@ namespace TrueforceForAll.Plugin
             OledDeltaUnavailableText.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             if (show)
                 OledDeltaUnavailableText.Text =
-                    (_plugin.ActiveGame ?? "This game") + " does not report a lap delta, so that "
+                    (_plugin.ActiveGame ?? Loc.T("Settings_Game3")) + " does not report a lap delta, so that "
                     + "part of the screen stays empty. The rest still works.";
         }
 
@@ -15768,7 +15768,7 @@ namespace TrueforceForAll.Plugin
 
             var win = new Window
             {
-                Title  = $"Save {label}",
+                Title  = Loc.F("Settings_Save_Fmt", label),
                 Width  = 420,
                 // Grow to fit however many choice buttons this section shows.
                 // A fixed height clipped the bottom option + the Cancel row
@@ -15787,7 +15787,7 @@ namespace TrueforceForAll.Plugin
             var sp = new StackPanel { Margin = new Thickness(14) };
             sp.Children.Add(new TextBlock
             {
-                Text = $"Save current {label} settings to…",
+                Text = Loc.F("Settings_SaveCurrentSettings_Fmt", label),
                 FontSize = 13, FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 10),
             });
@@ -15799,7 +15799,7 @@ namespace TrueforceForAll.Plugin
             // the old per-option explainer paragraphs spelled out inline.
             var carBtn = new Button
             {
-                Content = "This car only",
+                Content = Loc.T("Settings_CarOnly"),
                 Height = 32, Margin = new Thickness(0, 0, 0, 6),
                 ToolTip = $"Saves the current {label} values into this car's preset ({carId}). "
                     + "Other cars and the game preset are untouched. On a built-in car preset, saves a copy as a new user preset.",
@@ -15815,7 +15815,7 @@ namespace TrueforceForAll.Plugin
                     : $"Overwrites '{activeP}' with the current {label} values. Cars follow it unless they have their own override.";
             var presetBtn = new Button
             {
-                Content = "Game preset",
+                Content = Loc.T("Header_GamePreset"),
                 Height = 32, Margin = new Thickness(0, 0, 0, 6),
                 ToolTip = presetTip,
             };
@@ -15823,7 +15823,7 @@ namespace TrueforceForAll.Plugin
 
             var bothBtn = new Button
             {
-                Content = "Both",
+                Content = Loc.T("Settings_Both"),
                 Height = 32, Margin = new Thickness(0, 0, 0, 12),
                 ToolTip = "Saves to the game preset AND pins this car with its own copy, "
                     + "so the car keeps these values even if the game preset changes later.",
@@ -15853,7 +15853,7 @@ namespace TrueforceForAll.Plugin
                 Orientation = System.Windows.Controls.Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
-            var cancel = new Button { Content = "Cancel", Width = 80, IsCancel = true };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 80, IsCancel = true };
             btnRow.Children.Add(cancel);
             sp.Children.Add(btnRow);
 
@@ -15896,7 +15896,7 @@ namespace TrueforceForAll.Plugin
         {
             if (!_plugin.ReleaseSectionFromCarLayer(kind))
                 TrueforceDialog.Show(null, "Trueforce For All",
-                    "Saved to the game preset, but couldn't update this car's own preset to follow it, so this car may revert to its previous value after a restart. See the SimHub log for details.",
+                    Loc.T("Settings_SavedGamePresetBut"),
                     DialogKind.Warning);
         }
 
@@ -15952,7 +15952,7 @@ namespace TrueforceForAll.Plugin
             _plugin.CopySectionToGlobals(kind);
             if (!_plugin.SaveSectionToActivePreset(kind))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                 return false;
             }
             ReleaseCarSectionOrWarn(kind);
@@ -16026,23 +16026,23 @@ namespace TrueforceForAll.Plugin
                 {
                     if (!_plugin.SaveActiveCarPresetAs(suggestion))
                     {
-                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                         return;
                     }
                 }
                 else
                 {
                     string newName = PromptForCarPresetName(
-                        title: "Save as new car preset",
+                        title: Loc.T("Settings_SaveAsNewCar"),
                         body: onBuiltin
-                            ? $"'{activeName}' is a built-in default. Save the current tuning as a new user preset for '{carId}':"
-                            : $"Save the current tuning as a new user preset for '{carId}':",
+                            ? Loc.F("Settings_BuiltDefaultSaveCurrent_Fmt", activeName, carId)
+                            : Loc.F("Settings_SaveCurrentTuningAs_Fmt", carId),
                         initial: suggestion,
                         existing: existing);
                     if (string.IsNullOrEmpty(newName)) return;
                     if (!_plugin.SaveActiveCarPresetAs(newName))
                     {
-                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                         return;
                     }
                 }
@@ -16059,7 +16059,7 @@ namespace TrueforceForAll.Plugin
                     (TrueforcePlugin.SectionKind)(int)which);
                 if (!ok)
                 {
-                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Info);
+                    TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Info);
                     return;
                 }
             }
@@ -16085,7 +16085,7 @@ namespace TrueforceForAll.Plugin
         private bool SaveAsNewPresetFromUi()
         {
             string suggested = _plugin.ActiveGame ?? "My preset";
-            string name = PromptForName("Save as new preset", "Preset name:", suggested);
+            string name = PromptForName(Loc.T("Settings_SaveAsNewPreset"), Loc.T("Settings_PresetName"), suggested);
             if (string.IsNullOrWhiteSpace(name)) return false;
             name = name.Trim();
             // Confirm overwrite if the name collides.
@@ -16093,8 +16093,8 @@ namespace TrueforceForAll.Plugin
             if (_plugin.PresetNames != null)
                 foreach (var n in _plugin.PresetNames) { if (n == name) { exists = true; break; } }
             if (exists && TrueforceDialog.Show(Window.GetWindow(this),
-                    "Overwrite preset?",
-                    $"A preset called '{name}' already exists. Overwrite?",
+                    Loc.T("Settings_OverwritePreset"),
+                    Loc.F("Settings_PresetCalledAlreadyExists_Fmt2", name),
                     DialogKind.Confirm) != true)
                 return false;
             bool reused = false;
@@ -16106,7 +16106,7 @@ namespace TrueforceForAll.Plugin
                 string dup = ReuseDuplicateOrNull();
                 if (dup == null)
                 {
-                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                     return false;
                 }
                 name   = dup;
@@ -16124,8 +16124,8 @@ namespace TrueforceForAll.Plugin
             // newly-saved game preset shows up in its list automatically.
             _presetManager?.OnLocalLibraryChanged();
             FlashSaveStatus(HeaderGameSaveStatus, reused
-                ? $"Same as '{name}', now active ✓"
-                : $"Saved as '{name}' ✓");
+                ? Loc.F("Settings_SameAsNowActive_Fmt", name)
+                : Loc.F("Settings_SavedAs_Fmt", name));
             return true;
         }
 
@@ -16206,7 +16206,7 @@ namespace TrueforceForAll.Plugin
             }
             if (!_plugin.SavePresetAs(activeP))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                 return;
             }
             if (bindAsDefault && !string.IsNullOrEmpty(_plugin.ActiveGame))
@@ -16216,7 +16216,7 @@ namespace TrueforceForAll.Plugin
             ClearDirty();
             RefreshFromPlugin();
             _presetManager?.OnLocalLibraryChanged();
-            FlashSaveStatus(HeaderGameSaveStatus, isDefault ? "Saved as game default ✓" : "Saved ✓");
+            FlashSaveStatus(HeaderGameSaveStatus, isDefault ? Loc.T("Settings_SavedAsGameDefault") : Loc.T("Settings_Saved2"));
         }
 
         // Save all dirty car-scoped tuning to the active car's override (forks a
@@ -16226,7 +16226,7 @@ namespace TrueforceForAll.Plugin
             if (!SaveActiveCarPresetWithFork()) return;   // user cancelled fork prompt
             RecomputeAllEffectDirty();
             RefreshFromPlugin();
-            FlashSaveStatus(HeaderCarSaveStatus, "Saved ✓");
+            FlashSaveStatus(HeaderCarSaveStatus, Loc.T("Settings_Saved2"));
         }
 
         /// <summary>Save the live car override to its active preset file.
@@ -16289,23 +16289,23 @@ namespace TrueforceForAll.Plugin
                 {
                     if (!_plugin.SaveActiveCarPresetAs(suggestion))
                     {
-                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                         return false;
                     }
                 }
                 else
                 {
                     string newName = PromptForCarPresetName(
-                        title: "Save unsaved car-preset changes",
+                        title: Loc.T("Settings_SaveUnsavedCarPreset"),
                         body: onBuiltin
-                            ? $"'{activeName}' is a built-in default. Save the current tuning as a new user preset for '{fallbackName}':"
-                            : $"Save the current tuning as a new user preset for '{fallbackName}':",
+                            ? Loc.F("Settings_BuiltDefaultSaveCurrent_Fmt", activeName, fallbackName)
+                            : Loc.F("Settings_SaveCurrentTuningAs_Fmt", fallbackName),
                         initial: suggestion,
                         existing: existing);
                     if (string.IsNullOrEmpty(newName)) return false; // cancelled
                     if (!_plugin.SaveActiveCarPresetAs(newName))
                     {
-                        TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                        TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                         return false;
                     }
                 }
@@ -16372,7 +16372,7 @@ namespace TrueforceForAll.Plugin
                 string dup = ReuseDuplicateOrNull();
                 if (dup == null)
                 {
-                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                     return false;
                 }
                 newName = dup;
@@ -16387,8 +16387,8 @@ namespace TrueforceForAll.Plugin
             // shows up in its list without a manual refresh.
             _presetManager?.OnLocalLibraryChanged();
             FlashSaveStatus(HeaderGameSaveStatus, reused
-                ? $"Same as '{newName}', now active ✓"
-                : $"Saved as '{newName}' ✓");
+                ? Loc.F("Settings_SameAsNowActive_Fmt", newName)
+                : Loc.F("Settings_SavedAs_Fmt", newName));
             return true;
         }
 
@@ -16396,7 +16396,7 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             string suggested = _plugin.ActivePresetName ?? _plugin.ActiveGame ?? "My preset";
-            string name = PromptForName("Save preset as", "Preset name:", suggested);
+            string name = PromptForName(Loc.T("Settings_SavePresetAs"), Loc.T("Settings_PresetName"), suggested);
             if (string.IsNullOrWhiteSpace(name)) return;
             name = name.Trim();
 
@@ -16405,8 +16405,8 @@ namespace TrueforceForAll.Plugin
             if (_plugin.PresetNames != null)
                 foreach (var n in _plugin.PresetNames) { if (n == name) { exists = true; break; } }
             if (exists && TrueforceDialog.Show(Window.GetWindow(this),
-                    "Overwrite preset?",
-                    $"A preset called '{name}' already exists. Overwrite?",
+                    Loc.T("Settings_OverwritePreset"),
+                    Loc.F("Settings_PresetCalledAlreadyExists_Fmt2", name),
                     DialogKind.Confirm) != true)
                 return;
 
@@ -16421,7 +16421,7 @@ namespace TrueforceForAll.Plugin
                 string dup = ReuseDuplicateOrNull();
                 if (dup == null)
                 {
-                    TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                    TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                     return;
                 }
                 name   = dup;
@@ -16431,7 +16431,7 @@ namespace TrueforceForAll.Plugin
             RefreshFromPlugin();
             _presetManager?.OnLocalLibraryChanged();
             if (reused)
-                FlashSaveStatus(HeaderGameSaveStatus, $"Same as '{name}', now active ✓");
+                FlashSaveStatus(HeaderGameSaveStatus, Loc.F("Settings_SameAsNowActive_Fmt", name));
         }
 
         // Car-side "Save as new…": save the active car's current tuning under a
@@ -16459,14 +16459,14 @@ namespace TrueforceForAll.Plugin
                 ? fallbackName
                 : TrueforcePlugin.ToDiskName(activeName);
             string newName = PromptForCarPresetName(
-                title: "Save as new car preset",
-                body:  $"Save the current tuning as a new user preset for '{carId}':",
+                title: Loc.T("Settings_SaveAsNewCar"),
+                body:  Loc.F("Settings_SaveCurrentTuningAs_Fmt", carId),
                 initial: suggestion,
                 existing: _plugin.GetCarPresets(carId));
             if (string.IsNullOrEmpty(newName)) return;   // cancelled
             if (!_plugin.SaveActiveCarPresetAs(newName))
             {
-                TrueforceDialog.Show(null, "Trueforce For All", "Couldn't save. See the SimHub log for details, then try again.", DialogKind.Warning);
+                TrueforceDialog.Show(null, "Trueforce For All", Loc.T("Settings_CouldnTSaveSee"), DialogKind.Warning);
                 return;
             }
             ClearDirty();
@@ -16563,8 +16563,8 @@ namespace TrueforceForAll.Plugin
             var btnRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal,
                                           HorizontalAlignment = HorizontalAlignment.Right,
                                           Margin = new Thickness(0, 12, 0, 0) };
-            var ok = new Button { Content = "OK", Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel", Width = 70, IsCancel = true };
+            var ok = new Button { Content = Loc.T("PresetManager_OK"), Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 70, IsCancel = true };
             btnRow.Children.Add(ok);
             btnRow.Children.Add(cancel);
             sp.Children.Add(btnRow);
@@ -16598,7 +16598,7 @@ namespace TrueforceForAll.Plugin
             {
                 Filter   = "Zip (*.zip)|*.zip",
                 FileName = $"TF4ALL-backup-{DateTime.Now:yyyy-MM-dd}.zip",
-                Title    = "Backup all Trueforce data",
+                Title    = Loc.T("Settings_BackupAllTrueforceData"),
             };
             if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
             try
@@ -16611,7 +16611,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(Window.GetWindow(this),
-                    "Couldn't back up. Check your connection and try again.",
+                    Loc.T("Settings_CouldnTBackUp"),
                     ex);
             }
         }
@@ -16628,7 +16628,7 @@ namespace TrueforceForAll.Plugin
             var open = new Microsoft.Win32.OpenFileDialog
             {
                 Filter = "TF4ALL backup (*.zip)|*.zip|All files (*.*)|*.*",
-                Title  = "Restore from backup",
+                Title  = Loc.T("Settings_RestoreBackup"),
             };
             if (open.ShowDialog(owner) != true) return;
             string path = open.FileName;
@@ -16648,16 +16648,16 @@ namespace TrueforceForAll.Plugin
                         ? "Replace will swap your presets, car tunings, defaults, AND settings for the backup's."
                         : "Replace will swap your presets, car tunings, and defaults for the backup's, and keep your current settings.";
                     body += "\n\nYour current library is moved to a .pre-restore-<timestamp> folder next to it as a safety net, but the live state becomes the backup's.\n\nContinue?";
-                    var confirm = TrueforceDialog.Show(owner, "Restore (replace)", body,
-                        DialogKind.Destructive, okLabel: "Replace everything", cancelLabel: "Cancel");
+                    var confirm = TrueforceDialog.Show(owner, Loc.T("Settings_RestoreReplace"), body,
+                        DialogKind.Destructive, okLabel: Loc.T("Settings_ReplaceEverything"), cancelLabel: Loc.T("Common_Cancel"));
                     if (confirm != true) return;
 
                     int n = _plugin.RestoreAllFromZip(path, applySettings);
                     ClearDirty();
                     RefreshFromPlugin();
                     ShowSavedStatus(BackupFileStatus, n == 0
-                        ? "Restore finished. The archive had no preset files."
-                        : $"Restored {n} file(s). Your previous library is kept alongside as a safety net.", null);
+                        ? Loc.T("Settings_RestoreFinishedArchiveHad")
+                        : Loc.F("Settings_RestoredFileSPrevious_Fmt", n), null);
                     return;
                 }
 
@@ -16670,7 +16670,7 @@ namespace TrueforceForAll.Plugin
 
                 if (newCount == 0 && conflicts.Count == 0 && newEngines == 0 && newPacks == 0 && !applySettings)
                 {
-                    ShowSavedStatus(BackupFileStatus, "Nothing new to merge; your library already has this backup's contents.", null);
+                    ShowSavedStatus(BackupFileStatus, Loc.T("Settings_NothingNewMergeLibrary"), null);
                     return;
                 }
 
@@ -16684,8 +16684,8 @@ namespace TrueforceForAll.Plugin
                 if (conflicts.Count > 0) summary += $"\n\n{conflicts.Count} name clash(es) to resolve; you'll pick which copy to keep for each.";
                 if (applySettings) summary += "\n\nThe backup's settings will also be applied.";
                 summary += "\n\nContinue?";
-                if (TrueforceDialog.Show(owner, "Restore (merge)", summary,
-                        DialogKind.Info, okLabel: "Continue", cancelLabel: "Cancel", goldOk: true) != true)
+                if (TrueforceDialog.Show(owner, Loc.T("Settings_RestoreMerge"), summary,
+                        DialogKind.Info, okLabel: Loc.T("Settings_Continue"), cancelLabel: Loc.T("Common_Cancel"), goldOk: true) != true)
                     return;
 
                 // Resolve clashes: per-item Keep mine / Use the backup's, with a
@@ -16708,16 +16708,16 @@ namespace TrueforceForAll.Plugin
                         if (remaining > 1)
                         {
                             bool applyAll;
-                            bool? r = TrueforceDialog.ShowConfirmWithCheckbox(owner, "Name clash", msg,
-                                $"Do this for all {remaining} remaining clashes", false, out applyAll,
-                                okLabel: "Use the backup's", cancelLabel: "Keep mine");
+                            bool? r = TrueforceDialog.ShowConfirmWithCheckbox(owner, Loc.T("Settings_NameClash"), msg,
+                                Loc.F("Settings_DoAllRemainingClashes_Fmt", remaining), false, out applyAll,
+                                okLabel: Loc.T("Settings_UseBackupS"), cancelLabel: Loc.T("Settings_KeepMine"));
                             useBackup = (r == true);
                             if (applyAll) batch = useBackup;
                         }
                         else
                         {
-                            bool? r = TrueforceDialog.Show(owner, "Name clash", msg,
-                                DialogKind.Info, okLabel: "Use the backup's", cancelLabel: "Keep mine");
+                            bool? r = TrueforceDialog.Show(owner, Loc.T("Settings_NameClash"), msg,
+                                DialogKind.Info, okLabel: Loc.T("Settings_UseBackupS"), cancelLabel: Loc.T("Settings_KeepMine"));
                             useBackup = (r == true);
                         }
                     }
@@ -16728,12 +16728,14 @@ namespace TrueforceForAll.Plugin
                 ClearDirty();
                 RefreshFromPlugin();
                 ShowSavedStatus(BackupFileStatus,
-                    $"Merged {merged} preset(s)" + (applySettings ? " and applied the backup's settings" : "") + ".", null);
+                    applySettings
+                        ? Loc.F("Settings_MergedPresetsAndSettings_Fmt", merged)
+                        : Loc.F("Settings_MergedPresets_Fmt", merged), null);
             }
             catch (Exception ex)
             {
                 TrueforceDialog.ShowError(owner,
-                    "Couldn't restore. Check your connection and try again.",
+                    Loc.T("Settings_CouldnTRestoreCheck"),
                     ex);
             }
         }
@@ -16781,7 +16783,7 @@ namespace TrueforceForAll.Plugin
             if (presets.Count == 0 && cars.Count == 0)
             {
                 TrueforceDialog.Show(owner, "Trueforce For All",
-                                "Nothing to share yet. Save a preset (or a per-car tuning) first.",
+                                Loc.T("Settings_NothingShareYetSave"),
                                 DialogKind.Info);
                 return null;
             }
@@ -16847,7 +16849,7 @@ namespace TrueforceForAll.Plugin
                         Filter     = "TF4ALL preset (*.tfpreset.json)|*.tfpreset.json",
                         FileName   = MakeFileSafe(nm) + ".tfpreset.json",
                         DefaultExt = "tfpreset.json",
-                        Title      = "Export preset",
+                        Title      = Loc.T("Settings_ExportPreset"),
                     };
                     if (dlg1.ShowDialog(owner) != true) return null;
                     try
@@ -16858,7 +16860,7 @@ namespace TrueforceForAll.Plugin
                     catch (Exception ex)
                     {
                         TrueforceDialog.ShowError(owner,
-                            "Couldn't export. Make sure the file isn't open and you can write to that folder, then try again.",
+                            Loc.T("Settings_CouldnTExportMake"),
                             ex);
                     }
                 }
@@ -16870,7 +16872,7 @@ namespace TrueforceForAll.Plugin
                         Filter     = "TF4ALL car preset (*.tfcar.json)|*.tfcar.json",
                         FileName   = MakeFileSafe($"{car.CarId}~{car.PresetName}") + ".tfcar.json",
                         DefaultExt = "tfcar.json",
-                        Title      = "Export car preset",
+                        Title      = Loc.T("Settings_ExportCarPreset"),
                     };
                     if (dlg2.ShowDialog(owner) != true) return null;
                     try
@@ -16881,7 +16883,7 @@ namespace TrueforceForAll.Plugin
                     catch (Exception ex)
                     {
                         TrueforceDialog.ShowError(owner,
-                            "Couldn't export. Make sure the file isn't open and you can write to that folder, then try again.",
+                            Loc.T("Settings_CouldnTExportMake"),
                             ex);
                     }
                 }
@@ -16896,7 +16898,7 @@ namespace TrueforceForAll.Plugin
             {
                 Filter   = "TF4ALL pack (*.tfpack)|*.tfpack|Zip (*.zip)|*.zip",
                 FileName = defaultName,
-                Title    = "Export pack",
+                Title    = Loc.T("Settings_ExportPack"),
             };
             if (dlg.ShowDialog(owner) != true) return null;
             try
@@ -16910,7 +16912,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (Exception ex)
             {
-                TrueforceDialog.ShowError(owner, "Couldn't export. Make sure the file isn't open and you can write to that folder, then try again.", ex);
+                TrueforceDialog.ShowError(owner, Loc.T("Settings_CouldnTExportMake"), ex);
             }
             return null;
         }
@@ -16963,7 +16965,7 @@ namespace TrueforceForAll.Plugin
                 Filter = "TF4ALL files (*.tfpack;*.tfpreset.json;*.tfcar.json;*.zip;*.json)"
                          + "|*.tfpack;*.tfpreset.json;*.tfcar.json;*.zip;*.json"
                          + "|All files (*.*)|*.*",
-                Title       = "Import",
+                Title       = Loc.T("Settings_Import"),
                 Multiselect = true,
             };
             if (dlg.ShowDialog(owner) != true) return false;
@@ -17082,8 +17084,8 @@ namespace TrueforceForAll.Plugin
                             // per-item-checkbox model.
                             var confirm = TrueforceDialog.Show(owner,
                                 "Trueforce For All",
-                                $"'{System.IO.Path.GetFileName(c.Path)}' looks like a full TF4ALL settings backup. Importing replaces all current settings (master, audio, every effect, all per-car overrides). Continue with this file?",
-                                DialogKind.Destructive, okLabel: "Replace everything", cancelLabel: "Cancel");
+                                Loc.F("Settings_LooksLikeFullTF4ALL_Fmt", System.IO.Path.GetFileName(c.Path)),
+                                DialogKind.Destructive, okLabel: Loc.T("Settings_ReplaceEverything"), cancelLabel: Loc.T("Common_Cancel"));
                             if (confirm == true)
                             {
                                 plugin.ImportSettings(c.Path);
@@ -17524,7 +17526,7 @@ namespace TrueforceForAll.Plugin
         {
             try
             {
-                if (SupportOpenStatus != null) SupportOpenStatus.Text = "Opening Patreon in your browser…";
+                if (SupportOpenStatus != null) SupportOpenStatus.Text = Loc.T("Account_PatreonLinkStatusOpening");
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PatreonUrl) { UseShellExecute = true });
                 ClearStatusAfter(SupportOpenStatus, 3.0, fade: false);   // launched: drop the notice once it's open
             }
@@ -17533,7 +17535,7 @@ namespace TrueforceForAll.Plugin
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
                 SimHub.Logging.Current.Warn("[TF4ALL] Open Patreon failed: " + ex.Message);
                 TrueforceDialog.Show(null, "Trueforce For All",
-                    $"Couldn't open your browser. Copy this link into it instead:\n\n{PatreonUrl}",
+                    Loc.F("Settings_CouldnTOpenBrowser_Fmt", PatreonUrl),
                     DialogKind.Error);
             }
         }
@@ -17542,7 +17544,7 @@ namespace TrueforceForAll.Plugin
         {
             try
             {
-                if (SupportOpenStatus != null) SupportOpenStatus.Text = "Opening Ko-fi in your browser…";
+                if (SupportOpenStatus != null) SupportOpenStatus.Text = Loc.T("Settings_OpeningKoFiBrowser");
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(DonateUrl)
                 {
                     UseShellExecute = true,  // .NET Framework 4.8 launches the URL via the default browser
@@ -17554,7 +17556,7 @@ namespace TrueforceForAll.Plugin
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
                 SimHub.Logging.Current.Warn("[TF4ALL] Open Ko-fi failed: " + ex.Message);
                 TrueforceDialog.Show(null, "Trueforce For All",
-                                $"Couldn't open your browser. Copy this link into it instead:\n\n{DonateUrl}",
+                                Loc.F("Settings_CouldnTOpenBrowser_Fmt", DonateUrl),
                                 DialogKind.Error);
             }
         }
@@ -17563,7 +17565,7 @@ namespace TrueforceForAll.Plugin
         {
             try
             {
-                if (SupportOpenStatus != null) SupportOpenStatus.Text = "Opening PayPal in your browser…";
+                if (SupportOpenStatus != null) SupportOpenStatus.Text = Loc.T("Settings_OpeningPayPalBrowser");
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PayPalUrl) { UseShellExecute = true });
                 ClearStatusAfter(SupportOpenStatus, 3.0, fade: false);
             }
@@ -17572,7 +17574,7 @@ namespace TrueforceForAll.Plugin
                 if (SupportOpenStatus != null) SupportOpenStatus.Text = "";
                 SimHub.Logging.Current.Warn("[TF4ALL] Open PayPal failed: " + ex.Message);
                 TrueforceDialog.Show(null, "Trueforce For All",
-                    $"Couldn't open your browser. Copy this link into it instead:\n\n{PayPalUrl}",
+                    Loc.F("Settings_CouldnTOpenBrowser_Fmt", PayPalUrl),
                     DialogKind.Error);
             }
         }
@@ -17655,7 +17657,7 @@ namespace TrueforceForAll.Plugin
             if (CheckForUpdatesButton == null || CheckForUpdatesStatus == null) return;
 
             CheckForUpdatesButton.IsEnabled = false;
-            CheckForUpdatesStatus.Text = "Checking…";
+            CheckForUpdatesStatus.Text = Loc.T("Settings_Checking");
             try
             {
                 await upd.CheckAsync(_plugin.UpdateCheckerToken);
@@ -17667,16 +17669,16 @@ namespace TrueforceForAll.Plugin
                 _plugin.RefreshUpdateChannel();
                 if (upd.IsUpdateAvailable)
                     CheckForUpdatesStatus.Text = upd.IsDowngrade
-                        ? $"v{upd.LatestVersionDisplay} available (back to the main release)"
-                        : $"v{upd.LatestVersionDisplay} available";
+                        ? Loc.F("Settings_VAvailableBackMain_Fmt", upd.LatestVersionDisplay)
+                        : Loc.F("Settings_VAvailable_Fmt", upd.LatestVersionDisplay);
                 else if (!string.IsNullOrEmpty(upd.LastError))
-                    CheckForUpdatesStatus.Text = "Couldn't reach GitHub";
+                    CheckForUpdatesStatus.Text = Loc.T("Settings_CouldnTReachGitHub");
                 else
-                    CheckForUpdatesStatus.Text = "You're up to date";
+                    CheckForUpdatesStatus.Text = Loc.T("Settings_ReUpDate");
             }
             catch
             {
-                CheckForUpdatesStatus.Text = "Check failed";
+                CheckForUpdatesStatus.Text = Loc.T("Settings_CheckFailed");
             }
             finally
             {
@@ -17720,7 +17722,7 @@ namespace TrueforceForAll.Plugin
 
             var win = new Window
             {
-                Title = "Trueforce For All: update available",
+                Title = Loc.T("Settings_TrueforceAllUpdateAvailable"),
                 Width = 600,
                 Height = 520,
                 ResizeMode = ResizeMode.NoResize,
@@ -17736,7 +17738,7 @@ namespace TrueforceForAll.Plugin
             // Header: version transition
             var header = new TextBlock
             {
-                Text = $"v{upd.CurrentVersion.ToString(3)}  →  v{upd.LatestVersionDisplay}",
+                Text = Loc.F("Settings_VV_Fmt", upd.CurrentVersion.ToString(3), upd.LatestVersionDisplay),
                 FontSize = 18,
                 FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 12),
@@ -17772,7 +17774,7 @@ namespace TrueforceForAll.Plugin
             };
             var dismissBtn = new System.Windows.Controls.Button
             {
-                Content = "Dismiss",
+                Content = Loc.T("Header_DefaultDroppedBannerDismiss"),
                 Width = 90,
                 Height = 28,
                 Margin = new Thickness(0, 0, 8, 0),
@@ -17782,7 +17784,7 @@ namespace TrueforceForAll.Plugin
             // against the dark modal chrome and the muted Dismiss button.
             var updateBtn = new System.Windows.Controls.Button
             {
-                Content = "Update now",
+                Content = Loc.T("Settings_UpdateNow"),
                 Width = 120,
                 Height = 28,
                 IsDefault = true,
@@ -17823,10 +17825,10 @@ namespace TrueforceForAll.Plugin
                 if (HasUnsavedChanges())
                 {
                     var confirm = TrueforceDialog.Show(Window.GetWindow(this),
-                        "Trueforce For All: unsaved changes",
+                        Loc.T("Settings_TrueforceAllUnsavedChanges"),
                         "You have unsaved changes that will be discarded if you continue.\n\n" +
                         "Update now? (No to go back and save first.)",
-                        DialogKind.Destructive, okLabel: "Update", cancelLabel: "Cancel");
+                        DialogKind.Destructive, okLabel: Loc.T("Settings_Update"), cancelLabel: Loc.T("Common_Cancel"));
                     if (confirm != true) return;
                 }
 
@@ -17848,12 +17850,12 @@ namespace TrueforceForAll.Plugin
                     if (backup != null && PreBetaBackup.IsCompatibleWith(upd.LatestVersionTag, backup))
                     {
                         var pick = TrueforceDialog.Show(Window.GetWindow(this),
-                            "Restore your pre-beta backup?",
+                            Loc.T("Settings_RestorePreBetaBackup"),
                             $"Your presets and settings were backed up before your first beta install "
                             + $"(v{backup.FromVersion}, {backup.TakenUtc:yyyy-MM-dd}). Restore them so the "
                             + "main release picks up exactly where you left off? Anything added or "
                             + "changed while on the beta will be replaced.",
-                            DialogKind.Confirm, okLabel: "Restore backup", cancelLabel: "Keep current data");
+                            DialogKind.Confirm, okLabel: Loc.T("Settings_RestoreBackup2"), cancelLabel: Loc.T("Settings_KeepCurrentData"));
                         restoreBackup = pick == true;
                     }
                 }
@@ -17872,12 +17874,12 @@ namespace TrueforceForAll.Plugin
                         // exercised without a real release.
                         var pick = new Microsoft.Win32.OpenFileDialog
                         {
-                            Title  = "Pick the installer to run (test; runs with /CloseSimHub=1)",
+                            Title  = Loc.T("Settings_PickInstallerRunTest"),
                             Filter = "Installer (*.exe)|*.exe",
                         };
                         if (pick.ShowDialog() != true)
                         {
-                            status.Text = "Cancelled (no installer picked).";
+                            status.Text = Loc.T("Settings_CancelledNoInstallerPicked");
                             updateBtn.IsEnabled = true;
                             dismissBtn.IsEnabled = true;
                             return;
@@ -17888,7 +17890,7 @@ namespace TrueforceForAll.Plugin
                     {
                         progress.Visibility = Visibility.Visible;
                         progress.IsIndeterminate = true;
-                        status.Text = "Downloading installer...";
+                        status.Text = Loc.T("Settings_DownloadingInstaller");
                         path = await upd.DownloadInstallerAsync((received, total) =>
                         {
                             Dispatcher.Invoke(() =>
@@ -17898,11 +17900,11 @@ namespace TrueforceForAll.Plugin
                                     progress.IsIndeterminate = false;
                                     progress.Maximum = total;
                                     progress.Value = received;
-                                    status.Text = $"Downloading installer... {(received / 1024.0 / 1024.0):F1} / {(total / 1024.0 / 1024.0):F1} MB";
+                                    status.Text = Loc.F("Settings_DownloadingInstallerMB_Fmt", (received / 1024.0 / 1024.0), (total / 1024.0 / 1024.0));
                                 }
                                 else
                                 {
-                                    status.Text = $"Downloading installer... {(received / 1024.0 / 1024.0):F1} MB";
+                                    status.Text = Loc.F("Settings_DownloadingInstallerMB_Fmt2", (received / 1024.0 / 1024.0));
                                 }
                             });
                         }, _plugin.UpdateCheckerToken);
@@ -17910,7 +17912,7 @@ namespace TrueforceForAll.Plugin
 
                     if (crossingToBeta)
                     {
-                        status.Text = "Backing up your presets and settings...";
+                        status.Text = Loc.T("Settings_BackingUpPresetsSettings");
                         // Flush in-memory state first so the snapshot is current.
                         _plugin.PersistSettings();
                         bool ok = await Task.Run(() =>
@@ -17918,15 +17920,15 @@ namespace TrueforceForAll.Plugin
                         if (!ok)
                         {
                             var cont = TrueforceDialog.Show(Window.GetWindow(this),
-                                "Backup didn't complete",
+                                Loc.T("Settings_BackupDidnTComplete"),
                                 "Couldn't back up your presets and settings before the beta "
                                 + "install (see the SimHub log). You can still update; switching "
                                 + "back to the main release later just won't offer an automatic "
                                 + "restore.",
-                                DialogKind.Destructive, okLabel: "Update anyway", cancelLabel: "Cancel");
+                                DialogKind.Destructive, okLabel: Loc.T("Settings_UpdateAnyway"), cancelLabel: Loc.T("Common_Cancel"));
                             if (cont != true)
                             {
-                                status.Text = "Update cancelled.";
+                                status.Text = Loc.T("Settings_UpdateCancelled");
                                 progress.Visibility = Visibility.Collapsed;
                                 updateBtn.IsEnabled = true;
                                 dismissBtn.IsEnabled = true;
@@ -17937,7 +17939,7 @@ namespace TrueforceForAll.Plugin
 
                     if (restoreBackup)
                     {
-                        status.Text = "Restoring your pre-beta presets and settings...";
+                        status.Text = Loc.T("Settings_RestoringPreBetaPresets");
                         // From here the restored files on disk are the source of
                         // truth; block every later persist (including the End()
                         // save when the installer closes SimHub) so this
@@ -17952,7 +17954,7 @@ namespace TrueforceForAll.Plugin
                         {
                             _plugin.ResumeSettingsPersistence();
                             TrueforceDialog.LogError("Pre-beta restore", rex);
-                            status.Text = "Restore failed; update cancelled. See the SimHub log.";
+                            status.Text = Loc.T("Settings_RestoreFailedUpdateCancelled");
                             progress.Visibility = Visibility.Collapsed;
                             updateBtn.IsEnabled = true;
                             dismissBtn.IsEnabled = true;
@@ -17960,7 +17962,7 @@ namespace TrueforceForAll.Plugin
                         }
                     }
 
-                    status.Text = "Launching installer...";
+                    status.Text = Loc.T("Settings_LaunchingInstaller");
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path)
                     {
                         UseShellExecute = true,
@@ -17973,7 +17975,7 @@ namespace TrueforceForAll.Plugin
                 }
                 catch (Exception ex)
                 {
-                    status.Text = "Couldn't apply the update. See the SimHub log, then try again.";
+                    status.Text = Loc.T("Settings_CouldnTApplyUpdate");
                     TrueforceDialog.LogError("Update", ex);
                     progress.Visibility = Visibility.Collapsed;
                     updateBtn.IsEnabled = true;
@@ -18029,7 +18031,7 @@ namespace TrueforceForAll.Plugin
 
             var win = new Window
             {
-                Title = "Trueforce For All: what's new",
+                Title = Loc.T("Settings_TrueforceAllWhatS"),
                 Width = Math.Min(780, SystemParameters.WorkArea.Width * 0.9),
                 Height = Math.Min(620, SystemParameters.WorkArea.Height * 0.85),
                 MinWidth = 480,
@@ -18046,7 +18048,7 @@ namespace TrueforceForAll.Plugin
 
             var header = new TextBlock
             {
-                Text = "What's new",
+                Text = Loc.T("Header_WhatsNewBanner"),
                 FontSize = 18,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A)), // the popups' header gold
@@ -18064,7 +18066,7 @@ namespace TrueforceForAll.Plugin
             DockPanel.SetDock(footer, Dock.Bottom);
             var gotItBtn = new System.Windows.Controls.Button
             {
-                Content = "Got it",
+                Content = Loc.T("Settings_Got"),
                 Width = 100,
                 Height = 28,
                 IsDefault = true,
@@ -18215,7 +18217,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Title       = "Locate USBPcapCMD.exe",
+                Title       = Loc.T("Settings_LocateUSBPcapCMDExe"),
                 Filter      = "USBPcapCMD.exe|USBPcapCMD.exe|All executables (*.exe)|*.exe",
                 FileName    = "USBPcapCMD.exe",
                 CheckFileExists = true,
@@ -18227,7 +18229,7 @@ namespace TrueforceForAll.Plugin
             if (!string.Equals(leaf, "USBPcapCMD.exe", StringComparison.OrdinalIgnoreCase))
             {
                 TrueforceDialog.Show(null, "Trueforce For All",
-                    "That file isn't USBPcapCMD.exe. Pick USBPcapCMD.exe from your USBPcap install folder.",
+                    Loc.T("Settings_FileIsnTUSBPcapCMD"),
                     DialogKind.Warning);
                 return;
             }
@@ -18252,7 +18254,7 @@ namespace TrueforceForAll.Plugin
             if (TrueforceDialog.Show(null, "Trueforce For All",
                     "Run the bundled USBPcap installer? This needs admin (UAC prompt) and reinstalls the USB capture driver. "
                         + "You will need to restart the computer afterwards: the driver only attaches to your USB ports while Windows starts.",
-                    DialogKind.Confirm, okLabel: "Run installer", cancelLabel: "Cancel") != true)
+                    DialogKind.Confirm, okLabel: Loc.T("Settings_RunInstaller"), cancelLabel: Loc.T("Common_Cancel")) != true)
                 return;
             _plugin.ReinstallUsbPcapAsync();
         }

@@ -30,6 +30,7 @@
 param(
     [string]$Root = '',
     [switch]$Detail,
+    [switch]$Machine,
     [switch]$Indirect,
     [switch]$WriteBudget,
     [switch]$NoBudget,
@@ -434,6 +435,24 @@ function Get-LocCsRegionSpans([string]$Text, $Names, [string]$Kind) {
     return ,$out
 }
 
+function Get-LocCsReturnSpans([string]$Text, [int]$Start, [int]$End) {
+    # The spans inside [Start,End) that a member actually returns: what follows
+    # "return" or "=>" up to the end of that expression. A textmember names a
+    # member whose RETURNED text is display text; the rest of its body is code,
+    # and a member that returns display text may still switch on string case
+    # labels, which are identifiers and must never be keyed.
+    $out = New-Object 'System.Collections.Generic.List[object]'
+    $re = [regex]'(?<![A-Za-z0-9_])return(?![A-Za-z0-9_])|=>'
+    foreach ($m in $re.Matches($Text)) {
+        if ($m.Index -lt $Start -or $m.Index -ge $End) { continue }
+        $from = $m.Index + $m.Length
+        $to = Get-LocCsExprEnd $Text $from
+        if ($to -gt $End) { $to = $End }
+        if ($to -gt $from) { $out.Add([pscustomobject]@{ Start = $from; End = $to }) }
+    }
+    return ,$out
+}
+
 function Get-LocCsNewSpans([string]$Text) {
     # Two maps over every "new" in the file.
     #   Types: brace index -> the type of the object or collection initializer
@@ -776,7 +795,9 @@ function Get-LocCsFileResult([string]$Path, [string]$Rel, $Rx, $Rules, $Allow, $
         if (-not $frames.ContainsKey($site.Index)) { continue }   # inside a literal
         $frame = $frames[$site.Index]
         $spans = New-Object 'System.Collections.Generic.List[object]'
-        if ($site.Kind -eq 'textmember' -or $site.Kind -eq 'labels') {
+        if ($site.Kind -eq 'textmember') {
+            foreach ($rs in (Get-LocCsReturnSpans $text $site.Body $site.RegionEnd)) { $spans.Add($rs) }
+        } elseif ($site.Kind -eq 'labels') {
             $spans.Add([pscustomobject]@{ Start = $site.Body; End = $site.RegionEnd })
         } elseif ($site.Kind -eq 'recordprop') {
             $types = $Rules.RecordProps[$site.Sink]
@@ -806,7 +827,7 @@ function Get-LocCsFileResult([string]$Path, [string]$Rel, $Rx, $Rules, $Allow, $
             if ((Get-LocCsSkipReason $value $CommonSet) -ne '') { continue }
             if ($Allow.Values.Contains($value)) { $allowed++; continue }
             if ($frame -ne '' -and $Allow.Types.Contains($frame)) { $allowed++; continue }
-            $real.Add([pscustomobject]@{ Start = $l.Start; Value = $value })
+            $real.Add([pscustomobject]@{ Start = $l.Start; End = $l.End; Value = $value })
         }
         if ($hasLoc) { $viaLoc++ }
         if ($real.Count -eq 0) {
@@ -826,6 +847,8 @@ function Get-LocCsFileResult([string]$Path, [string]$Rel, $Rx, $Rules, $Allow, $
             $findings.Add([pscustomobject]@{
                 File = $Rel
                 Line = (Get-LocCsLine $lineStarts $r.Start)
+                Start = $r.Start
+                End = $r.End
                 Sink = $site.Sink
                 Kind = $site.Kind
                 Frame = $frame
@@ -920,6 +943,20 @@ Write-Host ''
 Write-Host ('TOTAL remaining: {0} literal(s) in {1} file(s)' -f $totalRemaining, $rows.Count)
 Write-Host ('Sink writes seen: {0}; through Loc: {1}; value computed elsewhere: {2}' -f $totalSites, $totalViaLoc, $totalComputed)
 Write-Host ('Allowlisted: {0} literal(s) by value or type, plus {1} file(s) whole' -f $totalAllowed, $skippedFiles.Count)
+
+if ($Machine) {
+    # One record per finding: path, 1-based line, character offset of the
+    # literal, its end, the sink, and the file's length so a consumer can prove
+    # it is reading the same bytes. Tab separated, no prose, nothing localized.
+    Write-Host ''
+    Write-Host 'Machine:'
+    foreach ($r in $rows) {
+        $len = ([System.IO.File]::ReadAllText((Join-Path $Root ($r.Rel.Replace('/', '\\'))))).Length
+        foreach ($fd in $r.Findings) {
+            Write-Host ("{0}`t{1}`t{2}`t{3}`t{4}`t{5}" -f $fd.File, $fd.Line, $fd.Start, $fd.End, $fd.Sink, $len)
+        }
+    }
+}
 
 if ($Detail) {
     Write-Host ''
