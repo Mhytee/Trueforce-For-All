@@ -151,12 +151,22 @@ diff; `-WriteBudget` does it. Phase 2 is provably done the day
   literals never reach a user (a `Loc` key, a `ToString` format specifier) and
   `textcall` one that composes the text it is handed (`string.Format`). `watch
   TrueforceDialog` makes every method on that type either a listed sink or a
-  listed nonsink, so a new overload cannot quietly become a blind spot.
+  listed nonsink, so a new overload cannot quietly become a blind spot. Three
+  directives name a region rather than an assignment, because not every label is
+  written to a property: `labels <Identifier>` counts the entries of a declared
+  collection of labels, `textmember <Name>` counts every literal a member
+  returns, and `recordprop <Type>.<Prop>` counts an initializer entry on one of
+  our own records, which is what tells `GuideEntry.ActionLabel` from a field
+  called `ActionLabel` on something that is not a record. A parallel key or value
+  array (`IdleStyleKeys`, `FieldKeys`, `IdleColorHex`) is deliberately absent
+  from the labels list, and so are the OLED wheel-screen short names, which
+  cannot carry a translation at all.
 - `cs-keep-literal.txt`: what stays English, with a comment per entry naming what
   the plan says about it. `file:` for developer tooling (DevCodes.cs,
   TestCodesWindow.cs), `type:` for a data record whose property is spelled like
   a UI sink (`ChangelogVersion.Title`, `BackupFile.Text`), `value:` for a single
-  string (the OLED greeting's factory text). Scope only: a string that is merely
+  string (the OLED greeting's factory text, and the six typeface names the font
+  picker lists beside "Default", which is translated). Scope only: a string that is merely
   awkward to translate still gets a key.
 - `cs-literal-budget.txt`: `<repo-relative path> <count>` per line, generated.
 
@@ -194,32 +204,41 @@ goes up: the sweep starts seeing writes it was blind to. Re-run with
 
 ### Known blind
 
-The budget counts literals written AT a sink. It is not the Phase 2 remainder,
-and an empty budget file is a necessary condition for the phase rather than a
-sufficient one. These shapes hold user-visible English that no sink rule sees
-today, measured 2026-09-26 and worth re-measuring when a shape gets a rule,
-since every count here was taken by a different method than the one that will
-enforce it:
+The budget counts literals written AT a sink, where a sink is what
+`cs-ui-sinks.txt` names. It is not the Phase 2 remainder, and an empty budget
+file is a necessary condition for the phase rather than a sufficient one.
+
+Three shapes that used to be wholly invisible now have directives, added
+2026-09-26 and seeded with a named subset rather than everything of their kind:
+
+| Directive | Seeded with | Still invisible |
+| --- | --- | --- |
+| `labels <Identifier>` | 15 collections, chosen from a mechanical enumeration of every string collection in the plugin | a collection nobody has named yet |
+| `textmember <Name>` | 2 members, `EffectLabel` and `DescribeLastUploadError` | the rest of the members that return display text, which a review put at 218 literals across 68 members |
+| `recordprop <Type>.<Prop>` | 4 pairs | the rest, out of about 560 literals on non-sink initializer properties |
+
+A literal inside an interpolation hole is now counted too, which is what makes
+`$"...invert {(on ? "on" : "off")}"` visible; the fallback word in
+`{name ?? "preset"}` is the same shape and reads to a user as part of the
+sentence.
+
+Two shapes are still wholly blind, and one file set is out of scope:
 
 | Shape | Size | Example |
 | --- | --- | --- |
-| A member that RETURNS display text | 218 literals in 68 members (a narrower count of bare `return "..."` alone gives 49) | the "why is nothing happening" diagnostic, `EffectLabel`, `DescribeLastUploadError` |
-| A named array or list of labels | 51 collections, about 105 labels (an independent count gives 52 collections) | `EqTypeLabels`, `IdleStyleLabels`, `RevLightEffectLabels`, `OledScreenModel.ScreenOrderLabels` |
-| A display property on one of our own records | 560 literals, about 324 user-visible | `GuideEntry.ActionLabel`, `BackupOutcome.Message`, the file-dialog `Filter` strings |
 | Panel text built with a `StringBuilder` | 89 literals | the preset summary, the Diagnostics text |
-| A literal inside an interpolation hole | 123 literals, 46 of them display text | `$"...invert {(x ? "on" : "off")}"` |
 | One hop through a local or a helper | 92 sinks take a bare identifier | `-Indirect` lists these; the literal is at the caller |
-| Core and Engine | 4 sentences | `UsbPcapFfbTap.Status`, which the plugin composes into `FfbTapStatus` |
+| Core and Engine, not walked at all | 4 sentences | `UsbPcapFfbTap.Status`, which the plugin composes into `FfbTapStatus` and the panel polls into a label |
 
-The sweep is also plugin-scoped: `src/TrueforceForAll.Core` and
-`src/TrueforceForAll.Engine` are not walked at all, which is why the four Core
-sentences are listed above rather than budgeted.
+Naming more instances of a covered shape, or teaching the sweep a new one, is the
+one legitimate reason a budget number goes up. Re-run with `-WriteBudget` in that
+commit and say so in the message.
 
 Two more things the number is not. It counts literals, not translation units, so
 one sentence split across four concatenated fragments counts four (real, in
-`SupportPromptWindow`). It also counts only what reaches a sink, so it is at
-once an overcount of strings a translator will type and an undercount of English
-a user can read. Treat it as a work proxy.
+`SupportPromptWindow`). It also counts only what reaches a sink, so it is at once
+an overcount of strings a translator will type and an undercount of English a
+user can read. Treat it as a work proxy.
 
 ## Rules worth knowing
 

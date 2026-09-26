@@ -58,6 +58,9 @@ function Read-LocCsSinkRules([string]$Path) {
         TextCalls = New-Object 'System.Collections.Generic.List[string]'
         Watches   = New-Object 'System.Collections.Generic.List[string]'
         NonSinks  = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+        TextMembers = New-Object 'System.Collections.Generic.List[string]'
+        Labels    = New-Object 'System.Collections.Generic.List[string]'
+        RecordProps = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::Ordinal)
     }
     if (-not (Test-Path -LiteralPath $Path)) { throw "Missing sink rules: $Path" }
     $f = Read-LocTextFile $Path
@@ -81,6 +84,21 @@ function Read-LocCsSinkRules([string]$Path) {
             'textcall' { $rules.TextCalls.Add($name) }
             'watch'    { $rules.Watches.Add($name) }
             'nonsink'  { [void]$rules.NonSinks.Add($name) }
+            'textmember' { $rules.TextMembers.Add($name) }
+            'labels'   { $rules.Labels.Add($name) }
+            'recordprop' {
+                # <Type>.<Prop>: the property counts only inside an object
+                # initializer of that type, which is what tells GuideEntry.Label
+                # from a field called Label on something that is not a record.
+                $dot = $name.LastIndexOf('.')
+                if ($dot -lt 1 -or $dot -eq $name.Length - 1) { throw "cs-ui-sinks.txt:$n recordprop wants <Type>.<Prop>: [$line]" }
+                $type = $name.Substring(0, $dot)
+                $prop = $name.Substring($dot + 1)
+                if (-not $rules.RecordProps.ContainsKey($prop)) {
+                    $rules.RecordProps[$prop] = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+                }
+                [void]$rules.RecordProps[$prop].Add($type)
+            }
             default    { throw "cs-ui-sinks.txt:$n has an unknown directive [$kind]" }
         }
     }
@@ -364,13 +382,57 @@ function New-LocCsRegexSet($Rules) {
     # The three Loc calls, so a sink whose value comes through the store can be
     # told from one whose value is computed somewhere else.
     $locRe = [regex]'(?<![A-Za-z0-9_.])Loc\s*\.\s*(?:T|F|N)(?![A-Za-z0-9_])\s*\('
+    # A record property counts only inside its own type's initializer, so the
+    # pattern is the same shape as the plain property one and the frame decides.
+    $recRe = $null
+    if ($Rules.RecordProps.Count -gt 0) {
+        $alt = ($Rules.RecordProps.Keys | Sort-Object { $_.Length } -Descending | ForEach-Object { [regex]::Escape($_) }) -join '|'
+        $recRe = [regex]('(?:(?<dot>\.)|(?<![A-Za-z0-9_.]))(?<name>' + $alt + ')(?![A-Za-z0-9_])\s*(?<plus>\+)?=(?![=>])')
+    }
     return [pscustomobject]@{
         Prop = [regex]$propPattern; Calls = $calls; Ctors = $ctors; Skips = $skips
-        Texts = $texts; Watches = $watches; Loc = $locRe
+        Texts = $texts; Watches = $watches; Loc = $locRe; RecordProp = $recRe
     }
 }
 
 # ---------------------------------------------------------------- per-file walk
+
+function Get-LocCsRegionSpans([string]$Text, $Names, [string]$Kind) {
+    # The span of each named region, as [Start,End) over the comment-blanked
+    # text. A textmember is a method or property whose literals are all display
+    # text: its body is the balanced braces after the declaration, or everything
+    # up to the ';' when it is an expression body. A labels region is a declared
+    # collection of labels: the balanced braces of its initializer. Both are
+    # matched by name at a declaration, not at a use, so a call to the member
+    # and a read of the collection are untouched.
+    $out = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($nm in $Names) {
+        $esc = [regex]::Escape($nm)
+        if ($Kind -eq 'labels') {
+            # Ident = { ... } or Ident = new <anything> { ... }
+            $re = [regex]('(?<![A-Za-z0-9_.])' + $esc + '\s*=\s*(?:new\b[^={;]*)?\{')
+        } else {
+            # Name(...) { ... }  |  Name(...) => ...;  |  Name { get ... }  |  Name => ...;
+            $re = [regex]('(?<![A-Za-z0-9_.])' + $esc + '\s*(?:\([^()]*\))?\s*(?:=>|\{)')
+        }
+        foreach ($m in $re.Matches($Text)) {
+            $openAt = $Text.IndexOf('{', $m.Index + $m.Length - 1)
+            $isArrow = $Text.Substring($m.Index, $m.Length).EndsWith('=>')
+            if ($isArrow) {
+                $start = $m.Index + $m.Length
+                $end = Get-LocCsExprEnd $Text $start
+            } else {
+                $start = $m.Index + $m.Length - 1
+                if ($Text[$start] -ne '{') { continue }
+                $end = Get-LocCsBalancedEnd $Text $start
+            }
+            if ($end -gt $start) {
+                $out.Add([pscustomobject]@{ Start = $start; End = $end; Name = $nm })
+            }
+        }
+    }
+    return ,$out
+}
 
 function Get-LocCsNewSpans([string]$Text) {
     # Two maps over every "new" in the file.
@@ -488,6 +550,39 @@ function Test-LocCsTestOperand([string]$Text, [int]$Start, [int]$End) {
     return $false
 }
 
+function Get-LocCsHoleSpans([string]$Text, [int]$Start, [int]$End) {
+    # The interior of each interpolation hole in the literal at [Start,End).
+    # '{{' is an escaped brace and never opens a hole; a nested brace (an object
+    # initializer or a nested interpolation) is tracked by depth; a literal
+    # inside a hole is stepped over so a '}' in its text cannot close the hole.
+    $out = New-Object 'System.Collections.Generic.List[object]'
+    $i = $Start
+    # Past the opening quote, so a '{' cannot be read out of the '$@"' prefix.
+    while ($i -lt $End -and $Text[$i] -ne '"') { $i++ }
+    $i++
+    while ($i -lt $End) {
+        $c = $Text[$i]
+        if ($c -eq '{') {
+            if ($i + 1 -lt $End -and $Text[$i + 1] -eq '{') { $i += 2; continue }
+            $depth = 1
+            $j = $i + 1
+            $holeStart = $j
+            while ($j -lt $End -and $depth -gt 0) {
+                if (Test-LocLiteralStart $Text $j) { $j = Get-LocLiteralEnd $Text $j; continue }
+                $d = $Text[$j]
+                if ($d -eq '{') { $depth++ }
+                elseif ($d -eq '}') { $depth-- ; if ($depth -eq 0) { break } }
+                $j++
+            }
+            if ($j -gt $holeStart) { $out.Add([pscustomobject]@{ Start = $holeStart; End = $j }) }
+            $i = $j + 1
+            continue
+        }
+        $i++
+    }
+    return ,$out
+}
+
 function Get-LocCsLiteralsIn([string]$Text, [int]$Start, [int]$End, $Maps) {
     # Every string literal in [Start,End) that a user actually reads. Stepped
     # over whole: a call the rules skip (a key, a format specifier), any "new
@@ -510,6 +605,20 @@ function Get-LocCsLiteralsIn([string]$Text, [int]$Start, [int]$End, $Maps) {
             # compared rather than shown.
             if ($Text[$i] -ne "'" -and -not (Test-LocCsTestOperand $Text $i $litEnd)) {
                 $out.Add([pscustomobject]@{ Start = $i; End = $litEnd })
+            }
+            # An interpolated string's holes hold code, and that code can hold
+            # display text of its own. Everything the outer walk steps over is
+            # stepped over in here too, since it is the same walk.
+            $isInterp = $false
+            $p = $i
+            while ($p -lt $litEnd -and ($Text[$p] -eq '@' -or $Text[$p] -eq '$')) {
+                if ($Text[$p] -eq '$') { $isInterp = $true }
+                $p++
+            }
+            if ($isInterp) {
+                foreach ($h in (Get-LocCsHoleSpans $Text $i $litEnd)) {
+                    foreach ($inner in (Get-LocCsLiteralsIn $Text $h.Start $h.End $Maps)) { $out.Add($inner) }
+                }
             }
             $i = $litEnd
             continue
@@ -616,6 +725,26 @@ function Get-LocCsFileResult([string]$Path, [string]$Rel, $Rx, $Rules, $Allow, $
             })
         }
     }
+    if ($Rx.RecordProp -ne $null) {
+        foreach ($m in $Rx.RecordProp.Matches($text)) {
+            $sites.Add([pscustomobject]@{
+                Index = $m.Index; Kind = 'recordprop'; Sink = $m.Groups['name'].Value
+                Dot = $m.Groups['dot'].Success; Body = $m.Index + $m.Length; Args = $null
+            })
+        }
+    }
+    foreach ($r in (Get-LocCsRegionSpans $text $Rules.TextMembers 'textmember')) {
+        $sites.Add([pscustomobject]@{
+            Index = $r.Start; Kind = 'textmember'; Sink = $r.Name
+            Dot = $false; Body = $r.Start; Args = $null; RegionEnd = $r.End
+        })
+    }
+    foreach ($r in (Get-LocCsRegionSpans $text $Rules.Labels 'labels')) {
+        $sites.Add([pscustomobject]@{
+            Index = $r.Start; Kind = 'labels'; Sink = $r.Name
+            Dot = $false; Body = $r.Start; Args = $null; RegionEnd = $r.End
+        })
+    }
     $sites = @($sites | Sort-Object -Property Index)
 
     # Calls whose literals never reach a user, the two text composers, and the
@@ -647,7 +776,13 @@ function Get-LocCsFileResult([string]$Path, [string]$Rel, $Rx, $Rules, $Allow, $
         if (-not $frames.ContainsKey($site.Index)) { continue }   # inside a literal
         $frame = $frames[$site.Index]
         $spans = New-Object 'System.Collections.Generic.List[object]'
-        if ($site.Kind -eq 'prop') {
+        if ($site.Kind -eq 'textmember' -or $site.Kind -eq 'labels') {
+            $spans.Add([pscustomobject]@{ Start = $site.Body; End = $site.RegionEnd })
+        } elseif ($site.Kind -eq 'recordprop') {
+            $types = $Rules.RecordProps[$site.Sink]
+            if ($frame -eq '' -or -not $types.Contains($frame)) { continue }
+            $spans.Add([pscustomobject]@{ Start = $site.Body; End = (Get-LocCsExprEnd $text $site.Body) })
+        } elseif ($site.Kind -eq 'prop') {
             $spans.Add([pscustomobject]@{ Start = $site.Body; End = (Get-LocCsExprEnd $text $site.Body) })
         } else {
             foreach ($a in (Split-LocCsArgs $text $site.Body)) {

@@ -175,3 +175,58 @@ textcall string.Concat
 # ---------------------------------------------------------------- watches
 watch TrueforceDialog
 nonsink TrueforceDialog.LogError
+
+# ---------------------------------------------------------------------------
+# Added 2026-09-26, after a review measured what the rules above cannot see.
+# Three shapes are regions rather than assignments, so each needs a directive:
+#
+#   labels <Identifier>      every entry of that declared collection is a label
+#   textmember <Name>        every literal that member returns is display text
+#   recordprop <Type>.<Prop> an initializer entry on one of our own records,
+#                            counted only inside that type's initializer
+#
+# Chosen from a mechanical enumeration of every string collection and every
+# display-returning member in the plugin, not from a list: a parallel key or
+# value array (IdleStyleKeys, FieldKeys, IdleFontValues, IdleColorHex,
+# DashDriveContentKeys, GaugeFieldKeys) is deliberately absent, and so are the
+# OLED wheel-screen short names, which cannot carry a translation at all
+# (docs/localization-plan.md, out of scope).
+#
+# Adding a rule here is the one legitimate reason a budget number goes up. The
+# set grows as more shapes are found: re-run with -WriteBudget in that commit.
+
+# Panel pickers and lists.
+labels IdleStyleLabels
+labels IdleFontLabels
+labels IdleColorNames
+labels RemoteDashTabNames
+labels AmbientLedModeLabels
+labels RevLightEffectLabels
+labels WheelBuiltinEffects
+labels DashDriveContentLabels
+
+# The parametric EQ card. EqSlopeLabels is deliberately absent: its entries are
+# "12 dB" through "48 dB", a number and an SI-adjacent unit that reads the same
+# in every language we ship.
+labels EqTypeLabels
+
+# The OLED panel's own labels. The plan puts these in scope and keeps the
+# wheel-screen short names and the field keys out.
+labels ScreenOrderLabels
+labels GaugeFieldLabels
+labels FieldLabels
+labels LayoutLabels
+
+# The support prompt's bullet list.
+labels Bullets
+
+# Members whose literals are display text wherever they are used.
+textmember EffectLabel
+textmember DescribeLastUploadError
+
+# Display fields on our own records, which are spelled like data and read like
+# labels. GameNames.Display is deliberately absent: those are product names.
+recordprop GuideEntry.ActionLabel
+recordprop DiscordLinkResult.Message
+recordprop PatreonLinkResult.Message
+recordprop BackupOutcome.Message

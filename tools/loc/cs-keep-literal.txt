@@ -45,3 +45,15 @@ type:BackupFile
 # translation can reach the wheel), and this is also a TextBox default the code
 # reads back, which the plan says never to extract.
 value:HELLO WORLD
+
+# Typeface names, added 2026-09-26 with the labels rule that reached them. The
+# idle-screen font picker lists them beside "Default", which IS translated, so
+# the collection is keyed and these six entries are exempted by value rather
+# than the whole list being skipped. A typeface name is a proper noun wherever
+# it appears.
+value:Segoe UI
+value:Arial
+value:Impact
+value:Consolas
+value:Georgia
+value:Trebuchet

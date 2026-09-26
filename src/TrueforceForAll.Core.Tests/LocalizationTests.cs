@@ -917,6 +917,15 @@ namespace TrueforceForAll.Core.Tests
             public readonly List<KeyValuePair<string, Regex>> Watches = new List<KeyValuePair<string, Regex>>();
             public readonly HashSet<string> DottedCalls = new HashSet<string>(StringComparer.Ordinal);
             public readonly HashSet<string> NonSinks = new HashSet<string>(StringComparer.Ordinal);
+            // A region rule names a member whose literals are all display text,
+            // or a declared collection whose entries are all labels. A record
+            // property counts only inside its own type's initializer.
+            public readonly List<string> TextMembers = new List<string>();
+            public readonly List<string> Labels = new List<string>();
+            public readonly Dictionary<string, HashSet<string>> RecordProps =
+                new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            public Regex RecordPropRe;
+
             // The property names behind PropRe, kept so LocCsLiteralBudget can
             // pin how many there are: a prop rule decides what counts as a
             // label write, so adding one silently moves every budget number.
@@ -999,6 +1008,29 @@ namespace TrueforceForAll.Core.Tests
                     case "nonsink":
                         rules.NonSinks.Add(name);
                         break;
+                    case "textmember":
+                        rules.TextMembers.Add(name);
+                        break;
+                    case "labels":
+                        rules.Labels.Add(name);
+                        break;
+                    case "recordprop":
+                    {
+                        // <Type>.<Prop>, so GuideEntry.ActionLabel is a label and
+                        // a field called ActionLabel on anything else is not.
+                        int dot = name.LastIndexOf('.');
+                        if (dot < 1 || dot == name.Length - 1)
+                            throw new InvalidOperationException(where + " recordprop wants <Type>.<Prop>: [" + line + "]");
+                        string rpType = name.Substring(0, dot);
+                        string rpProp = name.Substring(dot + 1);
+                        if (!rules.RecordProps.TryGetValue(rpProp, out HashSet<string> types))
+                        {
+                            types = new HashSet<string>(StringComparer.Ordinal);
+                            rules.RecordProps[rpProp] = types;
+                        }
+                        types.Add(rpType);
+                        break;
+                    }
                     default:
                         throw new InvalidOperationException(where + " has an unknown directive [" + kind + "]");
                 }
@@ -1007,6 +1039,11 @@ namespace TrueforceForAll.Core.Tests
             rules.PropNames.AddRange(props);
             string alt = string.Join("|", props.OrderByDescending(p => p.Length).Select(Regex.Escape));
             rules.PropRe = new Regex(@"(?:(?<dot>\.)|(?<![A-Za-z0-9_.]))(?<name>" + alt + @")(?![A-Za-z0-9_])\s*(?<plus>\+)?=(?![=>])");
+            if (rules.RecordProps.Count > 0)
+            {
+                string ralt = string.Join("|", rules.RecordProps.Keys.OrderByDescending(p => p.Length).Select(Regex.Escape));
+                rules.RecordPropRe = new Regex(@"(?:(?<dot>\.)|(?<![A-Za-z0-9_.]))(?<name>" + ralt + @")(?![A-Za-z0-9_])\s*(?<plus>\+)?=(?![=>])");
+            }
             return rules;
         }
 
@@ -1064,6 +1101,9 @@ namespace TrueforceForAll.Core.Tests
         private sealed class CsSite
         {
             public int Index, Body;
+            // The end of a textmember's or labels region's span. Unused by the
+            // other kinds, which derive their end from the expression.
+            public int RegionEnd;
             public string Kind, Sink;
             public CsCallRule Rule;
         }
@@ -1373,6 +1413,34 @@ namespace TrueforceForAll.Core.Tests
         // literal handed to a method or used as a lookup key is not display
         // text. Descended into: a grouping parenthesis, a ternary, a
         // concatenation, and the calls the rules mark as text composers.
+        // The interior of each interpolation hole in the literal at [start,end).
+        // "{{" is an escaped brace, a nested brace is tracked by depth, and a
+        // literal inside a hole is stepped over so a '}' in its text cannot close
+        // the hole. Mirrors Get-LocCsHoleSpans in sweep-cs.ps1.
+        private static List<CsSpan> CsHoleSpans(string s, int start, int end)
+        {
+            var found = new List<CsSpan>();
+            int i = start;
+            while (i < end && s[i] != '"') i++;   // past the opening quote
+            i++;
+            while (i < end)
+            {
+                if (s[i] != '{') { i++; continue; }
+                if (i + 1 < end && s[i + 1] == '{') { i += 2; continue; }
+                int depth = 1, j = i + 1, holeStart = j;
+                while (j < end && depth > 0)
+                {
+                    if (IsLiteralStart(s, j)) { j = SkipLiteral(s, j); continue; }
+                    if (s[j] == '{') depth++;
+                    else if (s[j] == '}') { depth--; if (depth == 0) break; }
+                    j++;
+                }
+                if (j > holeStart) found.Add(new CsSpan { Start = holeStart, End = j });
+                i = j + 1;
+            }
+            return found;
+        }
+
         private static List<CsSpan> CsLiteralsIn(string s, int start, int end,
             Dictionary<int, int> skipAt, Dictionary<int, int> textAt, Dictionary<int, int> newEnd)
         {
@@ -1388,6 +1456,15 @@ namespace TrueforceForAll.Core.Tests
                     int litEnd = SkipLiteral(s, i);
                     if (s[i] != '\'' && !CsTestOperand(s, i, litEnd))
                         found.Add(new CsSpan { Start = i, End = litEnd });
+                    // An interpolated string's holes hold code, and that code can
+                    // hold display text of its own. The same walk applies inside,
+                    // so a Loc call or a lookup key in a hole is stepped over too.
+                    bool isInterp = false;
+                    for (int p = i; p < litEnd && (s[p] == '@' || s[p] == '$'); p++)
+                        if (s[p] == '$') isInterp = true;
+                    if (isInterp)
+                        foreach (var hole in CsHoleSpans(s, i, litEnd))
+                            found.AddRange(CsLiteralsIn(s, hole.Start, hole.End, skipAt, textAt, newEnd));
                     i = litEnd;
                     continue;
                 }
@@ -1402,6 +1479,48 @@ namespace TrueforceForAll.Core.Tests
                 i++;
             }
             return found;
+        }
+
+        // The span of each named region. A textmember's body is the balanced
+        // braces after its declaration, or everything up to the ';' when it is an
+        // expression body; a labels region is its initializer's braces. Matched
+        // at a declaration, so a call to the member and a read of the collection
+        // are untouched. Mirrors Get-LocCsRegionSpans in sweep-cs.ps1.
+        private static List<CsRegion> CsRegionSpans(string s, List<string> names, string kind)
+        {
+            var found = new List<CsRegion>();
+            foreach (string nm in names)
+            {
+                string esc = Regex.Escape(nm);
+                var re = kind == "labels"
+                    ? new Regex(@"(?<![A-Za-z0-9_.])" + esc + @"\s*=\s*(?:new\b[^={;]*)?\{")
+                    : new Regex(@"(?<![A-Za-z0-9_.])" + esc + @"\s*(?:\([^()]*\))?\s*(?:=>|\{)");
+                foreach (Match m in re.Matches(s))
+                {
+                    bool isArrow = s.Substring(m.Index, m.Length).EndsWith("=>", StringComparison.Ordinal);
+                    int start, end;
+                    if (isArrow)
+                    {
+                        start = m.Index + m.Length;
+                        end = CsExprEnd(s, start);
+                    }
+                    else
+                    {
+                        start = m.Index + m.Length - 1;
+                        if (start >= s.Length || s[start] != '{') continue;
+                        end = CsBalancedEnd(s, start);
+                    }
+                    if (end > start) found.Add(new CsRegion { Start = start, End = end, Name = nm });
+                }
+            }
+            return found;
+        }
+
+        private sealed class CsRegion
+        {
+            public int Start;
+            public int End;
+            public string Name;
         }
 
         private static int[] CsLineStarts(string s)
@@ -1442,6 +1561,13 @@ namespace TrueforceForAll.Core.Tests
             foreach (var rule in rules.Ctors)
                 foreach (Match m in rule.Re.Matches(text))
                     sites.Add(new CsSite { Index = m.Index, Kind = "ctor", Sink = "new " + rule.Name, Body = m.Index + m.Length - 1, Rule = rule });
+            if (rules.RecordPropRe != null)
+                foreach (Match m in rules.RecordPropRe.Matches(text))
+                    sites.Add(new CsSite { Index = m.Index, Kind = "recordprop", Sink = m.Groups["name"].Value, Body = m.Index + m.Length });
+            foreach (var r in CsRegionSpans(text, rules.TextMembers, "textmember"))
+                sites.Add(new CsSite { Index = r.Start, Kind = "textmember", Sink = r.Name, Body = r.Start, RegionEnd = r.End });
+            foreach (var r in CsRegionSpans(text, rules.Labels, "labels"))
+                sites.Add(new CsSite { Index = r.Start, Kind = "labels", Sink = r.Name, Body = r.Start, RegionEnd = r.End });
             sites = sites.OrderBy(s => s.Index).ToList();
 
             var skipAt = new Dictionary<int, int>();
@@ -1460,7 +1586,15 @@ namespace TrueforceForAll.Core.Tests
             {
                 if (!frames.TryGetValue(site.Index, out string frame)) continue;   // matched inside a literal
                 var spans = new List<CsSpan>();
-                if (site.Kind == "prop")
+                if (site.Kind == "textmember" || site.Kind == "labels")
+                    spans.Add(new CsSpan { Start = site.Body, End = site.RegionEnd });
+                else if (site.Kind == "recordprop")
+                {
+                    // Only inside an initializer of one of the types the rule named.
+                    if (frame.Length == 0 || !rules.RecordProps[site.Sink].Contains(frame)) continue;
+                    spans.Add(new CsSpan { Start = site.Body, End = CsExprEnd(text, site.Body) });
+                }
+                else if (site.Kind == "prop")
                     spans.Add(new CsSpan { Start = site.Body, End = CsExprEnd(text, site.Body) });
                 else
                     foreach (var arg in SplitCsArgs(text, site.Body))
