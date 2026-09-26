@@ -220,9 +220,13 @@ labels LayoutLabels
 # The support prompt's bullet list.
 labels Bullets
 
-# Members whose literals are display text wherever they are used.
+# Members whose literals are display text wherever they are used. Added as each
+# file is keyed, so a file's budget reaching zero means the file is really done
+# rather than done except for the part the rules cannot see.
 textmember EffectLabel
 textmember DescribeLastUploadError
+textmember SendErrorCopy
+textmember VerifyErrorCopy
 
 # Display fields on our own records, which are spelled like data and read like
 # labels. GameNames.Display is deliberately absent: those are product names.

@@ -647,6 +647,11 @@ namespace TrueforceForAll.Core.Tests
             // names the rev light data rather than the patterns, so it is its own
             // value, and it runs into the same hyperlink.
             { "TelemetryFfb_LovelyPerCarRevLightTiming", "runs into the Lovely Sim Racing hyperlink" },
+            // The sign-in window builds one sentence from a Run and a
+            // Hyperlink, and one row from a label and a link button, so each
+            // lead fragment ends where its link begins.
+            { "SignIn_PrivacyLead", "runs into the Privacy policy hyperlink" },
+            { "SignIn_DidntGetIt", "runs into the Resend code link" },
             // The two help lines under the usage-statistics and community
             // checkboxes on the Settings tab. Each is a Run followed by the
             // "Privacy policy" Hyperlink in the same sentence.
