@@ -1838,11 +1838,11 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
-                        "Using Trueforce For All in iRacing",
+                        Loc.T("Plugin_UsingTrueforceAllIRacing"),
                         IracingNoticeBody,
                         DialogKind.Info,
-                        okLabel: "Got it, don't show again",
-                        cancelLabel: "Remind me later",
+                        okLabel: Loc.T("Plugin_GotDonTShow"),
+                        cancelLabel: Loc.T("Plugin_RemindMeLater"),
                         goldOk: true);
                     // true = dismiss for good. Remind me later leaves the latch off,
                     // so it reappears on the next iRacing session.
@@ -1908,7 +1908,7 @@ namespace TrueforceForAll.Plugin
                     // saying where the guide lives.
                     var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
                     var link = new System.Windows.Documents.Hyperlink(
-                        new System.Windows.Documents.Run("Open the RaceRoom guide"))
+                        new System.Windows.Documents.Run(Loc.T("Plugin_OpenRaceRoomGuide")))
                     {
                         Foreground = new System.Windows.Media.SolidColorBrush(
                             System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
@@ -1916,11 +1916,11 @@ namespace TrueforceForAll.Plugin
                     link.Click += (s2, e2) => OpenGuideFromAnywhere("raceroom-setup");
                     guideLink.Inlines.Add(link);
                     bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
-                        "Using Trueforce For All in RaceRoom",
+                        Loc.T("Plugin_UsingTrueforceAllRaceRoom"),
                         R3ENoticeBody,
                         DialogKind.Info,
-                        okLabel: "Got it, don't show again",
-                        cancelLabel: "Remind me later",
+                        okLabel: Loc.T("Plugin_GotDonTShow"),
+                        cancelLabel: Loc.T("Plugin_RemindMeLater"),
                         goldOk: true,
                         extraContent: guideLink);
                     if (r == true)
@@ -1982,7 +1982,7 @@ namespace TrueforceForAll.Plugin
                 {
                     var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
                     var link = new System.Windows.Documents.Hyperlink(
-                        new System.Windows.Documents.Run("Open the Le Mans Ultimate guide"))
+                        new System.Windows.Documents.Run(Loc.T("Plugin_OpenLeMansUltimate")))
                     {
                         Foreground = new System.Windows.Media.SolidColorBrush(
                             System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
@@ -1990,11 +1990,11 @@ namespace TrueforceForAll.Plugin
                     link.Click += (s2, e2) => OpenGuideFromAnywhere("lmu-setup");
                     guideLink.Inlines.Add(link);
                     bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
-                        "Using Trueforce For All in Le Mans Ultimate",
+                        Loc.T("Plugin_UsingTrueforceAllLe"),
                         LmuNoticeBody,
                         DialogKind.Info,
-                        okLabel: "Got it, don't show again",
-                        cancelLabel: "Remind me later",
+                        okLabel: Loc.T("Plugin_GotDonTShow"),
+                        cancelLabel: Loc.T("Plugin_RemindMeLater"),
                         goldOk: true,
                         extraContent: guideLink);
                     if (r == true)
@@ -3367,14 +3367,9 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         bool? ok = TrueforceDialog.Show(null,
-                            "Install the TF4ALL Farming Simulator Enhanced Telemetry Mod?",
-                            "This mod provides more telemetry than SimHub receives from the game: "
-                            + "per-wheel suspension, ground contact, and more, at up to 100 Hz "
-                            + "where SimHub delivers 10 Hz (60 Hz with a licensed SimHub). This "
-                            + "unlocks Telemetry Based FFB enhancements to the game's force "
-                            + "feedback, such as Terrain feel. It works alongside SimHub's own "
-                            + "telemetry mod; keep both enabled in the game's mod list.",
-                            DialogKind.Confirm, "Install", "Not now",
+                            Loc.T("Plugin_InstallTF4ALLFarmingSimulator"),
+                            Loc.T("Plugin_ModProvidesMoreTelemetry"),
+                            DialogKind.Confirm, Loc.T("TelemetryFfb_FsModInstall"), Loc.T("SupportPrompt_NotNow"),
                             goldOk: true, quietCancel: true);
                         var st = Settings;
                         if (st == null) return;
@@ -3386,15 +3381,12 @@ namespace TrueforceForAll.Plugin
                             // say the game reads its mods only at startup.
                             string err = InstallFsModForActiveGame();
                             if (err != null)
-                                TrueforceDialog.Show(null, "Install failed",
-                                    "The mod could not be installed: " + err + ". "
-                                    + "You can retry from the banner on the Telemetry FFB tab.",
+                                TrueforceDialog.Show(null, Loc.T("Plugin_InstallFailed"),
+                                    Loc.F("Plugin_ModCouldNotInstalled_Fmt", err),
                                     DialogKind.Error);
                             else
-                                TrueforceDialog.Show(null, "Mod installed",
-                                    "It loads the next time Farming Simulator starts, so restart "
-                                    + "the game if it is running now. The plugin picks it up by "
-                                    + "itself; no SimHub restart is needed.",
+                                TrueforceDialog.Show(null, Loc.T("Plugin_ModInstalled"),
+                                    Loc.T("Plugin_LoadsNextTimeFarming"),
                                     DialogKind.Info);
                         }
                         else
@@ -28020,25 +28012,25 @@ namespace TrueforceForAll.Plugin
         // (PresetSharingClient.StampUploadErrorFromStatus) for support instead.
         internal string DescribeLastUploadError()
         {
-            if (_presetSharing == null) return "Upload failed.";
+            if (_presetSharing == null) return Loc.T("Plugin_UploadFailed");
             switch (_presetSharing.LastUploadError)
             {
                 case UploadError.Blocked:
-                    return "Your account is restricted from uploading.";
+                    return Loc.T("Plugin_AccountRestrictedUploading");
                 case UploadError.NotAuthenticated:
-                    return "Sign-in expired. Sign in again and retry.";
+                    return Loc.T("Plugin_SignExpiredSignAgain");
                 case UploadError.RateLimited:
-                    return "Slow down a moment, then try again.";
+                    return Loc.T("SignIn_ErrorRateLimited");
                 case UploadError.DuplicateName:
-                    return "You already shared an item with this name. Update your existing upload instead, or pick a different name.";
+                    return Loc.T("Plugin_AlreadySharedItemName");
                 case UploadError.ValidationFailed:
-                    return "The server rejected this upload. If you've already shared a preset with this name, rename it and try again.";
+                    return Loc.T("Plugin_ServerRejectedUploadIf");
                 case UploadError.ServerError:
-                    return "Community backend hit an error. Try again in a minute.";
+                    return Loc.T("Plugin_CommunityBackendHitError");
                 case UploadError.NetworkFailure:
-                    return "Couldn't reach the community backend. Check your connection, then retry.";
+                    return Loc.T("Plugin_CouldnTReachCommunity");
                 default:
-                    return "Upload failed.";
+                    return Loc.T("Plugin_UploadFailed");
             }
         }
 
@@ -30010,7 +30002,7 @@ namespace TrueforceForAll.Plugin
                 TrueforceDialog.Show(null, "Trueforce For All", body,
                     DialogKind.Destructive,
                     okLabel: loadLabel,
-                    cancelLabel: "Keep current tuning") == true);
+                    cancelLabel: Loc.T("Plugin_KeepCurrentTuning")) == true);
             SimHub.Logging.Current.Info(load
                 ? "[TF4ALL] Account switch: user chose to load the incoming saved tuning."
                 : "[TF4ALL] Account switch: user chose to keep the current tuning.");
@@ -35177,15 +35169,15 @@ namespace TrueforceForAll.Plugin
         /// loopback capture, then exchange the code server-side for this signed-in user.</summary>
         internal async Task<DiscordLinkResult> LinkDiscordAsync(System.Threading.CancellationToken ct)
         {
-            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = "Discord linking isn't available." };
-            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = "Sign in to TF4ALL first." };
+            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_DiscordLinkingIsnT") };
+            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_SignTF4ALLFirst") };
             if (!await _discordLinkOp.WaitAsync(0).ConfigureAwait(false))
-                return new DiscordLinkResult { Ok = false, Message = "A Discord link is already in progress." };
+                return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_DiscordLinkAlreadyProgress") };
             try
             {
                 var (cfg, cfgErr) = await _discordLinkClient.GetConfigAsync(ct).ConfigureAwait(false);
                 if (cfg == null || string.IsNullOrEmpty(cfg.ClientId))
-                    return new DiscordLinkResult { Ok = false, Message = cfgErr ?? "Discord linking isn't set up yet." };
+                    return new DiscordLinkResult { Ok = false, Message = cfgErr ?? Loc.T("Plugin_DiscordLinkingIsnT2") };
 
                 DiscordOAuthFlow.Result auth;
                 try
@@ -35193,12 +35185,12 @@ namespace TrueforceForAll.Plugin
                     auth = await DiscordOAuthFlow.AuthorizeAsync(cfg.ClientId, cfg.RedirectUris, cfg.Scope,
                         msg => SimHub.Logging.Current.Info(msg), ct).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) { return new DiscordLinkResult { Ok = false, Message = "Linking cancelled." }; }
+                catch (OperationCanceledException) { return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_LinkingCancelled") }; }
                 catch (DiscordOAuthException ex)   { return new DiscordLinkResult { Ok = false, Message = ex.Message }; }
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Warn("[TF4ALL] Discord authorize error: " + ex.Message);
-                    return new DiscordLinkResult { Ok = false, Message = "Couldn't start Discord linking." };
+                    return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_CouldnTStartDiscord") };
                 }
 
                 var (ok, message, username) = await _discordLinkClient.ExchangeAsync(auth.Code, auth.RedirectUri, ct).ConfigureAwait(false);
@@ -35211,11 +35203,11 @@ namespace TrueforceForAll.Plugin
         /// <summary>Remove this user's Discord link.</summary>
         internal async Task<DiscordLinkResult> UnlinkDiscordAsync(System.Threading.CancellationToken ct)
         {
-            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = "Discord linking isn't available." };
-            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = "Sign in first." };
+            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_DiscordLinkingIsnT") };
+            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_SignFirst") };
             bool ok = await _discordLinkClient.UnlinkAsync(ct).ConfigureAwait(false);
             if (ok) InvalidateAccountStatusCache();   // unlink can drop supporter-via-role + clears the link row
-            return new DiscordLinkResult { Ok = ok, Message = ok ? "Discord unlinked." : "Couldn't unlink. Try again." };
+            return new DiscordLinkResult { Ok = ok, Message = ok ? Loc.T("Plugin_DiscordUnlinked") : Loc.T("Plugin_CouldnTUnlinkTry") };
         }
 
         /// <summary>Last-known Discord-link status, cached from GetDiscordStatusAsync so
@@ -35341,15 +35333,15 @@ namespace TrueforceForAll.Plugin
         /// capture, then exchange the code server-side for this signed-in user.</summary>
         internal async Task<PatreonLinkResult> LinkPatreonAsync(System.Threading.CancellationToken ct)
         {
-            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = "Patreon linking isn't available." };
-            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = "Sign in to TF4ALL first." };
+            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_PatreonLinkingIsnT") };
+            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_SignTF4ALLFirst") };
             if (!await _patreonLinkOp.WaitAsync(0).ConfigureAwait(false))
-                return new PatreonLinkResult { Ok = false, Message = "A Patreon link is already in progress." };
+                return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_PatreonLinkAlreadyProgress") };
             try
             {
                 var (cfg, cfgErr) = await _patreonLinkClient.GetConfigAsync(ct).ConfigureAwait(false);
                 if (cfg == null || string.IsNullOrEmpty(cfg.ClientId))
-                    return new PatreonLinkResult { Ok = false, Message = cfgErr ?? "Patreon linking isn't set up yet." };
+                    return new PatreonLinkResult { Ok = false, Message = cfgErr ?? Loc.T("Plugin_PatreonLinkingIsnT2") };
 
                 PatreonOAuthFlow.Result auth;
                 try
@@ -35357,12 +35349,12 @@ namespace TrueforceForAll.Plugin
                     auth = await PatreonOAuthFlow.AuthorizeAsync(cfg.ClientId, cfg.RedirectUris, cfg.Scope,
                         msg => SimHub.Logging.Current.Info(msg), ct).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) { return new PatreonLinkResult { Ok = false, Message = "Linking cancelled." }; }
+                catch (OperationCanceledException) { return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_LinkingCancelled") }; }
                 catch (PatreonOAuthException ex)   { return new PatreonLinkResult { Ok = false, Message = ex.Message }; }
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Warn("[TF4ALL] Patreon authorize error: " + ex.Message);
-                    return new PatreonLinkResult { Ok = false, Message = "Couldn't start Patreon linking." };
+                    return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_CouldnTStartPatreon") };
                 }
 
                 var (ok, message, name) = await _patreonLinkClient.ExchangeAsync(auth.Code, auth.RedirectUri, ct).ConfigureAwait(false);
@@ -35375,11 +35367,11 @@ namespace TrueforceForAll.Plugin
         /// <summary>Remove this user's Patreon link.</summary>
         internal async Task<PatreonLinkResult> UnlinkPatreonAsync(System.Threading.CancellationToken ct)
         {
-            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = "Patreon linking isn't available." };
-            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = "Sign in first." };
+            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_PatreonLinkingIsnT") };
+            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_SignFirst") };
             bool ok = await _patreonLinkClient.UnlinkAsync(ct).ConfigureAwait(false);
             if (ok) InvalidateAccountStatusCache();   // unlink can drop the entitlement: refresh it
-            return new PatreonLinkResult { Ok = ok, Message = ok ? "Patreon unlinked." : "Couldn't unlink. Try again." };
+            return new PatreonLinkResult { Ok = ok, Message = ok ? Loc.T("Plugin_PatreonUnlinked") : Loc.T("Plugin_CouldnTUnlinkTry") };
         }
 
         /// <summary>Current Patreon link state for the settings UI (linked + display name).</summary>
@@ -35642,7 +35634,7 @@ namespace TrueforceForAll.Plugin
                     return new BackupOutcome
                     {
                         Status = BackupStatus.Diverged,
-                        Message = "The cloud backup changed since this PC last synced.",
+                        Message = Loc.T("BackupConflict_CloudBackupChangedSince"),
                         CloudDeviceLabel = cloudEnv?.DeviceLabel,
                         CloudWhenUtc = cloudEnv?.CreatedUtc,
                     };
@@ -35677,7 +35669,7 @@ namespace TrueforceForAll.Plugin
             var up = await _backupClient.UploadAsync(json).ConfigureAwait(false);
             if (up != BackupTransfer.Success) return FromTransfer(up, "Backup upload failed");
             await StampSyncedRevisionAsync().ConfigureAwait(false);
-            return new BackupOutcome { Status = BackupStatus.Success, Message = "Backed up to the cloud." };
+            return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_BackedUpCloud") };
         }
 
         // After a successful upload, read back the new object revision + persist it as
@@ -35751,7 +35743,7 @@ namespace TrueforceForAll.Plugin
                 {
                     ApplyRestoredEnvelope(cloudEnv);
                     await StampSyncedRevisionAsync().ConfigureAwait(false);
-                    return new BackupOutcome { Status = BackupStatus.Success, Message = "Restored from the cloud and applied." };
+                    return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_RestoredCloudApplied") };
                 }
 
                 // SmartMerge: union libraries (newest-wins), pick a settings side, then
@@ -35764,7 +35756,7 @@ namespace TrueforceForAll.Plugin
                 if (up != BackupTransfer.Success) return FromTransfer(up, "Merged backup upload failed");
                 ApplyRestoredEnvelope(merged);
                 await StampSyncedRevisionAsync().ConfigureAwait(false);
-                return new BackupOutcome { Status = BackupStatus.Success, Message = "Merged and backed up." };
+                return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_MergedBackedUp") };
             }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup conflict resolution failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't resolve the backup conflict. See the SimHub log, then try again."); }
             finally { _backupOp.Release(); }
@@ -35781,13 +35773,13 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var (dl, json) = await _backupClient.DownloadAsync().ConfigureAwait(false);
-                if (dl == BackupTransfer.NotFound) return new BackupOutcome { Status = BackupStatus.NothingToRestore, Message = "No cloud backup found for this account yet." };
+                if (dl == BackupTransfer.NotFound) return new BackupOutcome { Status = BackupStatus.NothingToRestore, Message = Loc.T("Plugin_NoCloudBackupFound") };
                 if (dl != BackupTransfer.Success) return FromTransfer(dl, "Couldn't fetch the cloud backup");
                 var env = SafeParse(json);
                 if (env == null) return Fail(BackupStatus.Failed, "The cloud backup was unreadable.");
                 ApplyRestoredEnvelope(env);
                 await StampSyncedRevisionAsync().ConfigureAwait(false);
-                return new BackupOutcome { Status = BackupStatus.Success, Message = "Restored from the cloud and applied." };
+                return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_RestoredCloudApplied") };
             }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Restore failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't restore. Check your connection, then try again."); }
             finally { _backupOp.Release(); }
@@ -37952,10 +37944,10 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
-                        "Assetto Corsa: install the TF4ALL CSP Bridge",
+                        Loc.T("Plugin_AssettoCorsaInstallTF4ALL"),
                         AcCspNoticeBody,
                         DialogKind.Info,
-                        okLabel: "Install", cancelLabel: "Not now", goldOk: true);
+                        okLabel: Loc.T("TelemetryFfb_FsModInstall"), cancelLabel: Loc.T("SupportPrompt_NotNow"), goldOk: true);
                     var st = Settings;
                     if (st == null) return;
                     if (r == true)
@@ -37967,8 +37959,8 @@ namespace TrueforceForAll.Plugin
                         while (err != null)
                         {
                             bool? again = TrueforceDialog.Show(owner ?? app.MainWindow,
-                                "Could not set up Assetto Corsa", err,
-                                DialogKind.Error, okLabel: "Retry", cancelLabel: "Not now", goldOk: true);
+                                Loc.T("Plugin_CouldNotSetUp"), err,
+                                DialogKind.Error, okLabel: Loc.T("Guides_Retry"), cancelLabel: Loc.T("SupportPrompt_NotNow"), goldOk: true);
                             if (again != true) break;
                             err = InstallAcCspBridge();
                         }
@@ -37981,9 +37973,8 @@ namespace TrueforceForAll.Plugin
                             if (src != null) { src.CspBridgeLatchEnabled = true; src.FfbLatchEnabled = true; }
                             st.CspBridgeInstallDeclined = true;
                             try { PersistSettings(); } catch { }
-                            TrueforceDialog.Show(owner ?? app.MainWindow, "Assetto Corsa is set up",
-                                "The CSP bridge is installed and on. Restart Assetto Corsa if it is running now, "
-                                + "and keep your in-game force feedback gain up; the plugin renders the game's own force.",
+                            TrueforceDialog.Show(owner ?? app.MainWindow, Loc.T("Plugin_AssettoCorsaSetUp"),
+                                Loc.T("Plugin_CSPBridgeInstalledRestart"),
                                 DialogKind.Info);
                         }
                     }
@@ -38022,8 +38013,8 @@ namespace TrueforceForAll.Plugin
                     while (err != null)
                     {
                         bool? again = TrueforceDialog.Show(app.MainWindow,
-                            "Could not set up Assetto Corsa", err,
-                            DialogKind.Error, okLabel: "Retry", cancelLabel: "Not now", goldOk: true);
+                            Loc.T("Plugin_CouldNotSetUp"), err,
+                            DialogKind.Error, okLabel: Loc.T("Guides_Retry"), cancelLabel: Loc.T("SupportPrompt_NotNow"), goldOk: true);
                         if (again != true)
                         {
                             var s = Settings;
@@ -38036,9 +38027,8 @@ namespace TrueforceForAll.Plugin
                         }
                         err = InstallAndEnableAcCspBridge();
                     }
-                    TrueforceDialog.Show(app.MainWindow, "Assetto Corsa is set up",
-                        "The CSP bridge is installed and on. Restart Assetto Corsa if it is running now, "
-                        + "and keep your in-game force feedback gain up.",
+                    TrueforceDialog.Show(app.MainWindow, Loc.T("Plugin_AssettoCorsaSetUp"),
+                        Loc.T("Plugin_CSPBridgeInstalledRestart2"),
                         DialogKind.Info);
                 }));
             }
@@ -41412,7 +41402,7 @@ namespace TrueforceForAll.Plugin
                     // anything (owner, 2026-08-30).
                     bool? r = TrueforceDialog.Show(app.MainWindow, title, body,
                         DialogKind.Info,
-                        okLabel: "Got it", cancelLabel: "Don't show this again for this game",
+                        okLabel: Loc.T("Settings_Got"), cancelLabel: Loc.T("Plugin_DonTShowAgain"),
                         goldOk: true, extraContent: cure);
                     if (r == false && !string.IsNullOrEmpty(game))
                     {
@@ -41913,7 +41903,7 @@ namespace TrueforceForAll.Plugin
                     cure.Inlines.Add(setup);
                     cure.Inlines.Add(new System.Windows.Documents.Run(tailAfter));
                     bool? r = TrueforceDialog.Show(app.MainWindow, title, body, DialogKind.Info,
-                        okLabel: "Open the iRacing setup guide", cancelLabel: "Don't show again", goldOk: true,
+                        okLabel: Loc.T("Plugin_OpenIRacingSetupGuide"), cancelLabel: Loc.T("Plugin_DonTShowAgain2"), goldOk: true,
                         extraContent: cure);
                     if (r == true) OpenGuideFromAnywhere("iracing-setup");
                     else if (r == false)
@@ -42858,12 +42848,8 @@ namespace TrueforceForAll.Plugin
             {
                 try
                 {
-                    TrueforceDialog.Show(null, "Restart your computer to finish",
-                        "USBPcap is installed, but its capture driver only attaches to your USB ports while Windows "
-                            + "starts, so FFB pass-through stays off until you restart the computer.\n\n"
-                            + "If it is still off after a restart, check for a BIOS update from your PC or "
-                            + "motherboard maker. Out-of-date Secure Boot keys are the usual reason Windows "
-                            + "refuses to load the driver, and updating the BIOS refreshes them.",
+                    TrueforceDialog.Show(null, Loc.T("Plugin_RestartComputerFinish"),
+                        Loc.T("Plugin_USBPcapInstalledButCapture"),
                         DialogKind.Warning);
                 }
                 catch { }
