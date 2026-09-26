@@ -652,6 +652,11 @@ namespace TrueforceForAll.Core.Tests
             // lead fragment ends where its link begins.
             { "SignIn_PrivacyLead", "runs into the Privacy policy hyperlink" },
             { "SignIn_DidntGetIt", "runs into the Resend code link" },
+            // Each of these three is a mode note that runs into a hyperlink in
+            // the same paragraph, so the sentence ends with its separating space.
+            { "Settings_LightsyncOnlySessionMAIRA", "runs into the guide link" },
+            { "Settings_LightsyncOnlySessionStreaming_Fmt", "runs into the guide link" },
+            { "Settings_IRacingSupportsTrueforceNatively", "runs into the notice link" },
             // Appended as its own Run to the mode note, after a sentence
             // already in that paragraph, so it opens with the separating space.
             { "Settings_NormalModeAlsoUnlocks", "continues the mode note paragraph" },
