@@ -812,7 +812,6 @@
   "LangPicker_NotStarted": "not started",
   "LangPicker_Open": "Translate this",
   "LangPicker_Progress_Fmt": "{0}% ({1} of {2})",
-  "LangPicker_Row_Fmt": "{0}  ({1})",
   "LangPicker_Search_Tip": "Type a language, or a code like pt-BR if the language is not in the list.",
   "LangPicker_Title": "Choose a language to translate",
   "Lightsync_AlwaysRememberPattern": "Remember my pick for each car automatically",

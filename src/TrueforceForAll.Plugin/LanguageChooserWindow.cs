@@ -9,11 +9,16 @@
 // not ours to decide.
 //
 // Two columns, because two things are being asked: which language, and how much of
-// it exists already. The code (de, pt-BR) is deliberately not a column; it is what
-// the search box accepts and what the Translate window's title shows. One box does
-// both jobs: it filters the list, and when it matches nothing it is taken as the
-// code of a language the list does not offer, which is how pt-BR or a test locale
-// is reached without a second control.
+// it exists already. A language appears under its own name and nothing else:
+// someone who speaks Portuguese is not looking for "Portuguese", and the English
+// name would spend the column on a reader who is not the one choosing. The search
+// box still matches it, so typing "German" finds Deutsch.
+//
+// The code (de, pt-BR) is deliberately not a column either; it is what the search
+// box accepts and what the Translate window's title shows. One box does both jobs:
+// it filters the list, and when it matches nothing it is taken as the code of a
+// language the list does not offer, which is how pt-BR or a test locale is reached
+// without a second control.
 //
 // The percentage is what THIS PC has: a file in the languages folder, or one the
 // build ships. It cannot say whether someone else has started a language, and the
@@ -59,10 +64,9 @@ namespace TrueforceForAll.Plugin
         {
             public string Tag { get; set; }
             public string Native { get; set; }
+            /// <summary>Not shown. The search box matches it, so someone who
+            /// knows a language by its English name can still find it.</summary>
             public string English { get; set; }
-            /// <summary>Both names in one cell: a reader finds their language by its
-            /// own name, and the English one is there for anyone helping them.</summary>
-            public string Language { get; set; }
             public string Progress { get; set; }
             // Sort key, not shown: languages with work in them first, then the
             // reader's own Windows language, then everything else by its own name.
@@ -142,7 +146,7 @@ namespace TrueforceForAll.Plugin
                 SelectionMode = DataGridSelectionMode.Single,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             };
-            AddColumn(Loc.T("LangPicker_ColumnLanguage"), nameof(Row.Language),
+            AddColumn(Loc.T("LangPicker_ColumnLanguage"), nameof(Row.Native),
                       new DataGridLength(1, DataGridLengthUnitType.Star));
             AddColumn(Loc.T("LangPicker_ColumnProgress"), nameof(Row.Progress),
                       new DataGridLength(170));
@@ -258,9 +262,6 @@ namespace TrueforceForAll.Plugin
                 Tag = tag,
                 Native = ownName,
                 English = english ?? "",
-                Language = string.IsNullOrEmpty(english) || english == ownName
-                    ? ownName
-                    : Loc.F("LangPicker_Row_Fmt", ownName, english),
                 Progress = Loc.T("LangPicker_NotStarted"),
                 Rank = 2,
             };
