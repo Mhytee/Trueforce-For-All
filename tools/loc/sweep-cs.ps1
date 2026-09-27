@@ -428,7 +428,9 @@ function Get-LocCsRegionSpans([string]$Text, $Names, [string]$Kind) {
                 $end = Get-LocCsBalancedEnd $Text $start
             }
             if ($end -gt $start) {
-                $out.Add([pscustomobject]@{ Start = $start; End = $end; Name = $nm })
+                # Arrow: the region IS the returned expression, so a textmember has
+                # no inner "return" to look for and the whole region is the span.
+                $out.Add([pscustomobject]@{ Start = $start; End = $end; Name = $nm; Arrow = $isArrow })
             }
         }
     }
@@ -755,7 +757,7 @@ function Get-LocCsFileResult([string]$Path, [string]$Rel, $Rx, $Rules, $Allow, $
     foreach ($r in (Get-LocCsRegionSpans $text $Rules.TextMembers 'textmember')) {
         $sites.Add([pscustomobject]@{
             Index = $r.Start; Kind = 'textmember'; Sink = $r.Name
-            Dot = $false; Body = $r.Start; Args = $null; RegionEnd = $r.End
+            Dot = $false; Body = $r.Start; Args = $null; RegionEnd = $r.End; Arrow = $r.Arrow
         })
     }
     foreach ($r in (Get-LocCsRegionSpans $text $Rules.Labels 'labels')) {
@@ -796,7 +798,11 @@ function Get-LocCsFileResult([string]$Path, [string]$Rel, $Rx, $Rules, $Allow, $
         $frame = $frames[$site.Index]
         $spans = New-Object 'System.Collections.Generic.List[object]'
         if ($site.Kind -eq 'textmember') {
-            foreach ($rs in (Get-LocCsReturnSpans $text $site.Body $site.RegionEnd)) { $spans.Add($rs) }
+            if ($site.Arrow) {
+                $spans.Add([pscustomobject]@{ Start = $site.Body; End = $site.RegionEnd })
+            } else {
+                foreach ($rs in (Get-LocCsReturnSpans $text $site.Body $site.RegionEnd)) { $spans.Add($rs) }
+            }
         } elseif ($site.Kind -eq 'labels') {
             $spans.Add([pscustomobject]@{ Start = $site.Body; End = $site.RegionEnd })
         } elseif ($site.Kind -eq 'recordprop') {

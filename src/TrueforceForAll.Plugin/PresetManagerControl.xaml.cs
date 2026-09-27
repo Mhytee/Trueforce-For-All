@@ -279,7 +279,7 @@ namespace TrueforceForAll.Plugin
         {
             public CustomEngineDef Def { get; set; }
             public string Name => Def?.Name ?? "";
-            public string TypeLabel => Def != null && Def.IsElectric ? "Electric" : "Combustion";
+            public string TypeLabel => Def != null && Def.IsElectric ? Loc.T("PresetManager_Electric") : Loc.T("PresetManager_Combustion");
             public string Detail
             {
                 get

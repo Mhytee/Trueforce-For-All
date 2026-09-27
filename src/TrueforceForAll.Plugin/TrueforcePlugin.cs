@@ -1779,15 +1779,9 @@ namespace TrueforceForAll.Plugin
         /// clause is true only of a wheel with selectable patterns, and the notice
         /// is shown to both kinds. Fails OPEN on an undetected wheel.</summary>
         private string IracingNoticeBody =>
-            "Set up once, this turns on the plugin's effects, rev lights and wheel screen in iRacing. The force stays iRacing's own: the sim keeps computing it, and the plugin delivers it to the wheel.\n\n" +
-            (!WheelDetected || WheelHasSelectableLightPattern
-                ? "We start on Lightsync only, which leaves iRacing completely alone and sets the wheel's pattern to match the car you are in. For the rest, four steps, once:\n\n"
-                : "We start on Lightsync only, which leaves iRacing completely alone. For the rest, four steps, once:\n\n") +
-            "1. With iRacing closed, open Documents\\iRacing\\app.ini and set loadTrueForceAPI=0.\n" +
-            "2. Start iRacing and turn its force feedback off in the options. Leave its strength number where it is, the plugin reads it.\n" +
-            "3. Set the mode at the top of this panel to Normal.\n" +
-            "4. On the FFB tab, tick \"Take over force feedback for iRacing\".\n\n" +
-            "Steps 1 and 2 are iRacing's; steps 3 and 4 are in this plugin. If the wheel stays quiet afterwards, one of iRacing's two switches is still on.";
+            Loc.F("Plugin_SetUpOnceTurns_Fmt", (!WheelDetected || WheelHasSelectableLightPattern
+                ? Loc.T("Plugin_IracingNoticeStartWithPattern")
+                : Loc.T("Plugin_IracingNoticeStart")));
 
         private volatile bool _iracingNoticeShowing;
         private volatile bool _iracingNoticeShownThisSession;
@@ -1866,11 +1860,7 @@ namespace TrueforceForAll.Plugin
         /// those are in the guide, and a first-launch box that lists everything is
         /// a box nobody reads.</summary>
         private string R3ENoticeBody =>
-            "To let the plugin carry RaceRoom's force feedback, and free your rev lights and the wheel's screen, two steps, once:\n\n" +
-            "1. In RaceRoom, disable force feedback. The intensity slider does not matter.\n" +
-            "2. On the FFB tab, tick \"Take over force feedback for RaceRoom\".\n\n" +
-            "Start SimHub before RaceRoom, or the lights and screen may not come on.\n\n" +
-            "Until then, RaceRoom works as it did before, through the USB capture.";
+            Loc.T("Plugin_LetPluginCarryRaceRoom");
 
         private volatile bool _r3eNoticeShowing;
         private volatile bool _r3eNoticeShownThisSession;
@@ -1945,12 +1935,7 @@ namespace TrueforceForAll.Plugin
         /// (owner's rig, 2026-09-20). "Use LEDs" is the game driving the
         /// wheel's lights itself; off, ours and the screen can.</summary>
         private string LmuNoticeBody =>
-            "To let the plugin carry Le Mans Ultimate's force feedback, and free your rev lights and the wheel's screen, three steps, once:\n\n" +
-            "1. In the game, Settings > Controls > Force Feedback: set Vendor Specific Force Feedback to Off. That is the game's own Trueforce, and the plugin steps aside while it is on. The force feedback strength and effects can stay as they are.\n" +
-            "2. Settings > Wheel and Pedals > Calibration: switch Use LEDs off, so the game stops driving the wheel's lights.\n" +
-            "3. On the FFB tab, tick \"Take over force feedback for Le Mans Ultimate\".\n\n" +
-            "Start SimHub before the game, or the lights and screen may not come on.\n\n" +
-            "Until then, with Vendor Specific Force Feedback off, Le Mans Ultimate works through the USB capture.";
+            Loc.T("Plugin_LetPluginCarryLe");
 
         private volatile bool _lmuNoticeShowing;
         private volatile bool _lmuNoticeShownThisSession;

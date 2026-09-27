@@ -713,6 +713,8 @@ namespace TrueforceForAll.Core.Tests
             // lead fragment ends where its link begins.
             { "SignIn_PrivacyLead", "runs into the Privacy policy hyperlink" },
             { "SignIn_DidntGetIt", "runs into the Resend code link" },
+            { "Plugin_IracingNoticeStartWithPattern", "a paragraph of the iRacing notice, ends its blank line" },
+            { "Plugin_IracingNoticeStart", "a paragraph of the iRacing notice, ends its blank line" },
             // Every one of these is a fragment of a paragraph that is built in
             // pieces: a sentence that runs into a hyperlink, a suffix appended
             // after a name, or a clause added to a line already on screen. The
@@ -1217,6 +1219,7 @@ namespace TrueforceForAll.Core.Tests
 
         private sealed class CsSite
         {
+            public bool Arrow;
             public int Index, Body;
             // The end of a textmember's or labels region's span. Unused by the
             // other kinds, which derive their end from the expression.
@@ -1627,7 +1630,9 @@ namespace TrueforceForAll.Core.Tests
                         if (start >= s.Length || s[start] != '{') continue;
                         end = CsBalancedEnd(s, start);
                     }
-                    if (end > start) found.Add(new CsRegion { Start = start, End = end, Name = nm });
+                    // Arrow: the region IS the returned expression, so a textmember
+                    // has no inner "return" to look for and the region is the span.
+                    if (end > start) found.Add(new CsRegion { Start = start, End = end, Name = nm, Arrow = isArrow });
                 }
             }
             return found;
@@ -1652,6 +1657,7 @@ namespace TrueforceForAll.Core.Tests
 
         private sealed class CsRegion
         {
+            public bool Arrow;
             public int Start;
             public int End;
             public string Name;
@@ -1699,7 +1705,7 @@ namespace TrueforceForAll.Core.Tests
                 foreach (Match m in rules.RecordPropRe.Matches(text))
                     sites.Add(new CsSite { Index = m.Index, Kind = "recordprop", Sink = m.Groups["name"].Value, Body = m.Index + m.Length });
             foreach (var r in CsRegionSpans(text, rules.TextMembers, "textmember"))
-                sites.Add(new CsSite { Index = r.Start, Kind = "textmember", Sink = r.Name, Body = r.Start, RegionEnd = r.End });
+                sites.Add(new CsSite { Index = r.Start, Kind = "textmember", Sink = r.Name, Body = r.Start, RegionEnd = r.End, Arrow = r.Arrow });
             foreach (var r in CsRegionSpans(text, rules.Labels, "labels"))
                 sites.Add(new CsSite { Index = r.Start, Kind = "labels", Sink = r.Name, Body = r.Start, RegionEnd = r.End });
             sites = sites.OrderBy(s => s.Index).ToList();
@@ -1721,7 +1727,10 @@ namespace TrueforceForAll.Core.Tests
                 if (!frames.TryGetValue(site.Index, out string frame)) continue;   // matched inside a literal
                 var spans = new List<CsSpan>();
                 if (site.Kind == "textmember")
-                    spans.AddRange(CsReturnSpans(text, site.Body, site.RegionEnd));
+                {
+                    if (site.Arrow) spans.Add(new CsSpan { Start = site.Body, End = site.RegionEnd });
+                    else spans.AddRange(CsReturnSpans(text, site.Body, site.RegionEnd));
+                }
                 else if (site.Kind == "labels")
                     spans.Add(new CsSpan { Start = site.Body, End = site.RegionEnd });
                 else if (site.Kind == "recordprop")
