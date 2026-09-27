@@ -56,6 +56,7 @@ namespace TrueforceForAll.Plugin
         private readonly TextBox _name;
         private readonly CheckBox _untranslatedOnly;
         private readonly CheckBox _showKeys;
+        private readonly CheckBox _problemsOnly;
         private readonly TextBlock _status;
         private readonly DataGridTextColumn _keyColumn;
 
@@ -77,8 +78,46 @@ namespace TrueforceForAll.Plugin
                     _text = value;
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Text)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Warning)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Note)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NoteBrush)));
                 }
             }
+
+            /// <summary>What the English cell says on hover. Through Loc.F, not
+            /// WPF's StringFormat: a value holding a raw {0} that reaches a label is
+            /// exactly what the placeholder check refuses, and it is right to.</summary>
+            public string KeyTip => Loc.F("Translate_KeyTip_Fmt", Key);
+
+            /// <summary>Which plural form this row is, in words, or empty. A plural
+            /// key ends in .one or .other, and with the key column hidden the pair
+            /// reads as the same English twice unless the window says which is
+            /// which.</summary>
+            public string PluralForm
+            {
+                get
+                {
+                    if (Key == null) return "";
+                    if (Key.EndsWith(".one", StringComparison.Ordinal)) return Loc.T("Translate_PluralOne");
+                    if (Key.EndsWith(".other", StringComparison.Ordinal)) return Loc.T("Translate_PluralOther");
+                    return "";
+                }
+            }
+
+            /// <summary>Anything a translator should know about this row: the
+            /// placeholder problem when there is one, else which plural form it is.
+            /// One column rather than two, since a row rarely has both to say.</summary>
+            public string Note
+            {
+                get
+                {
+                    string w = Warning;
+                    return w.Length > 0 ? w : PluralForm;
+                }
+            }
+
+            /// <summary>Red for a problem, muted for a note. Bound per row, which is
+            /// what lets one column carry both without reading as an error.</summary>
+            public Brush NoteBrush => Warning.Length > 0 ? WarnFg : MutedFg;
 
             /// <summary>Empty unless the translation drops or invents a
             /// placeholder, in which case string.Format would throw at runtime and
@@ -185,6 +224,17 @@ namespace TrueforceForAll.Plugin
             _showKeys.Unchecked += (s, e) => UpdateKeyColumn();
             bar.Children.Add(_showKeys);
 
+            // The placeholder problems, on their own. A translator can clear them
+            // before sending instead of finding out from a fallback later.
+            _problemsOnly = new CheckBox
+            {
+                Content = Loc.T("Translate_NeedsFix"), Foreground = TextFg, FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0),
+            };
+            _problemsOnly.Checked += (s, e) => ApplyFilter();
+            _problemsOnly.Unchecked += (s, e) => ApplyFilter();
+            bar.Children.Add(_problemsOnly);
+
             bar.Children.Add(new TextBlock
             {
                 Text = Loc.T("Translate_LanguageName"), Foreground = MutedFg, FontSize = 12,
@@ -234,7 +284,9 @@ namespace TrueforceForAll.Plugin
                 Binding = new Binding(nameof(Row.English)),
                 IsReadOnly = true,
                 Width = new DataGridLength(1, DataGridLengthUnitType.Star),
-                ElementStyle = WrapStyle(),
+                // The key on hover: "Source" or "Apply" says nothing on its own, and
+                // the key names the tab it lives in without a column spent on it.
+                ElementStyle = EnglishStyle(),
             });
             _grid.Columns.Add(new DataGridTextColumn
             {
@@ -247,10 +299,10 @@ namespace TrueforceForAll.Plugin
             _grid.Columns.Add(new DataGridTextColumn
             {
                 Header = Loc.T("Translate_ColumnNote"),
-                Binding = new Binding(nameof(Row.Warning)),
+                Binding = new Binding(nameof(Row.Note)),
                 IsReadOnly = true,
-                Width = new DataGridLength(170),
-                ElementStyle = WarnStyle(),
+                Width = new DataGridLength(190),
+                ElementStyle = NoteStyle(),
             });
             // A committed cell is a finished row: write the file and reload, which
             // is what makes the panel behind this window change as you work.
@@ -278,6 +330,7 @@ namespace TrueforceForAll.Plugin
                 Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 10, 0, 0),
             };
+            buttons.Children.Add(MakeButton(Loc.T("Translate_CopyEnglish"), (s, e) => CopyEnglish()));
             buttons.Children.Add(MakeButton(Loc.T("Translate_Send"), (s, e) => Send()));
             buttons.Children.Add(MakeButton(Loc.T("Translate_OpenFolder"), (s, e) => OpenFolder()));
             buttons.Children.Add(MakeButton(Loc.T("Translate_Save"), (s, e) => Save(quiet: false)));
@@ -286,6 +339,14 @@ namespace TrueforceForAll.Plugin
             buttons.Children.Add(close);
             Grid.SetRow(buttons, 4);
             root.Children.Add(buttons);
+
+            // A cell still in edit mode is work the translator typed. Committing it
+            // here is the difference between saving that row and losing it.
+            Closing += (s, e) =>
+            {
+                try { _grid.CommitEdit(DataGridEditingUnit.Row, true); } catch { }
+                Save(quiet: true);
+            };
 
             LoadRows();
             ApplyFilter();
@@ -300,11 +361,25 @@ namespace TrueforceForAll.Plugin
             return st;
         }
 
-        private static Style WarnStyle()
+        private static Style EnglishStyle()
         {
-            var st = WrapStyle();
-            st.Setters.Add(new Setter(TextBlock.ForegroundProperty, WarnFg));
+            var st = new Style(typeof(TextBlock));
+            st.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap));
+            st.Setters.Add(new Setter(TextBlock.PaddingProperty, new Thickness(4, 3, 4, 3)));
+            st.Setters.Add(new Setter(TextBlock.ForegroundProperty, TextFg));
+            st.Setters.Add(new Setter(TextBlock.ToolTipProperty, new Binding(nameof(Row.KeyTip))));
+            return st;
+        }
+
+        private static Style NoteStyle()
+        {
+            var st = new Style(typeof(TextBlock));
+            st.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap));
+            st.Setters.Add(new Setter(TextBlock.PaddingProperty, new Thickness(4, 3, 4, 3)));
             st.Setters.Add(new Setter(TextBlock.FontSizeProperty, 11.0));
+            // Bound, not fixed: red when the note is a problem, muted when it is
+            // telling you which plural form the row is.
+            st.Setters.Add(new Setter(TextBlock.ForegroundProperty, new Binding(nameof(Row.NoteBrush))));
             return st;
         }
 
@@ -380,6 +455,19 @@ namespace TrueforceForAll.Plugin
         private string FilePath()
             => string.IsNullOrEmpty(_root) ? null : Path.Combine(_root, _tag + ".json");
 
+        /// <summary>Fill the selected row with the English, so a translator edits a
+        /// sentence that already carries its placeholders rather than typing one from
+        /// an empty box. Leaving a {0} out is the one mistake that costs the whole
+        /// string at runtime, and this is the cheapest way not to make it.</summary>
+        private void CopyEnglish()
+        {
+            var row = _grid.SelectedItem as Row;
+            if (row == null) return;
+            try { _grid.CommitEdit(DataGridEditingUnit.Row, true); } catch { }
+            row.Text = row.English;
+            Save(quiet: true);
+        }
+
         private void UpdateKeyColumn()
             => _keyColumn.Visibility = _showKeys.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
 
@@ -389,6 +477,7 @@ namespace TrueforceForAll.Plugin
             bool onlyEmpty = _untranslatedOnly.IsChecked == true;
             IEnumerable<Row> view = _rows;
             if (onlyEmpty) view = view.Where(r => string.IsNullOrWhiteSpace(r.Text));
+            if (_problemsOnly.IsChecked == true) view = view.Where(r => r.Warning.Length > 0);
             if (needle.Length > 0)
                 view = view.Where(r =>
                     (r.English ?? "").IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0
@@ -431,8 +520,23 @@ namespace TrueforceForAll.Plugin
                 };
                 // Only finished rows are written. An empty value would override
                 // English with nothing and leave a blank label on screen.
+                int written = 0;
                 foreach (var row in _rows.OrderBy(r => r.Key, StringComparer.Ordinal))
-                    if (!string.IsNullOrWhiteSpace(row.Text)) obj[row.Key] = row.Text;
+                {
+                    if (string.IsNullOrWhiteSpace(row.Text)) continue;
+                    // A stray space at either end is invisible to whoever typed it and
+                    // changes how the string renders. Trimmed, unless the English has
+                    // one of its own, where the space is doing a job and theirs
+                    // probably should too.
+                    string value = row.Text;
+                    if (row.English == null || row.English == row.English.Trim()) value = value.Trim();
+                    obj[row.Key] = value;
+                    written++;
+                }
+                // Opening this window and closing it should not leave a language file
+                // holding nothing but its own name: that would show up in the picker
+                // as a language at zero percent that nobody started.
+                if (written == 0 && !File.Exists(path)) return;
 
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
                 // A save has to leave a readable file even if the write is
