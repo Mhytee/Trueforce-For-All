@@ -15,6 +15,9 @@
 #          .\sweep-cs.ps1 -Detail -Only SettingsControl.xaml.cs
 #          .\sweep-cs.ps1 -Indirect       the sinks fed from somewhere else, the
 #                                         shapes this tool cannot see
+#          .\sweep-cs.ps1 -Prose          every sentence in the code, sink or not,
+#                                         grouped by the member it sits in: the
+#                                         report that finds the next blind spot
 #          .\sweep-cs.ps1 -WriteBudget    rewrite the budget from today's counts
 #          .\sweep-cs.ps1 -NoBudget       counts only, no verdict
 #          Exit code 0 when the budget holds, 1 otherwise.
@@ -32,6 +35,7 @@ param(
     [switch]$Detail,
     [switch]$Machine,
     [switch]$Indirect,
+    [switch]$Prose,
     [switch]$WriteBudget,
     [switch]$NoBudget,
     [string]$Only = ''
@@ -981,6 +985,90 @@ Write-Host ('TOTAL remaining: {0} literal(s) in {1} file(s)' -f $totalRemaining,
 Write-Host ('Sink writes seen: {0}; through Loc: {1}; value computed elsewhere: {2}' -f $totalSites, $totalViaLoc, $totalComputed)
 Write-Host ('Allowlisted: {0} literal(s) by value or type, plus {1} file(s) whole' -f $totalAllowed, $skippedFiles.Count)
 
+# ---------------------------------------------------------------- the prose report
+
+# A literal that reads like something a person was meant to read: two words of
+# letters, and none of the shapes that are code wearing a sentence's clothes.
+function Test-LocCsLooksLikeProse([string]$Value) {
+    if ($null -eq $Value) { return $false }
+    $t = ($Value -replace '\{[^{}]*\}', '').Trim()
+    if ($t.Length -lt 8) { return $false }
+    if ($t -notmatch '[A-Za-z]{2,}\s+[A-Za-z]{2,}') { return $false }
+    if ($t -match '^(https?://|www\.|[A-Za-z]:\\|\\\\|/)') { return $false }
+    if ($t -match '\.(json|txt|dll|exe|md|png|jpg|zip|ini|lua|cs|xaml|csv|ps1)$') { return $false }
+    if ($t -match '^[A-Za-z_][A-Za-z0-9_]*$') { return $false }
+    if ($t -match '^[a-z0-9_.\-]+$') { return $false }
+    if ($t -match '^(SELECT|INSERT|UPDATE|DELETE|CREATE|WITH) ') { return $false }
+    if ($t -match '^(\{|\[|</|<[a-zA-Z])') { return $false }
+    if ($t -match '^[A-Z][A-Z0-9_]{2,}$') { return $false }
+    if ($t -match '^[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)+$') { return $false }
+    # At least one lowercase word: a run of Capitalized Words is usually a list of
+    # identifiers rather than a sentence.
+    $lower = $false
+    foreach ($w in ([regex]::Matches($t, "[A-Za-z']+"))) {
+        if ($w.Value.Substring(0, 1) -cmatch '[a-z]') { $lower = $true; break }
+    }
+    return $lower
+}
+
+function Get-LocCsStatementStart($Text, [int]$At, $Spans) {
+    # The last statement boundary before $At, found outside literals and comments:
+    # a brace inside an interpolation hole would otherwise end the statement and
+    # hide the logger that opened it.
+    $best = 0
+    foreach ($ch in @(';', '{', '}')) {
+        $i = $At
+        while ($true) {
+            $i = $Text.LastIndexOf($ch, [Math]::Max(0, $i - 1))
+            if ($i -lt 0) { break }
+            $inside = $false
+            foreach ($sp in $Spans) { if ($sp.Start -le $i -and $i -lt $sp.End) { $inside = $true; break } }
+            if (-not $inside) { if ($i + 1 -gt $best) { $best = $i + 1 }; break }
+            if ($i -eq 0) { break }
+        }
+    }
+    return $best
+}
+
+function Get-LocCsProse([string]$Text, [string]$Rel, $Allow) {
+    # One row per prose literal the sweep's sink model cannot reach, with the
+    # member it sits in. Log calls are dropped by looking at the whole statement,
+    # since a logger's argument list often spans lines.
+    $out = New-Object 'System.Collections.Generic.List[object]'
+    $logRe = [regex]'Logging\.Current|\bWarn\(|\bInfo\(|\bError\(|\bDebug\(|\bTrace\(|LogError|LogLine|AppendLog|Console\.|_?[Ll]og\('
+    $members = Get-LocCsMemberStarts $Text
+    $lineStarts = Get-LocCsLineStarts $Text
+    $spans = New-Object 'System.Collections.Generic.List[object]'
+    $i = 0
+    while ($i -lt $Text.Length) {
+        if (Test-LocLiteralStart $Text $i) {
+            $e = Get-LocLiteralEnd $Text $i
+            $spans.Add([pscustomobject]@{ Start = $i; End = $e })
+            $i = $e
+            continue
+        }
+        $i++
+    }
+    foreach ($sp in $spans) {
+        if ($Text[$sp.Start] -eq "'") { continue }
+        $value = ConvertFrom-LocCsLiteral $Text $sp.Start $sp.End
+        if (-not (Test-LocCsLooksLikeProse $value)) { continue }
+        if ($Allow.Values.Contains($value)) { continue }
+        $before = $Text.Substring([Math]::Max(0, $sp.Start - 14), [Math]::Min(14, $sp.Start))
+        if ($before -match 'Loc\.[TFN]\(\s*$') { continue }
+        $stmt = Get-LocCsStatementStart $Text $sp.Start $spans
+        $head = $Text.Substring($stmt, $sp.Start - $stmt)
+        if ($logRe.IsMatch($head)) { continue }
+        $out.Add([pscustomobject]@{
+            File = $Rel
+            Line = (Get-LocCsLine $lineStarts $sp.Start)
+            Member = (Get-LocCsEnclosingMember $members $sp.Start)
+            Value = $value
+        })
+    }
+    return ,$out
+}
+
 if ($Machine) {
     # One record per finding: path, 1-based line, character offset of the
     # literal, its end, the sink, and the file's length so a consumer can prove
@@ -992,6 +1080,44 @@ if ($Machine) {
         foreach ($fd in $r.Findings) {
             Write-Host ("{0}`t{1}`t{2}`t{3}`t{4}`t{5}" -f $fd.File, $fd.Line, $fd.Start, $fd.End, $fd.Sink, $len)
         }
+    }
+}
+
+if ($Prose) {
+    # The wider question, as a report: every sentence in the code, whether or not
+    # it reaches a sink the rules know about. Grouped by member, because that is
+    # where the judgement is made.
+    # Files the plan puts out of scope that need no allowlist entry, because
+    # nothing in them writes to a sink and the enforcing sweep never sees them:
+    #   EffectChangelog      the what's-new entries (the modal prefers the GitHub
+    #                        release notes, which stay English)
+    #   BuiltinCarCylinders  car data
+    #   R3EEngineSeed        engine data
+    #   BackupSelfTest       developer diagnostics
+    #   LocSeed, LocStore, LocWatcher  the language runtime's own warnings, which
+    #                        are log lines and cannot be localized by the table
+    #                        they are complaining about
+    $proseSkip = @('EffectChangelog.cs', 'BuiltinCarCylinders.cs', 'R3EEngineSeed.cs',
+                   'BackupSelfTest.cs', 'LocSeed.cs', 'LocStore.cs', 'LocWatcher.cs')
+    $proseRows = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($f in $files) {
+        $rel = Get-LocRelativePath $f.FullName $Root
+        if ($Only -ne '' -and -not $rel.EndsWith($Only)) { continue }
+        if ($allow.Files.Contains($rel)) { continue }
+        if ($proseSkip -contains $f.Name) { continue }
+        $text = Remove-LocComments ([System.IO.File]::ReadAllText($f.FullName))
+        foreach ($r in (Get-LocCsProse $text $rel $allow)) { $proseRows.Add($r) }
+    }
+    Write-Host ''
+    Write-Host ('Prose report: {0} literal(s) the sink rules do not reach, in {1} member(s).' -f `
+        $proseRows.Count, (@($proseRows | Group-Object -Property File, Member)).Count)
+    Write-Host 'Each is display text with no rule yet, or a false positive worth one.'
+    Write-Host ''
+    foreach ($g in ($proseRows | Group-Object -Property File, Member | Sort-Object -Property Count -Descending)) {
+        $first = $g.Group[0]
+        $short = $first.Value
+        if ($short.Length -gt 58) { $short = $short.Substring(0, 58) }
+        Write-Host ('{0,4}  {1,-34} {2,-30} {3}' -f $g.Count, (Split-Path -Leaf $first.File), $first.Member, $short)
     }
 }
 

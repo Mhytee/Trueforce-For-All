@@ -989,12 +989,12 @@ namespace TrueforceForAll.Core.Tests
                 failures.Add("cs-keep-literal.txt: the whole-file exemptions must be exactly the five listed in "
                     + "LocCsLiteralBudget, two developer-tooling files and three builders that write a log line, "
                     + "a report or a CSV; another one hides a file's labels with no warning");
-            // prop went from 7 to 33 when the sweep learned about display text that
+            // prop went from 7 to 34 when the sweep learned about display text that
             // never touches a control directly: a sentence assigned to a local or a
             // controller field and only shown later. textmember and recordprop grew
             // for the same reason, so all three are pinned now rather than one.
-            if (rules.PropNames.Count != 33)
-                failures.Add("cs-ui-sinks.txt: expected 33 prop rules, found " + Inv(rules.PropNames.Count)
+            if (rules.PropNames.Count != 34)
+                failures.Add("cs-ui-sinks.txt: expected 34 prop rules, found " + Inv(rules.PropNames.Count)
                     + ". A property rule decides what counts as a label write: adding or removing one moves every "
                     + "budget number, so update this test in the same commit and say why in the message");
             if (rules.TextMembers.Count != 47)

@@ -12530,7 +12530,7 @@ namespace TrueforceForAll.Plugin
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
                 FileName = "trueforce-export-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json",
-                Filter = "JSON file (*.json)|*.json",
+                Filter = Loc.T("Settings_JSONFileJsonJson"),
                 Title = Loc.T("Account_AccountExport"),
             };
             if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
@@ -16495,7 +16495,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
-                Filter   = "Zip (*.zip)|*.zip",
+                Filter   = Loc.T("Settings_ZipZipZip"),
                 FileName = $"TF4ALL-backup-{DateTime.Now:yyyy-MM-dd}.zip",
                 Title    = Loc.T("Settings_BackupAllTrueforceData"),
             };
@@ -16526,7 +16526,7 @@ namespace TrueforceForAll.Plugin
             var owner = Window.GetWindow(this);
             var open = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "TF4ALL backup (*.zip)|*.zip|All files (*.*)|*.*",
+                Filter = Loc.T("Settings_TF4ALLBackupZipZip"),
                 Title  = Loc.T("Settings_RestoreBackup"),
             };
             if (open.ShowDialog(owner) != true) return;
@@ -16745,7 +16745,7 @@ namespace TrueforceForAll.Plugin
                     string nm = pickedPresets[0];
                     var dlg1 = new Microsoft.Win32.SaveFileDialog
                     {
-                        Filter     = "TF4ALL preset (*.tfpreset.json)|*.tfpreset.json",
+                        Filter     = Loc.T("Settings_TF4ALLPresetTfpresetJson"),
                         FileName   = MakeFileSafe(nm) + ".tfpreset.json",
                         DefaultExt = "tfpreset.json",
                         Title      = Loc.T("Settings_ExportPreset"),
@@ -16768,7 +16768,7 @@ namespace TrueforceForAll.Plugin
                     var car = pickedCars[0];
                     var dlg2 = new Microsoft.Win32.SaveFileDialog
                     {
-                        Filter     = "TF4ALL car preset (*.tfcar.json)|*.tfcar.json",
+                        Filter     = Loc.T("Settings_TF4ALLCarPresetTfcar"),
                         FileName   = MakeFileSafe($"{car.CarId}~{car.PresetName}") + ".tfcar.json",
                         DefaultExt = "tfcar.json",
                         Title      = Loc.T("Settings_ExportCarPreset"),
@@ -16795,7 +16795,7 @@ namespace TrueforceForAll.Plugin
             string defaultName = $"TF4ALL-pack-{DateTime.Now:yyyy-MM-dd}.tfpack";
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
-                Filter   = "TF4ALL pack (*.tfpack)|*.tfpack|Zip (*.zip)|*.zip",
+                Filter   = Loc.T("Settings_TF4ALLPackTfpackTfpack"),
                 FileName = defaultName,
                 Title    = Loc.T("Settings_ExportPack"),
             };
@@ -16861,9 +16861,7 @@ namespace TrueforceForAll.Plugin
             if (plugin == null) return false;
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "TF4ALL files (*.tfpack;*.tfpreset.json;*.tfcar.json;*.zip;*.json)"
-                         + "|*.tfpack;*.tfpreset.json;*.tfcar.json;*.zip;*.json"
-                         + "|All files (*.*)|*.*",
+                Filter = Loc.T("Settings_TF4ALLFilesTfpackTfpreset"),
                 Title       = Loc.T("Settings_Import"),
                 Multiselect = true,
             };
@@ -17771,7 +17769,7 @@ namespace TrueforceForAll.Plugin
                         var pick = new Microsoft.Win32.OpenFileDialog
                         {
                             Title  = Loc.T("Settings_PickInstallerRunTest"),
-                            Filter = "Installer (*.exe)|*.exe",
+                            Filter = Loc.T("Settings_InstallerExeExe"),
                         };
                         if (pick.ShowDialog() != true)
                         {
@@ -18110,7 +18108,7 @@ namespace TrueforceForAll.Plugin
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
                 Title       = Loc.T("Settings_LocateUSBPcapCMDExe"),
-                Filter      = "USBPcapCMD.exe|USBPcapCMD.exe|All executables (*.exe)|*.exe",
+                Filter      = Loc.T("Settings_USBPcapCMDExeUSBPcapCMDExe"),
                 FileName    = "USBPcapCMD.exe",
                 CheckFileExists = true,
             };

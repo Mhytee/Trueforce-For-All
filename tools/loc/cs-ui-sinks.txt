@@ -102,6 +102,11 @@ prop head
 prop presetTip
 prop carTip
 prop arcStatus
+# A file dialog's filter. The words before each pipe are read by whoever opens the
+# dialog; the patterns after them are not, but they share the string, so a
+# translator keeps them as they are.
+prop Filter
+
 # ---------------------------------------------------------------- constructors
 # TextBlock, Button and the rest take their text through a property, so Run is
 # the only WPF control the plugin builds with text in the constructor. The
