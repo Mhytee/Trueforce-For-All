@@ -52,13 +52,15 @@ namespace TrueforceForAll.Plugin
 
                 foreach (string tag in LocDiagnostics.KnownTags(store))
                 {
-                    string name = store.DisplayName(tag);
+                    string name = store.DisplayName(tag) ?? tag;
+                    // The tag rides along so two languages that call themselves the
+                    // same thing are still tellable apart, and the percentage says
+                    // how much of the panel this one actually covers: switching to a
+                    // language that is a tenth finished should not be a surprise.
                     UiLanguageCombo.Items.Add(new ComboBoxItem
                     {
                         Tag = tag,
-                        // The tag rides along so two languages that call
-                        // themselves the same thing are still tellable apart.
-                        Content = name == null ? tag : name + "  (" + tag + ")",
+                        Content = LanguageRowText(store, tag, name),
                     });
                 }
                 UiLanguageCombo.Items.Add(new ComboBoxItem
@@ -143,32 +145,45 @@ namespace TrueforceForAll.Plugin
             UpdateLanguageNote();
         }
 
-        /// <summary>Ask for a tag and the language's own name, then open the
-        /// Translate window on it. A new language is an empty file until the first
-        /// row is saved, so nothing is written here.</summary>
+        /// <summary>Pick a language to translate out of every language Windows
+        /// knows, then open the Translate window on it. Asking for a culture tag
+        /// only helps someone who already knows theirs, and it left a fresh install
+        /// looking as though no language were open. A new language is an empty file
+        /// until the first row is saved, so nothing is written here.</summary>
         private void StartNewLanguage()
         {
-            var dlg = new TwoLineEditWindow(
-                Loc.T("Settings_LanguageNewTitle"),
-                Loc.T("Settings_LanguageNewTag"), "",
-                Loc.T("Settings_LanguageNewName"), "", 1);
+            var store = Loc.Instance;
+            var dlg = new LanguageChooserWindow(store, UsageLanguage.UiLang());
             dlg.Owner = Window.GetWindow(this);
             bool ok = dlg.ShowDialog() == true;
             RebuildLanguageSection();                 // put the selection back
-            if (!ok) return;
-            string tag = (dlg.Line1Result ?? "").Trim();
-            if (!IsCultureTag(tag))
+            if (!ok || string.IsNullOrEmpty(dlg.ChosenTag)) return;
+            OpenTranslateWindow(dlg.ChosenTag, dlg.ChosenName);
+        }
+
+        /// <summary>A picker row: the language's own name, its tag, and how much of
+        /// the panel it covers on this PC. English is the source, so it carries no
+        /// percentage of itself.</summary>
+        private static string LanguageRowText(LocStore store, string tag, string name)
+        {
+            if (string.Equals(tag, LocStore.EnglishTag, StringComparison.OrdinalIgnoreCase))
+                return Loc.F("Settings_LanguageRow_Fmt", name, tag);
+            try
             {
-                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Settings_LanguageNewTitle"),
-                    Loc.T("Settings_LanguageBadTag"), DialogKind.Warning);
-                return;
+                var s = store.Describe(tag);
+                int all = s.DefinedCount + s.Missing.Count;
+                if (all > 0)
+                    return Loc.F("Settings_LanguageRowProgress_Fmt", name, tag,
+                        (int)Math.Round(100.0 * s.DefinedCount / all));
             }
-            OpenTranslateWindow(tag, (dlg.Line2Result ?? "").Trim());
+            catch { }
+            return Loc.F("Settings_LanguageRow_Fmt", name, tag);
         }
 
         // The same shape LocStore accepts, so a tag that passes here cannot be
-        // refused later: letters, digits and single hyphens between them.
-        private static bool IsCultureTag(string tag)
+        // refused later: letters, digits and single hyphens between them. Internal
+        // because the chooser window tests a typed tag with it too.
+        internal static bool IsCultureTagShape(string tag)
         {
             if (string.IsNullOrEmpty(tag) || tag.Length > 32) return false;
             if (tag[0] == '-' || tag[tag.Length - 1] == '-') return false;
