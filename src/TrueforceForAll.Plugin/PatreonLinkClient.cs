@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -122,12 +123,12 @@ namespace TrueforceForAll.Plugin
                             catch { }
                             string who = string.IsNullOrEmpty(name) ? "Patreon linked" : "Linked Patreon as " + name;
                             string msg = isSupporter
-                                ? who + ". Supporter status is active."
-                                : who + ". No active pledge found yet.";
+                                ? Loc.F("Account_SupporterStatusActive_Fmt", who)
+                                : Loc.F("Account_NoActivePledgeFound_Fmt", who);
                             // Discord auto-links only when the patron is already in the server (a real,
                             // useful link). Otherwise point them at Join Discord to get into the server.
-                            if (discordLinked) msg += " You're in the community Discord too, so it's linked.";
-                            else if (discordJoinNeeded) msg += " Your Patreon has Discord connected; use Join Discord to get into the server for roles.";
+                            if (discordLinked) msg += Loc.T("Account_ReCommunityDiscordToo");
+                            else if (discordJoinNeeded) msg += Loc.T("Account_PatreonHasDiscordConnected");
                             return (true, msg, name);
                         }
                         string err = null;

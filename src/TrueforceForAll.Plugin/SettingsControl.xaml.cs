@@ -525,6 +525,9 @@ namespace TrueforceForAll.Plugin
                 if (UpdateCheckIntervalCombo != null)
                     SelectComboByTag(UpdateCheckIntervalCombo,
                         (_plugin.Settings?.UpdateCheckIntervalHours ?? 2).ToString());
+                // The language picker is filled from the languages this install
+                // has, not from a fixed list, so it is built rather than selected.
+                RebuildLanguageSection();
                 if (BetaUpdatesCheck != null)
                 {
                     BetaUpdatesCheck.IsChecked = _plugin.Settings?.BetaUpdatesEnabled == true;
@@ -2675,7 +2678,7 @@ namespace TrueforceForAll.Plugin
             {
                 // "SimHub" is the product's name and stays as written; the
                 // suffix is a wrapping format so no key carries an edge space.
-                string label = telSrc.IsEnhanced ? Loc.T("Settings_TelemetrySourceEnhanced") : "SimHub";
+                string label = telSrc.IsEnhanced ? Loc.T("Settings_TelemetrySourceEnhanced") : Loc.T("Settings_SimHub");
                 double hz = telSrc.MeasuredHz;
                 string baseText = hz > 0
                     ? Loc.F("Settings_TelemetrySourceHz_Fmt", label, hz.ToString("0"))
@@ -3405,7 +3408,10 @@ namespace TrueforceForAll.Plugin
             string fp      = _plugin?.CaptureFingerprint ?? "(not confirmed)";
 
             string title = $"[FFB report] {vidpid} on {game}";
-            string body  =
+            // issueBody, not body: this is Markdown for a GitHub issue, read by
+            // the project in English and escaped into a URL a moment later, so it sits
+            // outside the display-text sinks in tools/loc/cs-ui-sinks.txt.
+            string issueBody  =
                   "Experimental FFB detection fixed my wheel. (Success report, not a bug.)\n\n"
                 + $"- Wheel: {wheel}  ({vidpid})\n"
                 + $"- Game: {game}\n"
@@ -3416,7 +3422,7 @@ namespace TrueforceForAll.Plugin
 
             string url = FfbReportDiscussionsBase
                        + "&title=" + Uri.EscapeDataString(title)
-                       + "&body="  + Uri.EscapeDataString(body);
+                       + "&body="  + Uri.EscapeDataString(issueBody);
             OpenUrl(url);
         }
 
@@ -6782,7 +6788,8 @@ namespace TrueforceForAll.Plugin
             // code spans because they are raw device strings; the USBPcap
             // interface in the tap status ("\\.\USBPcap2") would otherwise lose
             // a backslash to Markdown escaping.
-            string body =
+            // issueBody, not body: Markdown for a GitHub issue, not display text.
+            string issueBody =
                   "**What happened?**\n_describe the issue_\n\n"
                 + "**Steps to reproduce**\n1. \n2. \n\n"
                 + "**Expected behavior**\n_what should have happened_\n\n"
@@ -6801,7 +6808,7 @@ namespace TrueforceForAll.Plugin
                 + "\n" + logsLine;
             string url = ReportIssuesBase
                        + "?title=" + Uri.EscapeDataString("[bug] ")
-                       + "&body="  + Uri.EscapeDataString(body);
+                       + "&body="  + Uri.EscapeDataString(issueBody);
             OpenUrl(url);
         }
 
@@ -7419,30 +7426,28 @@ namespace TrueforceForAll.Plugin
                 // applied, and saying "applying x1.00" under an unticked box
                 // would claim the opposite.
                 text = conf >= 1.0
-                    ? "This car is learned. Tick the box to apply it."
-                    : "Off. It still learns in the background, so ticking it later applies what it has.";
+                    ? Loc.T("Settings_CarLearnedTickBox")
+                    : Loc.T("Settings_OffStillLearnsBackground");
             }
             else if (conf <= 0.0)
             {
-                text = "Nothing learned for this car yet. Drive it near the limit for a minute.";
+                text = Loc.T("Settings_NothingLearnedCarYet");
             }
             else if (conf < 1.0)
             {
-                text = "Learning this car: " + ((int)Math.Round(conf * 100.0)) + " percent."
-                     + " Applying x" + scale.ToString("0.00") + " so far.";
+                text = Loc.F("Settings_LearningCarPercentApplying_Fmt", ((int)Math.Round(conf * 100.0)), scale.ToString("0.00"));
             }
             else
             {
-                text = "Learned. Applying x" + scale.ToString("0.00") + " to this car.";
+                text = Loc.F("Settings_LearnedApplyingXCar_Fmt", scale.ToString("0.00"));
                 // A peak pinned to its own sanity ceiling is not a result about
                 // the car, it is the learner running out of range, and every car
                 // that gets there lands on the same scale. Say so rather than
                 // presenting the floor as a measurement.
                 if (_plugin.ModeBStrengthRailed)
-                    text += "  (At the limit of what it can measure, so this is the"
-                          + " smallest scale it will apply.)";
+                    text += Loc.T("Settings_LimitWhatCanMeasure");
                 else if (_plugin.ModeBGripConfidence < 1.0)
-                    text += "  (Grip calibration is still settling underneath it.)";
+                    text += Loc.T("Settings_GripCalibrationStillSettling");
             }
 
             if (text == _mbAutoStrengthShown) return;
@@ -8727,12 +8732,12 @@ namespace TrueforceForAll.Plugin
         // resolver cascade, and the line should read as plain auto output.
         private static string FriendlyDetectSourceSuffix(string src)
         {
-            if (string.Equals(src, "telemetry", StringComparison.OrdinalIgnoreCase)) return " (from telemetry)";
-            if (string.Equals(src, "baked",     StringComparison.OrdinalIgnoreCase)) return " (from built-in car list)";
-            if (string.Equals(src, "cache",     StringComparison.OrdinalIgnoreCase)) return " (cached from earlier session)";
-            if (string.Equals(src, "community", StringComparison.OrdinalIgnoreCase)) return " (community-confirmed)";
+            if (string.Equals(src, "telemetry", StringComparison.OrdinalIgnoreCase)) return Loc.T("Settings_Telemetry");
+            if (string.Equals(src, "baked",     StringComparison.OrdinalIgnoreCase)) return Loc.T("Settings_BuiltCarList");
+            if (string.Equals(src, "cache",     StringComparison.OrdinalIgnoreCase)) return Loc.T("Settings_CachedEarlierSession");
+            if (string.Equals(src, "community", StringComparison.OrdinalIgnoreCase)) return Loc.T("Settings_CommunityConfirmed");
             if (string.Equals(src, "user-set",  StringComparison.OrdinalIgnoreCase)) return "";
-            return string.IsNullOrEmpty(src) ? "" : $" (heuristic: {src})";
+            return string.IsNullOrEmpty(src) ? "" : Loc.F("Settings_Heuristic_Fmt", src);
         }
 
         // "Your pick" wording: a pinned custom engine reads by its NAME, not
@@ -8745,8 +8750,8 @@ namespace TrueforceForAll.Plugin
             if (customs != null && !string.IsNullOrEmpty(customId))
                 foreach (var c in customs)
                     if (c != null && string.Equals(c.Id, customId, StringComparison.Ordinal))
-                        return string.IsNullOrWhiteSpace(c.Name) ? "a custom engine" : c.Name + " (custom)";
-            return "a missing custom engine (falling back to Auto)";
+                        return string.IsNullOrWhiteSpace(c.Name) ? Loc.T("Settings_CustomEngine") : Loc.F("Settings_Custom_Fmt", c.Name);
+            return Loc.T("Settings_MissingCustomEngineFalling");
         }
 
         private void ApplyEngineDropdownSelection(EngineDropdownItem item)
@@ -10411,6 +10416,8 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] LIGHTSYNC tab language relabel failed: " + ex.Message); }
             try { RelabelSettingsTab(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Settings tab language relabel failed: " + ex.Message); }
+            try { RelabelLanguageSection(); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Language section relabel failed: " + ex.Message); }
             try { RelabelEffectsTab(); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Effects tab language relabel failed: " + ex.Message); }
             try { RelabelTelemetryFfbTab(); }
@@ -11357,7 +11364,7 @@ namespace TrueforceForAll.Plugin
 
         private void EnqueueAchievementToast(string label, bool needsLink)
         {
-            if (string.IsNullOrEmpty(label)) label = "Achievement";
+            if (string.IsNullOrEmpty(label)) label = Loc.T("Settings_Achievement");
             _toastQueue.Enqueue((label, needsLink));
             if (AchievementToast != null && AchievementToast.Visibility != System.Windows.Visibility.Visible)
                 ShowNextToast();
@@ -12159,13 +12166,13 @@ namespace TrueforceForAll.Plugin
             switch (result)
             {
                 case AuthCallResult.RateLimited:
-                    copy = "Slow down a moment, then try again."; break;
+                    copy = Loc.T("SignIn_ErrorRateLimited"); break;
                 case AuthCallResult.InvalidInput:
-                    copy = "That email isn't valid."; break;
+                    copy = Loc.T("Settings_EmailIsnTValid"); break;
                 case AuthCallResult.NetworkFailure:
-                    copy = "Could not reach the sign-in server."; break;
+                    copy = Loc.T("Settings_CouldNotReachSign"); break;
                 default:
-                    copy = "Could not update your email. The address may already be taken."; break;
+                    copy = Loc.T("Settings_CouldNotUpdateEmail"); break;
             }
             SetChangeEmailStatus(copy, true);
         }
@@ -12442,7 +12449,7 @@ namespace TrueforceForAll.Plugin
                 if (ua.Length > 0 && !ua.StartsWith("Go-http", StringComparison.OrdinalIgnoreCase))
                     label = ua.Length <= 48 ? ua : ua.Substring(0, 48) + "...";
             }
-            if (label.Length == 0) label = "Other device";
+            if (label.Length == 0) label = Loc.T("Settings_OtherDevice");
             if (!string.IsNullOrEmpty(s.Ip)) label += "  (" + s.Ip + ")";
             return label;
         }
@@ -12959,49 +12966,12 @@ namespace TrueforceForAll.Plugin
                     ? !(_plugin.Settings.LmuSharedMemoryFfb)
                     : !_plugin.ModeBEnabledForActiveGame;
                 string body = lmu
-                    ? "The plugin can carry Le Mans Ultimate's force feedback for you. It does not "
-                      + "replace it: the sim still works out what the car is doing and hands "
-                      + "over those same forces, so the feel stays the sim's own.\n\n"
-                      + "What it buys you is your wheel's rev lights and screen. They share a "
-                      + "channel with force feedback, so they can only run when the plugin "
-                      + "owns that channel instead of the sim.\n\n"
-                      + "It needs two things on the game's side first: Vendor Specific Force "
-                      + "Feedback off (Settings > Controls > Force Feedback) and Use LEDs off "
-                      + "(Settings > Wheel and Pedals > Calibration). Its force feedback strength "
-                      + "can stay. Start SimHub before the game, or the lights and screen may "
-                      + "not come on."
-                      + (canActivate ? " Then activate it below." : "")
+                    ? Loc.F("Settings_PluginCanCarryLe_Fmt", (canActivate ? Loc.T("Settings_ThenActivateBelow") : ""))
                     : r3e
-                    ? "The plugin can carry RaceRoom's force feedback for you. It does not "
-                      + "replace it: RaceRoom still works out what the car is doing and hands "
-                      + "over those same forces, so the feel stays the sim's own.\n\n"
-                      + "What it buys you is your wheel's rev lights and screen. They share a "
-                      + "channel with force feedback, so they can only run when the plugin "
-                      + "owns that channel instead of the sim.\n\n"
-                      + "It needs one thing on RaceRoom's side first: disable the game's own "
-                      + "force feedback, whatever its intensity slider says. Start SimHub "
-                      + "before RaceRoom, or the lights and screen may not come on."
-                      + (canActivate ? " Then activate it below." : "")
+                    ? Loc.F("Settings_PluginCanCarryRaceRoom_Fmt", (canActivate ? Loc.T("Settings_ThenActivateBelow") : ""))
                     : reshape
-                    ? "The plugin can carry iRacing's force feedback for you. It does not "
-                      + "replace it: iRacing still works out what the car is doing and hands "
-                      + "over those same forces, so the feel stays the sim's own.\n\n"
-                      + "What it buys you is your wheel's rev lights and screen. They share a "
-                      + "channel with force feedback, so they can only run when the plugin "
-                      + "owns that channel instead of the sim.\n\n"
-                      + "It needs two switches on iRacing's side first: turn iRacing's own "
-                      + "force feedback off (not its strength to 0), and set loadTrueForceAPI=0 "
-                      + "in app.ini. The iRacing notice walks through both."
-                    : "Instead of passing this game's own force feedback through, the plugin "
-                      + "can build the steering force itself. There's a real sense of grip. "
-                      + "The wheel goes light as the front washes out and it pulls into a "
-                      + "countersteer as the rear steps out.\n\n"
-                      + "It also unlocks your wheel's rev lights: they share a channel with "
-                      + "game force feedback, so they can only run when the plugin owns the "
-                      + "whole signal, as it does here.\n\n"
-                      + "To try it, set this game's force feedback and vibration to 0 in its "
-                      + "wheel settings, so the plugin is the only force on the wheel."
-                      + (canActivate ? " Then activate it below." : "");
+                    ? Loc.T("Settings_PluginCanCarryIRacing")
+                    : Loc.F("Settings_InsteadPassingGameS_Fmt", (canActivate ? Loc.T("Settings_ThenActivateBelow") : ""));
                 bool? r = TrueforceDialog.Show(owner,
                     lmu     ? Loc.T("Settings_LetPluginCarryLe")
                   : r3e     ? Loc.T("Settings_LetPluginCarryRaceRoom")
@@ -14358,8 +14328,7 @@ namespace TrueforceForAll.Plugin
             // both blank (so community packs are never relabeled).
             if (string.IsNullOrEmpty(oldAuthor) && !string.IsNullOrEmpty(newAuthor))
             {
-                var msg = $"Stamp \"{newAuthor}\" on the presets you've already saved? "
-                        + "This updates presets that don't have an author yet (your own work) and leaves community-pack presets alone.";
+                var msg = Loc.F("Settings_StampPresetsVeAlready_Fmt", newAuthor);
                 var resp = TrueforceDialog.Show(Window.GetWindow(this), "Trueforce For All", msg,
                     DialogKind.Confirm);
                 if (resp == true)
@@ -14742,21 +14711,7 @@ namespace TrueforceForAll.Plugin
                 bool bound = !_forceCycleHint && IsPatternCycleBound();
 
                 string body =
-                    "Your wheel has its own built-in sweeps and five slots you can fill. "
-                  + "This tab goes further.\n\n"
-                  + "•  As many patterns as you like, not just five slots\n"
-                  + "•  Change pattern from anything SimHub can see: a wheel button, "
-                  + "a button box, the keyboard, a pedal\n"
-                  + "•  Give a car its own pattern, so it comes up as you get in\n"
-                  + "•  Match the real car's own lights, where the shared car data "
-                  + "covers it. Best in the serious sims, and it grows as the data does\n"
-                  + "•  Put the gear, your speed and your last lap on the wheel's screen"+
-                    "\n\n"
-                  + "Driving the bar with your revs shares a channel with game force "
-                  + "feedback, so that part needs Telemetry Based FFB on. The patterns "
-                  + "do not: Lightsync only, at the top of the panel, switches our "
-                  + "Trueforce effects and FFB tap off and leaves the rest of this "
-                  + "tab working.";
+                    Loc.T("Settings_WheelHasOwnBuilt");
 
                 // The binder itself, in the dialog. Sending someone to another tab
                 // to find a row called "Rev pattern next" is how a feature stays
@@ -16602,9 +16557,9 @@ namespace TrueforceForAll.Plugin
                 {
                     // Replace: destructive, confirm once more (text adapts to the settings choice).
                     string body = applySettings
-                        ? "Replace will swap your presets, car tunings, defaults, AND settings for the backup's."
-                        : "Replace will swap your presets, car tunings, and defaults for the backup's, and keep your current settings.";
-                    body += "\n\nYour current library is moved to a .pre-restore-<timestamp> folder next to it as a safety net, but the live state becomes the backup's.\n\nContinue?";
+                        ? Loc.T("Settings_ReplaceWillSwapPresets")
+                        : Loc.T("Settings_ReplaceWillSwapPresets2");
+                    body += Loc.T("Settings_CurrentLibraryMovedPre");
                     var confirm = TrueforceDialog.Show(owner, Loc.T("Settings_RestoreReplace"), body,
                         DialogKind.Destructive, okLabel: Loc.T("Settings_ReplaceEverything"), cancelLabel: Loc.T("Common_Cancel"));
                     if (confirm != true) return;
@@ -16661,7 +16616,7 @@ namespace TrueforceForAll.Plugin
                     else
                     {
                         int remaining = conflicts.Count - i;
-                        string msg = $"A {c.Kind} named \"{c.DisplayName}\" already exists ({i + 1} of {conflicts.Count}).\n\nKeep your copy, or replace it with the backup's?";
+                        string msg = Loc.F("Settings_NamedAlreadyExistsKeep_Fmt", c.Kind, c.DisplayName, i + 1, conflicts.Count);
                         if (remaining > 1)
                         {
                             bool applyAll;

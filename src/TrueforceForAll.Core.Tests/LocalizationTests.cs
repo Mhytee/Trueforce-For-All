@@ -713,6 +713,31 @@ namespace TrueforceForAll.Core.Tests
             // lead fragment ends where its link begins.
             { "SignIn_PrivacyLead", "runs into the Privacy policy hyperlink" },
             { "SignIn_DidntGetIt", "runs into the Resend code link" },
+            // Every one of these is a fragment of a paragraph that is built in
+            // pieces: a sentence that runs into a hyperlink, a suffix appended
+            // after a name, or a clause added to a line already on screen. The
+            // space is the separator, and folding it into the code would mean
+            // building the paragraph differently.
+            { "Plugin_CloseWhateverElseDrives", "StandDownCopy.Before, runs into the guide link" },
+            { "Plugin_IRacingClosedSetLoadTrueForceAPI", "StandDownCopy.Before, runs into the guide link" },
+            { "Plugin_RunPluginSTrueforce", "StandDownCopy.Before, runs into the guide link" },
+            { "Plugin_RunningMAIRATF4ALLSame", "StandDownCopy.Before, runs into the guide link" },
+            { "Plugin_Guides", "StandDownCopy.After, continues past the guide link" },
+            { "Plugin_IRacingGuide", "StandDownCopy.After, continues past the guide link" },
+            { "Plugin_UnconfirmedModel", "appended to the wheel model in WheelStatus" },
+            { "Plugin_FAILProbeCrashed_Fmt", "a probe report line, appended to the lines before it" },
+            { "Account_PatreonHasDiscordConnected", "appended to the Patreon link result" },
+            { "Account_ReCommunityDiscordToo", "appended to the Patreon link result" },
+            { "Guides_DataComesStraightGame", "appended to the live telemetry rate line" },
+            { "Settings_Telemetry", "a source suffix after a car or engine name" },
+            { "Settings_BuiltCarList", "a source suffix after a car or engine name" },
+            { "Settings_CachedEarlierSession", "a source suffix after a car or engine name" },
+            { "Settings_CommunityConfirmed", "a source suffix after a car or engine name" },
+            { "Settings_Heuristic_Fmt", "a source suffix after a car or engine name" },
+            { "Settings_GripCalibrationStillSettling", "appended to the learning status line" },
+            { "Settings_LimitWhatCanMeasure", "appended to the learning status line" },
+            { "Settings_ThenActivateBelow", "appended to the game notice when the feature is off" },
+            { "Settings_CurrentLibraryMovedPre", "a paragraph appended to the restore dialog body" },
             // The import preview's toggle row is built from separate elements:
             // a caption, then "all" and "none" as links, so the caption and the
             // bullet-prefixed second caption carry the spacing between them.
@@ -907,10 +932,23 @@ namespace TrueforceForAll.Core.Tests
                 failures.Add("cs-keep-literal.txt: the whole-file exemptions must be exactly the two the plan's "
                     + "Phase 2 exit criterion names, DevCodes.cs and TestCodesWindow.cs; a third one hides a "
                     + "file's labels with no warning");
-            if (rules.PropNames.Count != 7)
-                failures.Add("cs-ui-sinks.txt: expected 7 prop rules, found " + Inv(rules.PropNames.Count)
+            // prop went from 7 to 18 when the sweep learned about display text that
+            // never touches a control directly: a sentence assigned to a local or a
+            // controller field and only shown later. textmember and recordprop grew
+            // for the same reason, so all three are pinned now rather than one.
+            if (rules.PropNames.Count != 18)
+                failures.Add("cs-ui-sinks.txt: expected 18 prop rules, found " + Inv(rules.PropNames.Count)
                     + ". A property rule decides what counts as a label write: adding or removing one moves every "
                     + "budget number, so update this test in the same commit and say why in the message");
+            if (rules.TextMembers.Count != 41)
+                failures.Add("cs-ui-sinks.txt: expected 41 textmember rules, found " + Inv(rules.TextMembers.Count)
+                    + ". Each one says a member returns display text, which is a judgement about that member, so "
+                    + "adding or removing one belongs in a commit that says which member and why");
+            // Counted by property name, not by line: RecordProps maps a property to
+            // the types that declare it, so eleven lines over nine names read as nine.
+            if (rules.RecordProps.Count != 9)
+                failures.Add("cs-ui-sinks.txt: expected 9 recordprop property name(s), found " + Inv(rules.RecordProps.Count)
+                    + ". Same reasoning as textmember: the rule names one property of one of our own records");
 
             var found = new Dictionary<string, List<CsFinding>>(StringComparer.Ordinal);
             foreach (string abs in PluginFiles(repo, "*.cs"))

@@ -450,7 +450,7 @@ namespace TrueforceForAll.Plugin
             string skipText = s.GamePresetsSkipped > 0
                 ? $" · skipped {s.GamePresetsSkipped} game preset(s) without a game mapping"
                 : "";
-            return $"Set defaults: {s.GameDefaultsSet} game, {s.CarDefaultsSet} car{overText}{keptText}{skipText}.";
+            return Loc.F("PackManager_SetDefaultsGameCar_Fmt", s.GameDefaultsSet, s.CarDefaultsSet, overText, keptText, skipText);
         }
 
         private static string FormatRemoveSummary(InstalledPack p, RemovePackSummary s)

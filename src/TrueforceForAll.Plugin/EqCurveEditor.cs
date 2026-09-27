@@ -24,6 +24,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -663,11 +664,11 @@ namespace TrueforceForAll.Plugin
         {
             switch (t)
             {
-                case EqBandType.LowShelf:  return "Low shelf";
-                case EqBandType.HighShelf: return "High shelf";
-                case EqBandType.LowCut:    return "Low cut";
-                case EqBandType.HighCut:   return "High cut";
-                default:                   return "Bell";
+                case EqBandType.LowShelf:  return Loc.T("Eq_LowShelf");
+                case EqBandType.HighShelf: return Loc.T("Eq_HighShelf");
+                case EqBandType.LowCut:    return Loc.T("Eq_LowCut");
+                case EqBandType.HighCut:   return Loc.T("Eq_HighCut");
+                default:                   return Loc.T("Eq_Bell");
             }
         }
     }

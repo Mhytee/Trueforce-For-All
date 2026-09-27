@@ -4561,6 +4561,40 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
 
+            <!-- Language: what the panel, its dialogs and the wheel notices are
+                 drawn in. First in the tab because it changes every other label in
+                 it. Automatic is the default and follows SimHub's own language
+                 setting, then Windows; the thread culture is never read, since
+                 SimHub pins it to en-US for everyone. Choosing a language loads it
+                 at once: the store raises its change event, every bound label
+                 re-renders and the relabel passes re-run, so nothing restarts. -->
+            <Expander x:Name="LanguageExpander" IsExpanded="False" Margin="0,0,0,8">
+                <Expander.Header>
+                    <TextBlock Text="{loc:T Settings_Language}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Expander.Header>
+                <StackPanel Margin="0,10,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{loc:T Settings_LanguagePanelLanguage}" Style="{StaticResource LabelText}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox x:Name="UiLanguageCombo" Width="240"
+                                  SelectionChanged="UiLanguageCombo_SelectionChanged"
+                                  ToolTip="{loc:T Settings_UiLanguage_Tip}"/>
+                    </StackPanel>
+                    <TextBlock x:Name="UiLanguageNote" Style="{StaticResource HelpText}" Margin="0,6,0,0"
+                               FontSize="12" TextWrapping="Wrap" Text=""/>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button x:Name="TranslateButton" Content="{loc:T Settings_LanguageTranslate}"
+                                Click="TranslateButton_Click" Padding="10,4" MinWidth="120"
+                                ToolTip="{loc:T Settings_LanguageTranslate_Tip}"/>
+                        <Button x:Name="LanguageFolderButton" Content="{loc:T Settings_LanguageOpenFolder}"
+                                Click="LanguageFolderButton_Click" Padding="10,4" MinWidth="120" Margin="8,0,0,0"
+                                ToolTip="{loc:T Settings_LanguageOpenFolder_Tip}"/>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,8,0,0" FontSize="12" TextWrapping="Wrap"
+                               Text="{loc:T Settings_LanguageHelp}"/>
+                </StackPanel>
+            </Expander>
+
             <!-- Updates: how often the plugin re-checks GitHub for a newer
                  build. A check always runs at startup and on the header's
                  "Check for updates" link regardless of this; the dropdown only

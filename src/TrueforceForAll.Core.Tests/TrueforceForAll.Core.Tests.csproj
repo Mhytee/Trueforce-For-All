@@ -100,6 +100,14 @@
     <Compile Include="..\TrueforceForAll.Plugin\Localization\LocStore.cs">
       <Link>Linked\LocStore.cs</Link>
     </Compile>
+    <!-- The static door to that table. Three of the linked files above now
+         read their display text through it, and it is WPF-free by the same
+         contract, so it links too. With no store initialized every call
+         returns the key, which is what a test wants: a label asserted here
+         is asserted as a key, not as one language's wording. -->
+    <Compile Include="..\TrueforceForAll.Plugin\Localization\Loc.cs">
+      <Link>Linked\Loc.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

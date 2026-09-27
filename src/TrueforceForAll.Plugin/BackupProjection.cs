@@ -66,6 +66,11 @@ namespace TrueforceForAll.Plugin
             // is a property of the material being played rather than of one
             // machine's sound card.
             "IdleLedMode", "NoRevLedMode", "LedSweepPeriodMs",
+            // The panel's language. Travels: it describes the person reading it,
+            // not this PC, the same reasoning as the rev-light and OLED
+            // preferences above. An empty value on the other machine means
+            // "follow SimHub", which is what a fresh install does anyway.
+            "UiLanguage",
             // iRacing reshape strength. Travels: it is normalized against the
             // sim's own max force, so it carries no wheel-specific meaning.
             "IRacingForceGain", "IRacingUse360Hz",

@@ -47,6 +47,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using TrueforceForAll.Plugin.Effects;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -652,7 +653,7 @@ namespace TrueforceForAll.Plugin
                             var arr = JArray.Parse(body);
                             foreach (var t in arr)
                             {
-                                string text = (t?["body"]?.ToString() ?? "").Trim();
+                                string text = (t?[Loc.T("Community_Body")]?.ToString() ?? "").Trim();
                                 if (text.Length == 0) continue;
                                 // Defense in depth: the DB already enforces https-only,
                                 // but never hand a non-https link to the launcher.

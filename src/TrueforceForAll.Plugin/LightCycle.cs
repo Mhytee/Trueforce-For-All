@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -89,14 +90,14 @@ namespace TrueforceForAll.Plugin
             Func<int, string> effectLabel)
         {
             var stops = new List<LightCycleStop>();
-            Func<int, string> label = effectLabel ?? (e => "Pattern " + e);
+            Func<int, string> label = effectLabel ?? (e => Loc.F("Lightsync_Pattern_Fmt", e));
 
             // Auto first, where the pickers put it. Without a stop of its own a
             // user who cycles away from the car's own colors can never get back
             // to them from the rim: every other stop pins something, and pinning
             // is precisely what turns Auto off.
             if (autoAvailable)
-                stops.Add(new LightCycleStop { Auto = true, Label = "Auto (this car's colors)" });
+                stops.Add(new LightCycleStop { Auto = true, Label = Loc.T("Lightsync_AutoCarSColors") });
 
             for (int e = 1; e <= 4; e++)
                 stops.Add(new LightCycleStop { Effect = e, Label = label(e) });

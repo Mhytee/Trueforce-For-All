@@ -11,6 +11,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -91,7 +92,7 @@ namespace TrueforceForAll.Plugin
                     if (s == null)
                     {
                         SimHub.Logging.Current.Warn("[TF4ALL] Guide resource missing: " + resource);
-                        return "This guide is missing from this build. Please report it.";
+                        return Loc.T("Guides_GuideMissingBuildPlease");
                     }
                     using (var r = new StreamReader(s))
                         return r.ReadToEnd();
@@ -100,7 +101,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Warn("[TF4ALL] Guide load failed (" + resource + "): " + ex.Message);
-                return "This guide could not be loaded.";
+                return Loc.T("Guides_GuideCouldNotLoaded");
             }
         }
     }

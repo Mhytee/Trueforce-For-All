@@ -85,9 +85,9 @@ namespace TrueforceForAll.Plugin
         {
             switch ((n.Kind ?? "").ToLowerInvariant())
             {
-                case "ban":     return "Your account was restricted";
-                case "removal": return "An upload was removed";
-                default:        return "An upload was hidden";
+                case "ban":     return Loc.T("Moderation_AccountWasRestricted");
+                case "removal": return Loc.T("Moderation_UploadWasRemoved");
+                default:        return Loc.T("Moderation_UploadWasHidden");
             }
         }
 

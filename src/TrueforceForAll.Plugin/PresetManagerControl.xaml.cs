@@ -123,7 +123,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             var lines = _plugin.ValidateBuiltins();
             int issues = lines.Count(l => !l.StartsWith("OK"));
-            string body = lines.Count == 0 ? "No built-ins loaded." : string.Join("\n", lines);
+            string body = lines.Count == 0 ? Loc.T("PresetManager_NoBuiltInsLoaded") : string.Join("\n", lines);
             TrueforceDialog.Show(Window.GetWindow(this),
                 Loc.N("PresetManager_ValidateBuiltIns", issues, issues),
                 body,
@@ -947,7 +947,7 @@ namespace TrueforceForAll.Plugin
             string skipText = s.GamePresetsSkipped > 0
                 ? $" · skipped {s.GamePresetsSkipped} game preset(s) without a game mapping"
                 : "";
-            return $"Set defaults: {s.GameDefaultsSet} game, {s.CarDefaultsSet} car{overText}{keptText}{skipText}.";
+            return Loc.F("PackManager_SetDefaultsGameCar_Fmt", s.GameDefaultsSet, s.CarDefaultsSet, overText, keptText, skipText);
         }
 
         private void PacksRemove_Click(object sender, RoutedEventArgs e)
@@ -1940,20 +1940,20 @@ namespace TrueforceForAll.Plugin
             sb.AppendLine($"FFB spike reduction: {(snap.FfbSpikeTamingEnabled ? "on" : "off")}");
             if (snap.StationarySpringEnabled.HasValue)
                 sb.AppendLine($"Stationary spring: {(snap.StationarySpringEnabled.Value ? "on" : "off")} (strength {(snap.StationarySpringStrength ?? 0):0.##})");
-            AppendEffectLine(sb, "Audio rumble",    snap.AudioCapture);
-            AppendEffectLine(sb, "Engine pulse",     snap.EnginePulse);
-            AppendEffectLine(sb, "Road bumps",       snap.RoadBumps);
-            AppendEffectLine(sb, "Traction loss",    snap.TractionLoss);
-            AppendEffectLine(sb, "Axle slip",        snap.AxleSlip);
-            AppendEffectLine(sb, "Curb thump",       snap.KerbThump);
-            AppendEffectLine(sb, "Lockup judder",    snap.LockupJudder);
-            AppendEffectLine(sb, "Gear shift",       snap.GearShift);
-            AppendEffectLine(sb, "ABS",              snap.AbsClick);
-            AppendEffectLine(sb, "Pit limiter",      snap.PitLimiter);
-            AppendEffectLine(sb, "DRS",              snap.Drs);
-            AppendEffectLine(sb, "Collision",        snap.Collision);
-            AppendEffectLine(sb, "Redline buzz",      snap.RevLimiter);
-            AppendEffectLine(sb, "Airborne ducking", snap.Airborne);
+            AppendEffectLine(sb, Loc.T("Effects_AudioEnabled"),    snap.AudioCapture);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneDuckEngine"),     snap.EnginePulse);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneDuckRoadBumps"),       snap.RoadBumps);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneDuckTraction"),    snap.TractionLoss);
+            AppendEffectLine(sb, Loc.T("Effects_AxleSlipEnabled"),        snap.AxleSlip);
+            AppendEffectLine(sb, Loc.T("Effects_KerbThumpEnabled"),       snap.KerbThump);
+            AppendEffectLine(sb, Loc.T("Effects_LockupJudderEnabled"),    snap.LockupJudder);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneDuckGearShift"),       snap.GearShift);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneDuckAbs"),              snap.AbsClick);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneDuckPitLimiter"),      snap.PitLimiter);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneDuckDrs"),              snap.Drs);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneDuckCollision"),        snap.Collision);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneDuckRevLimiter"),      snap.RevLimiter);
+            AppendEffectLine(sb, Loc.T("Effects_AirborneEnabled"), snap.Airborne);
             sb.AppendLine($"Sidechain ducking: {(snap.DuckingEnabled ? "on" : "off")} (depth {snap.DuckDepth:0.##})");
             return sb.ToString().TrimEnd();
         }
@@ -1997,20 +1997,20 @@ namespace TrueforceForAll.Plugin
             sb.AppendLine($"Source: {(entry.IsBuiltin ? "Built-in" : "User preset")}");
 
             var sections = new System.Text.StringBuilder();
-            AppendOverrideSection(sections, "Audio rumble",    ov.AudioCapture, baseline?.AudioCapture);
-            AppendOverrideSection(sections, "Engine pulse",     ov.EnginePulse,  baseline?.EnginePulse);
-            AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    baseline?.RoadBumps);
-            AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, baseline?.TractionLoss);
-            AppendOverrideSection(sections, "Axle slip",        ov.AxleSlip,     baseline?.AxleSlip);
-            AppendOverrideSection(sections, "Curb thump",       ov.KerbThump,    baseline?.KerbThump);
-            AppendOverrideSection(sections, "Lockup judder",    ov.LockupJudder, baseline?.LockupJudder);
-            AppendOverrideSection(sections, "Gear shift",       ov.GearShift,    baseline?.GearShift);
-            AppendOverrideSection(sections, "ABS",              ov.AbsClick,     baseline?.AbsClick);
-            AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   baseline?.PitLimiter);
-            AppendOverrideSection(sections, "DRS",              ov.Drs,          baseline?.Drs);
-            AppendOverrideSection(sections, "Collision",        ov.Collision,    baseline?.Collision);
-            AppendOverrideSection(sections, "Redline buzz",      ov.RevLimiter,   baseline?.RevLimiter);
-            AppendOverrideSection(sections, "Airborne ducking", ov.Airborne,     baseline?.Airborne);
+            AppendOverrideSection(sections, Loc.T("Effects_AudioEnabled"),    ov.AudioCapture, baseline?.AudioCapture);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckEngine"),     ov.EnginePulse,  baseline?.EnginePulse);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckRoadBumps"),       ov.RoadBumps,    baseline?.RoadBumps);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckTraction"),    ov.TractionLoss, baseline?.TractionLoss);
+            AppendOverrideSection(sections, Loc.T("Effects_AxleSlipEnabled"),        ov.AxleSlip,     baseline?.AxleSlip);
+            AppendOverrideSection(sections, Loc.T("Effects_KerbThumpEnabled"),       ov.KerbThump,    baseline?.KerbThump);
+            AppendOverrideSection(sections, Loc.T("Effects_LockupJudderEnabled"),    ov.LockupJudder, baseline?.LockupJudder);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckGearShift"),       ov.GearShift,    baseline?.GearShift);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckAbs"),              ov.AbsClick,     baseline?.AbsClick);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckPitLimiter"),      ov.PitLimiter,   baseline?.PitLimiter);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckDrs"),              ov.Drs,          baseline?.Drs);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckCollision"),        ov.Collision,    baseline?.Collision);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckRevLimiter"),      ov.RevLimiter,   baseline?.RevLimiter);
+            AppendOverrideSection(sections, Loc.T("Effects_AirborneEnabled"), ov.Airborne,     baseline?.Airborne);
 
             sb.AppendLine();
             if (sections.Length > 0)
@@ -2215,20 +2215,20 @@ namespace TrueforceForAll.Plugin
                         if (ov == null) return "";
                         var sb = new System.Text.StringBuilder();
                         var sections = new System.Text.StringBuilder();
-                        AppendOverrideSection(sections, "Audio rumble",    ov.AudioCapture, null);
-                        AppendOverrideSection(sections, "Engine pulse",     ov.EnginePulse,  null);
-                        AppendOverrideSection(sections, "Road bumps",       ov.RoadBumps,    null);
-                        AppendOverrideSection(sections, "Traction loss",    ov.TractionLoss, null);
-                        AppendOverrideSection(sections, "Axle slip",        ov.AxleSlip,     null);
-                        AppendOverrideSection(sections, "Curb thump",       ov.KerbThump,    null);
-                        AppendOverrideSection(sections, "Lockup judder",    ov.LockupJudder, null);
-                        AppendOverrideSection(sections, "Gear shift",       ov.GearShift,    null);
-                        AppendOverrideSection(sections, "ABS",              ov.AbsClick,     null);
-                        AppendOverrideSection(sections, "Pit limiter",      ov.PitLimiter,   null);
-                        AppendOverrideSection(sections, "DRS",              ov.Drs,          null);
-                        AppendOverrideSection(sections, "Collision",        ov.Collision,    null);
-                        AppendOverrideSection(sections, "Redline buzz",      ov.RevLimiter,   null);
-                        AppendOverrideSection(sections, "Airborne ducking", ov.Airborne,     null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AudioEnabled"),    ov.AudioCapture, null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckEngine"),     ov.EnginePulse,  null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckRoadBumps"),       ov.RoadBumps,    null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckTraction"),    ov.TractionLoss, null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AxleSlipEnabled"),        ov.AxleSlip,     null);
+                        AppendOverrideSection(sections, Loc.T("Effects_KerbThumpEnabled"),       ov.KerbThump,    null);
+                        AppendOverrideSection(sections, Loc.T("Effects_LockupJudderEnabled"),    ov.LockupJudder, null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckGearShift"),       ov.GearShift,    null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckAbs"),              ov.AbsClick,     null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckPitLimiter"),      ov.PitLimiter,   null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckDrs"),              ov.Drs,          null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckCollision"),        ov.Collision,    null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneDuckRevLimiter"),      ov.RevLimiter,   null);
+                        AppendOverrideSection(sections, Loc.T("Effects_AirborneEnabled"), ov.Airborne,     null);
                         if (sections.Length > 0)
                         {
                             sb.AppendLine("Overrides:");
@@ -3646,7 +3646,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 if (string.IsNullOrEmpty(activeName)) return;
                 if (_plugin.IsBuiltinPreset(activeName)) return;
                 payload = new EmptyShareCtaPayload { Kind = "game", PresetName = activeName };
-                label = "Share your '" + ShortenForCta(activeName) + "' tune";
+                label = Loc.F("PresetManager_ShareTune_Fmt", ShortenForCta(activeName));
             }
             else if (kind == "car")
             {
@@ -3668,7 +3668,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     Kind = "car", PresetName = activeName,
                     CarId = activeCar, GameName = activeGame,
                 };
-                label = "Share your '" + ShortenForCta(activeName) + "' tune";
+                label = Loc.F("PresetManager_ShareTune_Fmt", ShortenForCta(activeName));
             }
             else return;
 
@@ -4459,14 +4459,14 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
         {
             if (p == null) return "";
             bool universal = p.TargetGames == null || p.TargetGames.Length == 0;
-            if (universal) return "Universal";
+            if (universal) return Loc.T("PresetManager_Universal");
             if (!string.IsNullOrEmpty(activeGame))
             {
                 foreach (var g in p.TargetGames)
                     if (string.Equals(g, activeGame, StringComparison.OrdinalIgnoreCase))
-                        return "for " + UiContentSanitizer.SafeDisplayText(activeGame, 32);
+                        return Loc.F("PresetManager_For_Fmt", UiContentSanitizer.SafeDisplayText(activeGame, 32));
             }
-            return "Other games (" + p.TargetGames.Length + ")";
+            return Loc.F("PresetManager_OtherGames_Fmt", p.TargetGames.Length);
         }
 
         private readonly System.Collections.ObjectModel.ObservableCollection<CommunityRow> _communityRows =

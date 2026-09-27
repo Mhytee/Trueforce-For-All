@@ -751,6 +751,14 @@ namespace TrueforceForAll.Plugin
         // without overriding a later user opt-out.
         public bool FeedbackBoxDefaultedOn { get; set; } = false;
 
+        // The language the panel, its dialogs and the wheel notices are drawn in,
+        // as a culture tag: "es", "de-DE". Empty, the default, means follow
+        // SimHub's own language setting and Windows when SimHub has none, so an
+        // install that never opens the picker tracks whatever the rest of the
+        // machine does. A tag with no language file resolves through its parent
+        // and then English, so a stale tag cannot leave the panel blank.
+        public string UiLanguage { get; set; } = "";
+
         // Show the per-gear redline editor in the Car facts panel. Default off:
         // community data showed nobody shares per-gear values, so the editor is
         // opt-in clutter control. UI-only; saved per-gear values keep applying

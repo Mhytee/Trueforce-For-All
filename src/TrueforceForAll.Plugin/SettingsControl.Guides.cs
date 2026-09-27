@@ -349,14 +349,10 @@ namespace TrueforceForAll.Plugin
             var src = _plugin?.TelemetrySource;
             double hz = src?.MeasuredHz ?? 0;
             if (src == null || hz <= 0)
-                return "Start a game and the Diagnostics section on the Settings tab will show "
-                     + "the rate you are getting.";
-            return $"**Right now: {src.Name} at {hz:0} Hz.**"
-                 + (src.IsEnhanced
-                     ? " This data comes straight from the game, as fast as it sends "
-                       + "it, which in the Forza titles follows your frame rate, so a licence "
-                       + "changes nothing here."
-                     : "");
+                return Loc.T("Guides_StartGameDiagnosticsSection");
+            return Loc.F("Guides_RightNowHz_Fmt", src.Name, hz, (src.IsEnhanced
+                     ? Loc.T("Guides_DataComesStraightGame")
+                     : ""));
         }
 
         private void SelectTab(object tab)
@@ -740,7 +736,7 @@ namespace TrueforceForAll.Plugin
                 if (again != true) { RefreshModsList(); return; }
                 err = _plugin.InstallAndEnableAcCspBridge();
             }
-            string outcome = "TF4ALL CSP Bridge: installed. Restart Assetto Corsa if it is running, and keep your in-game gain up.";
+            string outcome = Loc.T("Guides_TF4ALLCSPBridgeInstalled");
             RefreshModsList();
             if (FsModTargetsStatus == null) return;
             FsModTargetsStatus.Text = outcome;
@@ -764,7 +760,7 @@ namespace TrueforceForAll.Plugin
                 if (again != true) { RefreshModsList(); return; }
                 err = _plugin.UninstallAcCspBridge();
             }
-            string outcome = "TF4ALL CSP Bridge: removed. It stops loading the next time Assetto Corsa starts.";
+            string outcome = Loc.T("Guides_TF4ALLCSPBridgeRemoved");
             RefreshModsList();
             if (FsModTargetsStatus == null) return;
             FsModTargetsStatus.Text = outcome;
@@ -786,8 +782,8 @@ namespace TrueforceForAll.Plugin
 
             string err = _plugin.UninstallFsMod(t.Game);
             string outcome = err == null
-                ? t.DisplayName + ": removed. It stops loading the next time the game starts."
-                : t.DisplayName + ": could not remove it. " + err + ".";
+                ? Loc.F("Guides_RemovedStopsLoadingNext_Fmt", t.DisplayName)
+                : Loc.F("Guides_CouldNotRemove_Fmt", t.DisplayName, err);
             RefreshModsList();
             if (FsModTargetsStatus == null) return;
             FsModTargetsStatus.Text = outcome;
@@ -799,9 +795,8 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             string err = _plugin.InstallArcadeMod(t);
             string outcome = err == null
-                ? t.DisplayName + ": installed. Restart the game so it loads, and leave "
-                  + "SimHub running while you play so the force has somewhere to go."
-                : t.DisplayName + ": install failed. " + err + ".";
+                ? Loc.F("Guides_InstalledRestartGameSo_Fmt", t.DisplayName)
+                : Loc.F("Guides_InstallFailed_Fmt", t.DisplayName, err);
             // Rebuild first, THEN write the outcome: the rebuild owns that line.
             RefreshModsList();
             if (FsModTargetsStatus == null) return;
@@ -820,8 +815,8 @@ namespace TrueforceForAll.Plugin
 
             string err = _plugin.UninstallArcadeMod(t);
             string outcome = err == null
-                ? t.DisplayName + ": removed. It takes effect the next time the game starts."
-                : t.DisplayName + ": could not remove it. " + err + ".";
+                ? Loc.F("Guides_RemovedTakesEffectNext_Fmt", t.DisplayName)
+                : Loc.F("Guides_CouldNotRemove_Fmt", t.DisplayName, err);
             RefreshModsList();
             if (FsModTargetsStatus == null) return;
             FsModTargetsStatus.Text = outcome;
@@ -833,9 +828,8 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             string err = _plugin.InstallFsMod(t.Game);
             string outcome = err == null
-                ? t.DisplayName + ": installed. It loads the next time the game starts, "
-                  + "so restart it if it is running now, and tick the mod when you load your save."
-                : t.DisplayName + ": install failed. " + err + ".";
+                ? Loc.F("Guides_InstalledLoadsNextTime_Fmt", t.DisplayName)
+                : Loc.F("Guides_InstallFailed_Fmt", t.DisplayName, err);
             // Rebuild first so the row reads Installed / Reinstall, THEN write the
             // outcome: the rebuild owns that line and would clear it.
             RefreshModsList();

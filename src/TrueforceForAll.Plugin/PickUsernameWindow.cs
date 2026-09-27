@@ -233,17 +233,17 @@ namespace TrueforceForAll.Plugin
             switch (r)
             {
                 case UsernameAvailability.Format:
-                    return "3-32 characters. Letters, numbers, or underscore only.";
+                    return Loc.T("PickUsername_N332CharactersLetters");
                 case UsernameAvailability.Reserved:
-                    return "That name is reserved. Pick another.";
+                    return Loc.T("PickUsername_NameReservedPickAnother");
                 case UsernameAvailability.Profanity:
-                    return "That name contains a blocked word. Pick another.";
+                    return Loc.T("PickUsername_NameContainsBlockedWord");
                 case UsernameAvailability.Taken:
-                    return "That name is taken. Try another.";
+                    return Loc.T("PickUsername_NameTakenTryAnother");
                 case UsernameAvailability.Network:
-                    return "Could not reach the server.";
+                    return Loc.T("PickUsername_ServerUnreachable");
                 default:
-                    return "Not available.";
+                    return Loc.T("PickUsername_NotAvailable");
             }
         }
 

@@ -87,27 +87,29 @@ namespace TrueforceForAll.Plugin
             string leadHeader;
             Brush  leadColor;
             string bodyText;
-            string driverWord = supportingSubmissions == 1 ? "driver" : "drivers";
             switch (state)
             {
                 case ShareState.First:
-                    leadHeader = "You're the first";
+                    leadHeader = Loc.T("CarFactsShare_YoureTheFirst");
                     leadColor  = PioneerFg;
-                    bodyText   = "Yours starts the record for this car.";
+                    bodyText   = Loc.T("CarFactsShare_YoursStartsRecordCar");
                     break;
                 case ShareState.Confirming:
                     leadHeader = supportingSubmissions > 0
-                                 ? $"Confirm with {supportingSubmissions} {driverWord}"
-                                 : "Confirm community data";
+                                 ? Loc.N("CarFactsShare_ConfirmWithDrivers", supportingSubmissions, supportingSubmissions)
+                                 : Loc.T("CarFactsShare_ConfirmCommunityData");
                     leadColor  = ConfirmFg;
-                    bodyText   = "Yours strengthens the existing record.";
+                    bodyText   = Loc.T("CarFactsShare_YoursStrengthensExistingRecord");
                     break;
                 default: // Alternative
-                    leadHeader = "Share a different value?";
+                    leadHeader = Loc.T("CarFactsShare_ShareDifferentValue");
                     leadColor  = AlternativeFg;
-                    bodyText   = $"Community currently says \"{consensusLayoutDisplay}\""
-                               + (supportingSubmissions > 0 ? $" ({supportingSubmissions} {driverWord})." : ".")
-                               + " Yours joins as an alternative.";
+                    // One whole sentence either way: a translator cannot put a
+                    // count in parentheses mid sentence if it arrives as a fragment.
+                    bodyText   = supportingSubmissions > 0
+                        ? Loc.N("CarFactsShare_CommunitySaysCount", supportingSubmissions,
+                                consensusLayoutDisplay, supportingSubmissions)
+                        : Loc.F("CarFactsShare_CommunitySays_Fmt", consensusLayoutDisplay);
                     break;
             }
 

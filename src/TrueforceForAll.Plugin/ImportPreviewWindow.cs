@@ -204,7 +204,7 @@ namespace TrueforceForAll.Plugin
         private UIElement BuildPackHeader(PresetPackManifest m)
         {
             var sp = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
-            string label = string.IsNullOrEmpty(m.PackName) ? "(unnamed pack)" : m.PackName;
+            string label = string.IsNullOrEmpty(m.PackName) ? Loc.T("ImportPreview_UnnamedPack") : m.PackName;
             sp.Children.Add(new TextBlock
             {
                 Text       = label,

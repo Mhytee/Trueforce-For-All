@@ -151,7 +151,7 @@ namespace TrueforceForAll.Plugin
 
             if (body == null)
             {
-                bodyPanel.Children.Add(MutedLine("(no body data)"));
+                bodyPanel.Children.Add(MutedLine(Loc.T("PresetPreview_NoBodyData")));
             }
             else if (isPack)
             {
@@ -220,7 +220,7 @@ namespace TrueforceForAll.Plugin
         {
             var ovr = body["override"] as JObject;
             if (ovr == null)
-                bodyPanel.Children.Add(MutedLine("(no override data)"));
+                bodyPanel.Children.Add(MutedLine(Loc.T("PresetPreview_NoOverrideData")));
             else
                 AddOverrideSections(bodyPanel, ovr);
             AddBundledEngines(bodyPanel, body["custom_engines"] as JArray);
@@ -230,7 +230,7 @@ namespace TrueforceForAll.Plugin
         {
             var snap = body["snapshot"] as JObject;
             if (snap == null)
-                bodyPanel.Children.Add(MutedLine("(no snapshot data)"));
+                bodyPanel.Children.Add(MutedLine(Loc.T("PresetPreview_NoSnapshotData")));
             else
             {
                 // Game presets have flat top-level FFB settings
@@ -400,7 +400,7 @@ namespace TrueforceForAll.Plugin
             }
 
             if (total == 0)
-                bodyPanel.Children.Add(MutedLine("(empty pack)"));
+                bodyPanel.Children.Add(MutedLine(Loc.T("PresetPreview_EmptyPack")));
         }
 
         // One pack entry: a ticked checkbox (include in import) next to an
@@ -450,7 +450,7 @@ namespace TrueforceForAll.Plugin
                     case "game":
                     {
                         var snap = entry["snapshot"] as JObject;
-                        if (snap == null) { host.Children.Add(MutedLine("(no snapshot)")); return; }
+                        if (snap == null) { host.Children.Add(MutedLine(Loc.T("PresetPreview_NoSnapshot"))); return; }
                         AddTopLevelGameSettings(host, snap);
                         AddOverrideSections(host, snap);
                         break;
@@ -458,7 +458,7 @@ namespace TrueforceForAll.Plugin
                     case "car":
                     {
                         var ovr = entry["override"] as JObject;
-                        if (ovr == null) { host.Children.Add(MutedLine("(no override)")); return; }
+                        if (ovr == null) { host.Children.Add(MutedLine(Loc.T("PresetPreview_NoOverride"))); return; }
                         AddOverrideSections(host, ovr);
                         break;
                     }
@@ -469,7 +469,7 @@ namespace TrueforceForAll.Plugin
             }
             catch
             {
-                host.Children.Add(MutedLine("(couldn't render this entry)"));
+                host.Children.Add(MutedLine(Loc.T("PresetPreview_CouldnTRenderEntry")));
             }
         }
 

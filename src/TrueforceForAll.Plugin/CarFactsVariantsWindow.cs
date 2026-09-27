@@ -339,7 +339,7 @@ namespace TrueforceForAll.Plugin
                     string name = string.IsNullOrWhiteSpace(c.Name) ? "(unnamed)" : c.Name;
                     options.Add(new EngineOption
                     {
-                        Display  = c.IsElectric ? name + "  (electric custom)" : name + "  (custom)",
+                        Display  = c.IsElectric ? Loc.F("CarFactsVariants_ElectricCustom_Fmt", name) : Loc.F("CarFactsVariants_Custom_Fmt", name),
                         Layout   = Effects.EngineLayout.Custom,
                         CustomId = c.Id ?? "",
                     });
@@ -363,7 +363,7 @@ namespace TrueforceForAll.Plugin
                 if (!inLibrary)
                     options.Add(new EngineOption
                     {
-                        Display  = "(missing custom engine, falling back to Auto)",
+                        Display  = Loc.T("CarFactsVariants_MissingCustomEngineFalling"),
                         Layout   = Effects.EngineLayout.Custom,
                         CustomId = v.UserCustomEngineId,
                     });

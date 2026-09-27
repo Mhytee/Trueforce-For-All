@@ -61,6 +61,24 @@ prop Title
 prop Watermark
 prop PlaceholderText
 
+
+# Names that hold display text on its way somewhere else. The assignment is the
+# only place the text exists as a literal: a wheel-write outcome that ends up in a
+# result record, a dialog body built over several branches, a controller's status
+# line read by the panel every tick. A sentence parked in one of these is exactly
+# as visible to a user as one written straight to a TextBlock.
+prop message
+prop msg
+prop body
+prop bodyText
+prop text
+prop copy
+prop label
+prop outcome
+prop _testStatus
+prop _status
+# The wheel status the panel's pill reads. Its own initializer is the default.
+prop WheelStatus
 # ---------------------------------------------------------------- constructors
 # TextBlock, Button and the rest take their text through a property, so Run is
 # the only WPF control the plugin builds with text in the constructor. The
@@ -153,6 +171,12 @@ ctor UpdateVsNewChooserWindow 0,1
 ctor PresetMetadataDialog 0,title
 ctor EditCommunityPresetWindow 0,1
 
+
+# Helpers that compose a line for the panel out of what they are handed.
+call DashToast 0
+call MutedLine 0
+call AppendEffectLine 1
+call AppendOverrideSection 1
 # ---------------------------------------------------------------- skipped calls
 # A key is not display text.
 skipcall Loc.T
@@ -172,6 +196,53 @@ skipcall .ToString
 textcall string.Format
 textcall string.Concat
 
+
+# The plugin's status and advice layer: every one of these returns a sentence the
+# panel shows. WheelQuietDiagnostic is the "why is nothing happening" chain, the
+# three NoticeBody members are the native-Trueforce dialogs, and the Start/Install
+# families return the reason a button could not do what it was asked.
+textmember WheelQuietDiagnostic
+textmember StreamStatus
+textmember IracingNoticeBody
+textmember R3ENoticeBody
+textmember LmuNoticeBody
+textmember DescribeKeepaliveReason
+textmember ArcadeRouteLabel
+textmember StartAutoTune
+textmember StartFxTest
+textmember StartDamperCalibration
+textmember StartDiDamperSpike
+textmember RunActiveDeviceProbe
+textmember InstallAcCspBridge
+textmember UninstallAcCspBridge
+textmember RestoreAcPostProcessScript
+textmember InstallFsMod
+textmember UninstallFsMod
+textmember InstallArcadeMod
+textmember UninstallArcadeMod
+textmember RequestGripCalReset
+textmember SetR3EStationaryDamper
+textmember SetArcadeIniValue
+textmember ProbeLedSlotFeature
+textmember ToggleF8LedSweep
+textmember SnapshotLogitechProcesses
+textmember HintCopy
+textmember Heading
+textmember TypeLabel
+textmember FriendlyDetectSourceSuffix
+textmember LoadRaw
+textmember FormatSetDefaultsSummary
+textmember ComputeTierBadge
+textmember LiveTelemetryRateLine
+textmember DescribePinnedEngine
+textmember FxGainFamilyLabel
+recordprop StandDownCopy.Lead
+recordprop StandDownCopy.Before
+recordprop StandDownCopy.Link
+recordprop StandDownCopy.After
+recordprop ImportCandidate.FailureMessage
+recordprop EngineOption.Display
+recordprop LightCycleStop.Label
 # ---------------------------------------------------------------- watches
 watch TrueforceDialog
 nonsink TrueforceDialog.LogError

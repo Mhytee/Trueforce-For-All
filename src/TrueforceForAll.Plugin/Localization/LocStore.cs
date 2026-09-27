@@ -114,6 +114,18 @@ namespace TrueforceForAll.Plugin.Localization
 
         /// <summary>Keys English defines (embedded "en" plus a root en.json).</summary>
         public int EnglishKeyCount => _english.Count;
+        /// <summary>Every key English defines, ordinally sorted. This is the
+        /// list a translator works down, so it comes from the table the build
+        /// actually shows rather than from a file on disk.</summary>
+        public IReadOnlyList<string> EnglishKeys
+        {
+            get
+            {
+                var list = new List<string>(_english.Keys);
+                list.Sort(StringComparer.Ordinal);
+                return list;
+            }
+        }
 
         /// <summary>When true, text that fell back to English because the
         /// active language lacks the key is wrapped in U+27E6 and U+27E7 so it
@@ -282,6 +294,36 @@ namespace TrueforceForAll.Plugin.Localization
         /// the keys neither the tag's own layers nor any parent's define.
         /// Sorted ordinally. Empty for English itself.</summary>
         public IReadOnlyList<string> MissingKeys(string tag) => Describe(tag).Missing;
+
+        /// <summary>The name a language calls itself, from the _meta.name of its
+        /// highest-precedence layer: a root override first, then the shipped copy,
+        /// then the embedded one. Null when the tag has no layer or its file
+        /// carries no usable _meta. This is what a language picker shows, so it is
+        /// the language's own name and is never itself translated.</summary>
+        public string DisplayName(string tag)
+        {
+            string t = NormalizeTag(tag);
+            if (t == null) return null;
+            string[] sources = { SafeReadFile(RootPath(t)), SafeReadFile(ShippedPath(t)), SafeReadEmbedded(t) };
+            foreach (string json in sources)
+            {
+                if (json == null) continue;
+                try
+                {
+                    string name;
+                    ParseLanguageJson(json, out name, m => { });
+                    if (!string.IsNullOrWhiteSpace(name)) return name;
+                }
+                catch { /* a broken file is reported by the layer reads; not here */ }
+            }
+            return null;
+        }
+
+        private string SafeReadFile(string path)
+        {
+            try { return path != null && File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : null; }
+            catch { return null; }
+        }
 
         /// <summary>Everything the diagnostics print about one language.
         /// Reads the layers fresh; nothing here changes the active table.</summary>
