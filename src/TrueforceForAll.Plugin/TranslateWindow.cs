@@ -114,7 +114,12 @@ namespace TrueforceForAll.Plugin
             _root = store?.LanguagesRoot;
             _log = log ?? (m => { });
 
-            Title = Loc.F("Translate_Title_Fmt", tag);
+            // The code alone tells a translator nothing, so the language's own
+            // name leads and the code follows it.
+            string heading = string.IsNullOrWhiteSpace(languageName) || languageName == tag
+                ? Loc.F("Translate_Title_Fmt", tag)
+                : Loc.F("Translate_TitleNamed_Fmt", languageName, tag);
+            Title = heading;
             Width = 1040;
             Height = 660;
             Background = WindowBg;
@@ -133,7 +138,7 @@ namespace TrueforceForAll.Plugin
             var head = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
             head.Children.Add(new TextBlock
             {
-                Text = Loc.F("Translate_Title_Fmt", tag),
+                Text = heading,
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
             });
             head.Children.Add(new TextBlock
