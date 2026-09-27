@@ -315,8 +315,8 @@ namespace TrueforceForAll.Plugin
                             Interface   = prevIface,
                             Address     = prevAddr,
                             VidPid      = hidVid != 0 ? $"{hidVid:X4}:{hidPid:X4}" : "(unknown)",
-                            Description = "FFB tap was here before the picker opened",
-                            Notes       = "previously active (not in fresh scan)",
+                            Description = Loc.T("UsbPicker_FFBTapWasHere"),
+                            Notes       = Loc.T("UsbPicker_PreviouslyActiveNotFresh"),
                             Candidate   = new UsbDeviceCandidate
                             {
                                 Interface = prevIface,
@@ -376,18 +376,18 @@ namespace TrueforceForAll.Plugin
                                    string prevIface, int prevAddr)
         {
             var notes = new List<string>();
-            if (c.Interface == activeIface && c.DeviceAddress == activeAddr) notes.Add("ACTIVE");
-            else if (c.Interface == prevIface && c.DeviceAddress == prevAddr) notes.Add("previously active");
-            if (c.IsSupportedWheel) notes.Add("supported wheel");
-            else if (c.Vid == WheelDiscovery.LogitechVid) notes.Add("Logitech (unknown PID)");
-            if (hidVid != 0 && c.Vid == hidVid && c.Pid == hidPid) notes.Add("matches HID wheel");
+            if (c.Interface == activeIface && c.DeviceAddress == activeAddr) notes.Add(Loc.T("UsbPicker_ACTIVE"));
+            else if (c.Interface == prevIface && c.DeviceAddress == prevAddr) notes.Add(Loc.T("UsbPicker_PreviouslyActive"));
+            if (c.IsSupportedWheel) notes.Add(Loc.T("UsbPicker_SupportedWheel"));
+            else if (c.Vid == WheelDiscovery.LogitechVid) notes.Add(Loc.T("UsbPicker_LogitechUnknownPID"));
+            if (hidVid != 0 && c.Vid == hidVid && c.Pid == hidPid) notes.Add(Loc.T("UsbPicker_MatchesHIDWheel"));
 
             return new Row
             {
                 Interface   = c.Interface,
                 Address     = c.DeviceAddress,
                 VidPid      = $"{c.Vid:X4}:{c.Pid:X4}",
-                Description = !string.IsNullOrEmpty(c.Model) ? c.Model : "USB device",
+                Description = !string.IsNullOrEmpty(c.Model) ? c.Model : Loc.T("UsbPicker_USBDevice"),
                 Notes       = string.Join(", ", notes),
                 Candidate   = c,
             };

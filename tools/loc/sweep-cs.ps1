@@ -615,6 +615,23 @@ function Get-LocCsHoleSpans([string]$Text, [int]$Start, [int]$End) {
     return ,$out
 }
 
+# A word before a bracket makes it a call, unless the word is one of these: then
+# the bracket groups an expression and the walk has to go into it. Without this,
+# "return (a, \"text\")" reads as a call to something named return.
+$LocCsParenKeywords = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+foreach ($w in @('return', 'throw', 'if', 'while', 'switch', 'case', 'else', 'do',
+                 'for', 'foreach', 'lock', 'using', 'catch', 'when', 'yield', 'in',
+                 'is', 'as', 'await', 'and', 'or', 'not')) { [void]$LocCsParenKeywords.Add($w) }
+
+function Test-LocCsWordBeforeIsKeyword([string]$Text, [int]$At) {
+    # $At is the index of the last non-space character before the bracket.
+    if ($At -lt 0) { return $false }
+    $e = $At
+    while ($e -ge 0 -and $Text[$e] -match '[A-Za-z0-9_]') { $e-- }
+    $word = $Text.Substring($e + 1, $At - $e)
+    return $LocCsParenKeywords.Contains($word)
+}
+
 function Get-LocCsLiteralsIn([string]$Text, [int]$Start, [int]$End, $Maps) {
     # Every string literal in [Start,End) that a user actually reads. Stepped
     # over whole: a call the rules skip (a key, a format specifier), any "new
@@ -663,6 +680,9 @@ function Get-LocCsLiteralsIn([string]$Text, [int]$Start, [int]$End, $Maps) {
             if ($k -ge 0) {
                 $p = $Text[$k]
                 if ($p -match '[A-Za-z0-9_]' -or $p -eq ')' -or $p -eq ']') { $isCall = $true }
+                # ...unless the word is a keyword, in which case the bracket groups
+                # an expression: "return (a, "text")" is not a call.
+                if ($isCall -and ($p -match '[A-Za-z0-9_]') -and (Test-LocCsWordBeforeIsKeyword $Text $k)) { $isCall = $false }
             }
             if ($isCall) { $i = Get-LocCsBalancedEnd $Text $i; continue }
         }

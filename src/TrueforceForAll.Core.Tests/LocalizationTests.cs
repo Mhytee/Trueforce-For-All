@@ -718,6 +718,10 @@ namespace TrueforceForAll.Core.Tests
             // lead fragment ends where its link begins.
             { "SignIn_PrivacyLead", "runs into the Privacy policy hyperlink" },
             { "SignIn_DidntGetIt", "runs into the Resend code link" },
+            // Two optional clauses of the auto-tune summary, appended mid sentence
+            // when they apply, so each opens with its separating space.
+            { "Plugin_Median_Fmt", "an optional clause of the auto-tune summary" },
+            { "Plugin_SOMEVALUESSUSPECTVerify", "an optional clause of the auto-tune summary" },
             // The self-test and probe reports are laid out in columns, and the
             // pack readme's steps are indented under their heading. In both the
             // spacing is the layout, so it is declared rather than folded away.
@@ -990,14 +994,14 @@ namespace TrueforceForAll.Core.Tests
                 failures.Add("cs-ui-sinks.txt: expected 28 prop rules, found " + Inv(rules.PropNames.Count)
                     + ". A property rule decides what counts as a label write: adding or removing one moves every "
                     + "budget number, so update this test in the same commit and say why in the message");
-            if (rules.TextMembers.Count != 41)
-                failures.Add("cs-ui-sinks.txt: expected 41 textmember rules, found " + Inv(rules.TextMembers.Count)
+            if (rules.TextMembers.Count != 44)
+                failures.Add("cs-ui-sinks.txt: expected 44 textmember rules, found " + Inv(rules.TextMembers.Count)
                     + ". Each one says a member returns display text, which is a judgement about that member, so "
                     + "adding or removing one belongs in a commit that says which member and why");
             // Counted by property name, not by line: RecordProps maps a property to
             // the types that declare it, so eleven lines over nine names read as nine.
-            if (rules.RecordProps.Count != 9)
-                failures.Add("cs-ui-sinks.txt: expected 9 recordprop property name(s), found " + Inv(rules.RecordProps.Count)
+            if (rules.RecordProps.Count != 11)
+                failures.Add("cs-ui-sinks.txt: expected 11 recordprop property name(s), found " + Inv(rules.RecordProps.Count)
                     + ". Same reasoning as textmember: the rule names one property of one of our own records");
 
             var found = new Dictionary<string, List<CsFinding>>(StringComparer.Ordinal);
@@ -1648,6 +1652,10 @@ namespace TrueforceForAll.Core.Tests
                     int k = i - 1;
                     while (k >= 0 && char.IsWhiteSpace(s[k])) k--;
                     bool isCall = k >= 0 && (IsIdentifierChar(s[k]) || s[k] == ')' || s[k] == ']');
+                    // ...unless the word before it is a keyword, in which case the
+                    // bracket groups an expression: "return (a, "text")" is not a
+                    // call to something named return.
+                    if (isCall && IsIdentifierChar(s[k]) && CsWordBeforeIsKeyword(s, k)) isCall = false;
                     if (isCall) { i = CsBalancedEnd(s, i); continue; }
                 }
                 i++;
@@ -2778,6 +2786,23 @@ namespace TrueforceForAll.Core.Tests
                 i++;
             }
             return count;
+        }
+
+        // A word before a bracket makes it a call, unless the word is one of these.
+        // Mirrors $LocCsParenKeywords in sweep-cs.ps1.
+        private static readonly HashSet<string> CsParenKeywords = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "return", "throw", "if", "while", "switch", "case", "else", "do",
+            "for", "foreach", "lock", "using", "catch", "when", "yield", "in",
+            "is", "as", "await", "and", "or", "not",
+        };
+
+        private static bool CsWordBeforeIsKeyword(string s, int at)
+        {
+            if (at < 0) return false;
+            int e = at;
+            while (e >= 0 && IsIdentifierChar(s[e])) e--;
+            return CsParenKeywords.Contains(s.Substring(e + 1, at - e));
         }
 
         private static bool IsIdentifierChar(char c)

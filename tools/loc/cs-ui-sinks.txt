@@ -140,6 +140,10 @@ call MakeRow 1
 # log is not counted twice over.
 call AppendLine 0
 call Append 0
+
+# The USB picker's per-row notes, and the auto-tune callback the panel prints.
+call notes.Add 0
+call status 0
 # ---------------------------------------------------------------- indirect sinks
 # A helper that takes text and writes it to a label is a sink at its call site,
 # which is where the literal lives. Without these lines a label routed through a
@@ -290,6 +294,15 @@ recordprop LightCycleStop.Label
 # would ask for a key for "engine" as well as for "Engine pulse". Those tables
 # hold key names instead and resolve through Loc.T where the label is used, which
 # also means a language change reaches them.
+
+# The link clients' result tuples. Both carry a message the Account tab shows
+# exactly as returned, so every literal these members return is display text; the
+# other tuple elements are a config object and a bool.
+textmember GetConfigAsync
+textmember ExchangeAsync
+textmember AuthorizeAsync
+recordprop Row.Description
+recordprop Row.Notes
 # ---------------------------------------------------------------- watches
 watch TrueforceDialog
 nonsink TrueforceDialog.LogError

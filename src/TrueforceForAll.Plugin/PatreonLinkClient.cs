@@ -43,9 +43,9 @@ namespace TrueforceForAll.Plugin
         /// authorize URL.</summary>
         public async Task<(OAuthConfig cfg, string error)> GetConfigAsync(CancellationToken ct)
         {
-            if (!TryResolve(out string baseUrl, out string anonKey)) return (null, "Patreon linking isn't configured.");
+            if (!TryResolve(out string baseUrl, out string anonKey)) return (null, Loc.T("Account_PatreonLinkingIsnT"));
             string bearer = await GetBearerAsync().ConfigureAwait(false);
-            if (string.IsNullOrEmpty(bearer)) return (null, "Sign-in expired; sign in again.");
+            if (string.IsNullOrEmpty(bearer)) return (null, Loc.T("Plugin_SignExpiredSignAgain2"));
             try
             {
                 using (var req = new HttpRequestMessage(HttpMethod.Post,
@@ -60,7 +60,7 @@ namespace TrueforceForAll.Plugin
                         if (!resp.IsSuccessStatusCode)
                         {
                             _log?.Invoke($"[TF4ALL] Patreon config failed: {(int)resp.StatusCode} {Trunc(body)}");
-                            return (null, "Patreon linking isn't set up yet.");
+                            return (null, Loc.T("Plugin_PatreonLinkingIsnT2"));
                         }
                         var o = JObject.Parse(body);
                         var cfg = new OAuthConfig
@@ -76,7 +76,7 @@ namespace TrueforceForAll.Plugin
                             cfg.RedirectUris = list.ToArray();
                         }
                         if (string.IsNullOrEmpty(cfg.ClientId) || cfg.RedirectUris == null || cfg.RedirectUris.Length == 0)
-                            return (null, "Patreon linking isn't set up yet.");
+                            return (null, Loc.T("Plugin_PatreonLinkingIsnT2"));
                         return (cfg, null);
                     }
                 }
@@ -84,7 +84,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 _log?.Invoke($"[TF4ALL] Patreon config exception: {ex.Message}");
-                return (null, "Network error reaching Patreon linking. Try again.");
+                return (null, Loc.T("Account_NetworkErrorReachingPatreon"));
             }
         }
 
@@ -94,9 +94,9 @@ namespace TrueforceForAll.Plugin
             string code, string redirectUri, CancellationToken ct)
         {
             if (!TryResolve(out string baseUrl, out string anonKey))
-                return (false, "Patreon linking isn't configured.", null);
+                return (false, Loc.T("Account_PatreonLinkingIsnT"), null);
             string bearer = await GetBearerAsync().ConfigureAwait(false);
-            if (string.IsNullOrEmpty(bearer)) return (false, "Sign-in expired; sign in again.", null);
+            if (string.IsNullOrEmpty(bearer)) return (false, Loc.T("Plugin_SignExpiredSignAgain2"), null);
             try
             {
                 var payload = new JObject { ["code"] = code, ["redirect_uri"] = redirectUri }.ToString();
@@ -143,7 +143,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 _log?.Invoke($"[TF4ALL] Patreon exchange exception: {ex.Message}");
-                return (false, "Network error linking Patreon.", null);
+                return (false, Loc.T("Account_NetworkErrorLinkingPatreon"), null);
             }
         }
 

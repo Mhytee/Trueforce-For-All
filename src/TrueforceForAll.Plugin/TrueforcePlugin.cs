@@ -39089,7 +39089,7 @@ namespace TrueforceForAll.Plugin
                         // plugin: stream stopped outright, not keepalive.
                         SuspendStreamForNativeTest("DAMPCAL native phase");
                         if (!wheel.StartDamper(DampCalProbePercent))
-                            status("DAMPCAL: the wheel's damper effect could not be started; the native condition will read as friction.");
+                            status(Loc.T("Plugin_DAMPCALWheelSDamper"));
                         break;
                     case CspDamperCalibration.Phase.Friction:
                         wheel.StopDamper();
@@ -40106,19 +40106,15 @@ namespace TrueforceForAll.Plugin
                 SpreadOf(friction, "friction"),
             }.Where(x => x.Length > 0));
 
-            status($"AUTO-TUNE done ({runs.Count} run{(runs.Count == 1 ? "" : "s")}). "
-                 + $"Wheel's stream-vs-native torque ratio ~{fwRatio:F2} "
-                 + $"(an FfbScale of {(double.IsNaN(fwRatio) || fwRatio <= 0 ? double.NaN : 1.0 / fwRatio):F2} would match native exactly, "
-                 + "but changing it rescales these gains by the same amount, so re-run afterwards); "
-                 + $"gains now damper {_damperGain:F2}, spring {_springGain:F2}, friction {_frictionGain:F2}"
-                 + (runs.Count > 1 ? $" (median of {runs.Count}; {spread})" : "")
+            status(Loc.N("Plugin_AutoTuneDone", runs.Count, runs.Count, fwRatio,
+                       double.IsNaN(fwRatio) || fwRatio <= 0 ? double.NaN : 1.0 / fwRatio,
+                       _damperGain, _springGain, _frictionGain)
+                 + (runs.Count > 1 ? Loc.F("Plugin_Median_Fmt", runs.Count, spread) : "")
                  + (double.IsNaN(mD)
-                     ? $"; NOTE: the damper did not measure (drag native "
-                       + $"{MedianOf(runs.Select(r => r.DragNative).ToList()):F2}, engine "
-                       + $"{MedianOf(runs.Select(r => r.DragEngine).ToList()):F2})" : "")
-                 + (signOk ? "; render direction CHECKS OUT (the rendered effects resist motion)" : "")
-                 + (anySuspect ? " (SOME VALUES SUSPECT: verify on the bench before saving)" : "")
-                 + ". Verify by feel, then Save tuning.");
+                     ? Loc.F("Plugin_NOTEDamperDidNot_Fmt", MedianOf(runs.Select(r => r.DragNative).ToList()), MedianOf(runs.Select(r => r.DragEngine).ToList())) : "")
+                 + (signOk ? Loc.T("Plugin_RenderDirectionCHECKSOUT") : "")
+                 + (anySuspect ? Loc.T("Plugin_SOMEVALUESSUSPECTVerify") : "")
+                 + Loc.T("Plugin_AutoTuneVerifyByFeel"));
         }
 
         private void AutoTuneEnterPhase(WheelAutoTuner.PhaseConfig cfg, DirectInputWheel wheel, Action<string> status)
@@ -40157,9 +40153,7 @@ namespace TrueforceForAll.Plugin
                             // sample of the same quantity rather than a step
                             // in a feedback sequence.
                             _autoTuneRunIndex++;
-                            status($"AUTO-TUNE run {_autoTuneRunIndex - 1} of {_autoTuneRunsTotal}: "
-                                 + $"damper {at.DamperGain:F2}, spring {at.SpringGain:F2}, friction {at.FrictionGain:F2}. "
-                                 + $"Starting run {_autoTuneRunIndex}; hands OFF.");
+                            status(Loc.F("Plugin_AUTOTUNERunDamper_Fmt", _autoTuneRunIndex - 1, _autoTuneRunsTotal, at.DamperGain, at.SpringGain, at.FrictionGain, _autoTuneRunIndex));
                             _autoTuner = NewAutoTuner(wheel, status);
                             break;
                         }

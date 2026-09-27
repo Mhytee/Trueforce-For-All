@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -46,9 +47,9 @@ namespace TrueforceForAll.Plugin
         /// genuinely-not-configured).</summary>
         public async Task<(OAuthConfig cfg, string error)> GetConfigAsync(CancellationToken ct)
         {
-            if (!TryResolve(out string baseUrl, out string anonKey)) return (null, "Discord linking isn't configured.");
+            if (!TryResolve(out string baseUrl, out string anonKey)) return (null, Loc.T("Account_DiscordLinkingIsnT"));
             string bearer = await GetBearerAsync().ConfigureAwait(false);
-            if (string.IsNullOrEmpty(bearer)) return (null, "Sign-in expired; sign in again.");
+            if (string.IsNullOrEmpty(bearer)) return (null, Loc.T("Plugin_SignExpiredSignAgain2"));
             try
             {
                 using (var req = new HttpRequestMessage(HttpMethod.Post,
@@ -63,7 +64,7 @@ namespace TrueforceForAll.Plugin
                         if (!resp.IsSuccessStatusCode)
                         {
                             _log?.Invoke($"[TF4ALL] Discord config failed: {(int)resp.StatusCode} {Trunc(body)}");
-                            return (null, "Discord linking isn't set up yet.");
+                            return (null, Loc.T("Plugin_DiscordLinkingIsnT2"));
                         }
                         var o = JObject.Parse(body);
                         var cfg = new OAuthConfig
@@ -79,7 +80,7 @@ namespace TrueforceForAll.Plugin
                             cfg.RedirectUris = list.ToArray();
                         }
                         if (string.IsNullOrEmpty(cfg.ClientId) || cfg.RedirectUris == null || cfg.RedirectUris.Length == 0)
-                            return (null, "Discord linking isn't set up yet.");
+                            return (null, Loc.T("Plugin_DiscordLinkingIsnT2"));
                         return (cfg, null);
                     }
                 }
@@ -87,7 +88,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 _log?.Invoke($"[TF4ALL] Discord config exception: {ex.Message}");
-                return (null, "Network error reaching Discord linking. Try again.");
+                return (null, Loc.T("Account_NetworkErrorReachingDiscord"));
             }
         }
 
@@ -97,9 +98,9 @@ namespace TrueforceForAll.Plugin
             string code, string redirectUri, CancellationToken ct)
         {
             if (!TryResolve(out string baseUrl, out string anonKey))
-                return (false, "Discord linking isn't configured.", null);
+                return (false, Loc.T("Account_DiscordLinkingIsnT"), null);
             string bearer = await GetBearerAsync().ConfigureAwait(false);
-            if (string.IsNullOrEmpty(bearer)) return (false, "Sign-in expired; sign in again.", null);
+            if (string.IsNullOrEmpty(bearer)) return (false, Loc.T("Plugin_SignExpiredSignAgain2"), null);
             try
             {
                 var payload = new JObject { ["code"] = code, ["redirect_uri"] = redirectUri }.ToString();
@@ -117,7 +118,7 @@ namespace TrueforceForAll.Plugin
                             string username = null, join = null;
                             try { var o = JObject.Parse(body); username = (string)o["discord_username"]; join = (string)o["join"]; } catch { }
                             string who = string.IsNullOrEmpty(username) ? "Discord linked" : "Linked as " + username;
-                            return (true, join == "joined" ? who + " and added to the Trueforce For All Discord." : who + ".", username);
+                            return (true, join == "joined" ? Loc.F("Account_AddedTrueforceAllDiscord_Fmt", who) : who + ".", username);
                         }
                         string err = null;
                         try { err = (string)JObject.Parse(body)["error"]; } catch { }
@@ -133,7 +134,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 _log?.Invoke($"[TF4ALL] Discord exchange exception: {ex.Message}");
-                return (false, "Network error linking Discord.", null);
+                return (false, Loc.T("Account_NetworkErrorLinkingDiscord"), null);
             }
         }
 
