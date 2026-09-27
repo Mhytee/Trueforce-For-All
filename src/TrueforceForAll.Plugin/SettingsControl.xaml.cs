@@ -6155,24 +6155,17 @@ namespace TrueforceForAll.Plugin
             // told everything was fine (issue #44). The driver half gets its own
             // wording because its fix is different: reinstall, then reboot.
             sb.AppendLine(usbpcap
-                ? "[OK]   USBPcap installed"
+                ? Loc.T("Settings_OKUSBPcapInstalled")
                 : !usbpcapExe
-                    ? "[FAIL] USBPcap is not installed (FFB pass-through off; use Reinstall below)"
-                    : "[FAIL] USBPcap is installed but its capture driver is not loaded, so nothing can be "
-                        + "captured (FFB pass-through off). Use Reinstall below, then RESTART THE COMPUTER: "
-                        + "the driver only attaches to the USB ports at boot. If it still fails after a "
-                        + "restart, check for a BIOS update from your PC or motherboard maker: out-of-date "
-                        + "Secure Boot keys are the usual reason Windows refuses to load the driver, and "
-                        + "updating the BIOS refreshes them.");
+                    ? Loc.T("Settings_FAILUSBPcapNotInstalled")
+                    : Loc.T("Settings_FAILUSBPcapInstalledBut"));
             sb.AppendLine(elevated
-                ? "[OK]   SimHub running as administrator"
-                : "[FAIL] SimHub is NOT running as administrator. Required for reliable force feedback. "
-                    + "Easiest fix: enable 'Run as administrator' in SimHub's Settings, then restart SimHub.");
-            sb.AppendLine((ghub ? "[FAIL] " : "[OK]   ")
-                + (ghub ? "Logitech G HUB is running. Close it; it blocks the wheel."
-                        : "Logitech G HUB not running"));
-            sb.AppendLine((wheelOk ? "[OK]   " : "[FAIL] ") + "Wheel: "
-                + (string.IsNullOrEmpty(wheel) ? "(unknown)" : wheel));
+                ? Loc.T("Settings_OKSimHubRunningAs")
+                : Loc.T("Settings_FAILSimHubNOTRunning"));
+            sb.AppendLine((ghub ? Loc.T("Plugin_FAIL") : Loc.T("Plugin_OK"))
+                + (ghub ? Loc.T("Settings_LogitechGHUBRunning")
+                        : Loc.T("Settings_LogitechGHUBNot")));
+            sb.AppendLine((wheelOk ? Loc.T("Plugin_OK") : Loc.T("Plugin_FAIL")) + Loc.F("Settings_SelfTestWheel_Fmt", (string.IsNullOrEmpty(wheel) ? Loc.T("Settings_Unknown") : wheel)));
             if (!wheelOk)
             {
                 // Wheel not opened: distinguish three causes so the hint is
@@ -6190,27 +6183,20 @@ namespace TrueforceForAll.Plugin
                 if (noEndpoint != null && noEndpoint.Count > 0)
                 {
                     var w = noEndpoint[0];
-                    sb.AppendLine($"       Wheel recognized ({w.Model}) but its Trueforce/haptic USB "
-                        + "interface isn't available.");
-                    sb.AppendLine("       Fix: open G HUB once and let it finish detecting the wheel (this loads "
-                        + "the wheel's full interface set), then close G HUB and restart SimHub. If it "
-                        + "persists, reboot.");
+                    sb.AppendLine(Loc.F("Settings_WheelRecognizedButTrueforce_Fmt", w.Model));
+                    sb.AppendLine(Loc.T("Settings_FixOpenGHUB"));
                 }
                 else if (consoleish != null && consoleish.Count > 0)
                 {
                     var w0 = consoleish[0];
-                    sb.AppendLine($"       Found a Logitech wheel in an unsupported mode: {w0.Name} "
-                        + $"(PID 0x{w0.Pid:X4}). Open G HUB once and let it detect the wheel, then close "
-                        + "G HUB and restart SimHub.");
+                    sb.AppendLine(Loc.F("Settings_FoundLogitechWheelUnsupported_Fmt", w0.Name, w0.Pid));
                 }
                 else
                 {
-                    sb.AppendLine("       If your wheel is plugged in, open G HUB once and let it detect the "
-                        + "wheel, then close G HUB and restart SimHub (G HUB must stay closed while this plugin runs).");
+                    sb.AppendLine(Loc.T("Settings_IfWheelPluggedOpen"));
                 }
             }
-            sb.AppendLine((streamOk ? "[OK]   " : "[FAIL] ") + "Stream: "
-                + (string.IsNullOrEmpty(stream) ? "(unknown)" : stream));
+            sb.AppendLine((streamOk ? Loc.T("Plugin_OK") : Loc.T("Plugin_FAIL")) + Loc.F("Settings_SelfTestStream_Fmt", (string.IsNullOrEmpty(stream) ? Loc.T("Settings_Unknown") : stream)));
             // Tap "started" only proves the USBPcap process is up; tapLive
             // proves a game FFB target was actually decoded off the bus in
             // the last 750 ms, the real liveness signal.
@@ -6223,10 +6209,9 @@ namespace TrueforceForAll.Plugin
             const string FfbLiveWatchSentinel = "@@FFB_LIVE_WATCH@@";
             bool ffbLiveWatch = false;
             if (tapLive)
-                sb.AppendLine("[OK]   FFB pass-through: live (game forces seen on the bus)");
+                sb.AppendLine(Loc.T("Settings_OKFFBPassThrough"));
             else if (tapStarted && !gameRun)
-                sb.AppendLine("[skip] FFB pass-through: tap running. Start a session, then re-run this "
-                    + "test while turning the wheel / driving so it can catch the game's forces.");
+                sb.AppendLine(Loc.T("Settings_SkipFFBPassThrough"));
             else if (tapStarted)
             {
                 // A game is running but no force in the last 750 ms (menu, or
@@ -6244,30 +6229,29 @@ namespace TrueforceForAll.Plugin
                 // USB controller/port USBPcap doesn't cover, or USBPcap's
                 // driver hasn't attached since install. FFB pass-through stays
                 // dead until the bus is visible to the capture driver.
-                sb.AppendLine("[FAIL] FFB pass-through: Windows sees your wheel but USBPcap can't capture it on the USB bus.");
-                sb.AppendLine("       Likely the wheel is on a USB port/controller USBPcap doesn't cover, or the PC hasn't been rebooted since USBPcap was installed.");
+                sb.AppendLine(Loc.T("Settings_FAILFFBPassThrough"));
+                sb.AppendLine(Loc.T("Settings_LikelyWheelUSBPort"));
                 // No "Pick device manually" here. That control ships Collapsed and
                 // only appears after the MANUALPIN access code, which is not
                 // documented anywhere a user in this state would find it, so the
                 // instruction named a button that is on nobody's screen. The three
                 // remaining steps are the ones that actually fix this.
-                sb.AppendLine("       Try, in order: reboot (if USBPcap was just installed); move the wheel to a different USB port (rear motherboard ports work best, avoid front-panel ports and hubs); run SimHub as administrator.");
+                sb.AppendLine(Loc.T("Settings_TryOrderRebootIf"));
             }
             else
-                sb.AppendLine("[skip] FFB pass-through: " + (string.IsNullOrEmpty(tap) ? "(not started)" : tap));
+                sb.AppendLine(Loc.F("Settings_SelfTestFfbPassThrough_Fmt", (string.IsNullOrEmpty(tap) ? Loc.T("Plugin_NotStarted") : tap)));
             if (!gameRun && _plugin.IsKnownGameProcessRunning(out string pausedGame))
-                sb.AppendLine($"[skip] Telemetry: '{pausedGame}' is running but paused or in a menu (telemetry resumes on track)");
+                sb.AppendLine(Loc.F("Settings_SkipTelemetryRunningBut_Fmt", pausedGame));
             else if (!gameRun)
-                sb.AppendLine("[skip] Telemetry: no game running (start a game, load a session)");
+                sb.AppendLine(Loc.T("Settings_SkipTelemetryNoGame"));
             else
-                sb.AppendLine((hz > 0 ? "[OK]   " : "[skip] ") + "Telemetry: "
-                    + (src?.Name ?? "?") + (hz > 0 ? $" ({hz:0} Hz)" : " (idle; in a menu or paused?)"));
+                sb.AppendLine((hz > 0 ? Loc.T("Plugin_OK") : Loc.T("Settings_Skip")) + Loc.F("Settings_SelfTestTelemetry_Fmt", (src?.Name ?? "?"), (hz > 0 ? Loc.F("Settings_Hz_Fmt3", hz) : Loc.T("Settings_IdleMenuPaused"))));
 
             string diag = _plugin.WheelQuietDiagnostic;
             sb.AppendLine();
             sb.AppendLine(string.IsNullOrEmpty(diag)
-                ? "Overall: healthy."
-                : "Most-blocking issue: " + diag);
+                ? Loc.T("Settings_OverallHealthy")
+                : Loc.F("Settings_MostBlockingIssue_Fmt", diag));
 
             sb.AppendLine();
             string checklist = sb.ToString();
@@ -9164,8 +9148,8 @@ namespace TrueforceForAll.Plugin
         // dropdown. Keep it the same LENGTH as that table: a screen missing
         // here shows as "Tab 6" in the editor, and worse, reads as an invalid
         // default and gets quietly reset the next time the editor rebuilds.
-        private static readonly string[] RemoteDashTabNames =
-            { Loc.T("Settings_Gains"), Loc.T("Settings_CarFacts"), Loc.T("Effects_Effects"), Loc.T("Presets_PresetsTab_Header"), Loc.T("Settings_Visualizer"), Loc.T("Settings_TeleFFB"), Loc.T("Settings_Drive") };
+        private static string[] RemoteDashTabNames =>
+            new[]{ Loc.T("Settings_Gains"), Loc.T("Settings_CarFacts"), Loc.T("Effects_Effects"), Loc.T("Presets_PresetsTab_Header"), Loc.T("Settings_Visualizer"), Loc.T("Settings_TeleFFB"), Loc.T("Settings_Drive") };
 
         private static string RemoteDashTabName(int tab) =>
             tab >= 0 && tab < RemoteDashTabNames.Length ? RemoteDashTabNames[tab] : "Tab " + tab;
@@ -9339,18 +9323,19 @@ namespace TrueforceForAll.Plugin
         // Style and color are fixed lists rather than free text: both feed a
         // dash formula, and a typo there fails silently as a blank card.
         private static readonly string[] IdleStyleKeys   = { "Pipes", "Fractal", "Topo", "Caustics", "Bubbles", "Ribbon", "Wave", "Pulse", "Aurora", "Streaks", "Plain" };
-        private static readonly string[] IdleStyleLabels = { Loc.T("Settings_Pipes"), Loc.T("Settings_FractalZoom"), Loc.T("Settings_Contours"), Loc.T("Settings_Caustics"), Loc.T("Settings_Bubbles"), Loc.T("Settings_Ribbon"), Loc.T("Settings_Wave"), Loc.T("Settings_Pulse"), Loc.T("Settings_Aurora"), Loc.T("Settings_Streaks"), Loc.T("TelemetryFfb_IRacingForceModePlain") };
+        private static string[] IdleStyleLabels =>
+            new[]{ Loc.T("Settings_Pipes"), Loc.T("Settings_FractalZoom"), Loc.T("Settings_Contours"), Loc.T("Settings_Caustics"), Loc.T("Settings_Bubbles"), Loc.T("Settings_Ribbon"), Loc.T("Settings_Wave"), Loc.T("Settings_Pulse"), Loc.T("Settings_Aurora"), Loc.T("Settings_Streaks"), Loc.T("TelemetryFfb_IRacingForceModePlain") };
         // Families that ship broadly enough to be there on a phone, a tablet
         // and a PC alike. Empty is the dashboard's own font.
         private static readonly string[] IdleFontValues =
             { "", "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet MS" };
-        private static readonly string[] IdleFontLabels =
-            { Loc.T("PresetManager_CarListDefault_Header"), "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet" };
+        private static string[] IdleFontLabels =>
+            new[]{ Loc.T("PresetManager_CarListDefault_Header"), "Segoe UI", "Arial", "Impact", "Consolas", "Georgia", "Trebuchet" };
 
         private static readonly string[] IdleColorHex =
             { "#FFF2F4F8", "#FFE8C547", "#FF37D67A", "#FF4FA3F7", "#FFE5484D", "#FFC77DF5" };
-        private static readonly string[] IdleColorNames =
-            { Loc.T("Settings_White"), Loc.T("Settings_Gold"), Loc.T("Settings_Green"), Loc.T("Settings_Blue"), Loc.T("Settings_Red"), Loc.T("Settings_Violet") };
+        private static string[] IdleColorNames =>
+            new[]{ Loc.T("Settings_White"), Loc.T("Settings_Gold"), Loc.T("Settings_Green"), Loc.T("Settings_Blue"), Loc.T("Settings_Red"), Loc.T("Settings_Violet") };
 
         private void RemoteDashIdle_Changed(object sender, RoutedEventArgs e)
         {
@@ -14407,10 +14392,10 @@ namespace TrueforceForAll.Plugin
         // Index = AmbientLedMode value, so a combo's SelectedIndex IS the enum.
         // The picker is deliberately the same three items on both rows: one
         // vocabulary means one sentence of help and one thing to learn.
-        private static readonly string[] AmbientLedModeLabels =
-        {
-            Loc.T("Header_MasterModeOff"), Loc.T("Settings_Sweep"), Loc.T("Settings_AudioLevel"),
-        };
+        private static string[] AmbientLedModeLabels =>
+            new[]{
+                Loc.T("Header_MasterModeOff"), Loc.T("Settings_Sweep"), Loc.T("Settings_AudioLevel"),
+            };
 
         private void FillAmbientLedCombos()
         {
@@ -14531,14 +14516,14 @@ namespace TrueforceForAll.Plugin
         // (1=inside-out, 2=outside-in, 3=L->R, 4=R->L); effect 2 =
         // outside-in is confirmed on hardware and matches that table, the
         // other three are eyeball-checkable in seconds via the pick preview.
-        private static readonly string[] RevLightEffectLabels =
-        {
-            Loc.T("Settings_Unused"),
-            Loc.T("Settings_InsideOutBuilt1"), Loc.T("Settings_OutsideBuilt2"),
-            Loc.T("Settings_LeftRightBuilt3"), Loc.T("Settings_RightLeftBuilt4"),
-            Loc.T("Settings_CustomSlot1"), Loc.T("Settings_CustomSlot2"), Loc.T("Settings_CustomSlot3"),
-            Loc.T("Settings_CustomSlot4"), Loc.T("Settings_CustomSlot5"),
-        };
+        private static string[] RevLightEffectLabels =>
+            new[]{
+                Loc.T("Settings_Unused"),
+                Loc.T("Settings_InsideOutBuilt1"), Loc.T("Settings_OutsideBuilt2"),
+                Loc.T("Settings_LeftRightBuilt3"), Loc.T("Settings_RightLeftBuilt4"),
+                Loc.T("Settings_CustomSlot1"), Loc.T("Settings_CustomSlot2"), Loc.T("Settings_CustomSlot3"),
+                Loc.T("Settings_CustomSlot4"), Loc.T("Settings_CustomSlot5"),
+            };
 
         // Fill a pattern combo with effects 1-9 (Tag = effect number).
         /// <summary>Build the pattern picker.
@@ -14862,7 +14847,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin?.Settings?.LightsyncTabUnlocked != true) return "locked";
 
             var sb = new System.Text.StringBuilder();
-            sb.Append(_plugin.AutoCarColorsAvailable() ? "auto|" : "noauto|");
+            sb.Append(_plugin.AutoCarColorsAvailable() ? Loc.T("Settings_Auto") : Loc.T("Settings_Noauto"));
             var lib = _plugin.LightPatterns;
             if (lib?.Patterns != null)
             {
@@ -17034,12 +17019,13 @@ namespace TrueforceForAll.Plugin
 
             var msg = new System.Text.StringBuilder();
             msg.Append(counts.Count == 0
-                ? "Nothing imported."
-                : "Imported " + string.Join(", ", counts) + $" from {paths.Length} file(s).");
-            if (filesSkipped > 0) msg.Append($"\n{filesSkipped} file(s) skipped.");
+                ? Loc.T("Settings_NothingImported")
+                : Loc.F("Settings_ImportedFileS_Fmt", string.Join(", ", counts), paths.Length));
+            if (filesSkipped > 0)
+                msg.Append("\n").Append(Loc.N("Settings_FilesSkipped", filesSkipped, filesSkipped));
             if (failures.Count > 0)
             {
-                msg.Append($"\n\n{failures.Count} file(s) failed:");
+                msg.Append("\n\n").Append(Loc.N("Settings_FilesFailed", failures.Count, failures.Count));
                 foreach (var f in failures) msg.Append("\n  ").Append(f);
             }
 

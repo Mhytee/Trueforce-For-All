@@ -92,8 +92,12 @@ namespace TrueforceForAll.Core.Tests
         // itself builds one, stays dynamic and is not matched.
         private static readonly Regex BindingRegex = new Regex(@"\bnew\s+Binding\(\s*""\[([A-Za-z][A-Za-z0-9_.]*)\]""\s*\)");
 
-        // Keys looked up by a runtime identifier, never by a literal.
-        private static readonly Regex DynamicFamily = new Regex(@"^(Effect_.+_Name|EngineLayout_.+)$");
+        // Keys looked up by a runtime identifier, never by a literal. The last
+        // three families are tables that pair an id with a key name, because the
+        // sweep cannot tell an id from a label inside one initializer: the effect
+        // tag labels, the report categories and the pattern directions.
+        private static readonly Regex DynamicFamily = new Regex(
+            @"^(Effect_.+_Name|EngineLayout_.+|EffectTag_.+|Report_Category.+|PatternEditor_Dir.+)$");
 
         // ------------------------------------------------------------------
         // 1. The store: layers, parents, fallback marking, missing keys.
@@ -613,7 +617,8 @@ namespace TrueforceForAll.Core.Tests
                 if (referenced.Contains(k) || DynamicFamily.IsMatch(k)) continue;
                 failures.Add("en.json: '" + k + "' is referenced by no {loc:T} in XAML, no Loc.T/F/N literal "
                     + "in C# and no new Binding(\"[key]\") to the store "
-                    + "(only Effect_*_Name and EngineLayout_* are looked up dynamically)");
+                    + "(Effect_*_Name, EngineLayout_*, EffectTag_*, Report_Category* and PatternEditor_Dir* "
+                    + "are looked up dynamically)");
             }
             AssertNoFailures(failures);
         }
@@ -713,6 +718,35 @@ namespace TrueforceForAll.Core.Tests
             // lead fragment ends where its link begins.
             { "SignIn_PrivacyLead", "runs into the Privacy policy hyperlink" },
             { "SignIn_DidntGetIt", "runs into the Resend code link" },
+            // The self-test and probe reports are laid out in columns, and the
+            // pack readme's steps are indented under their heading. In both the
+            // spacing is the layout, so it is declared rather than folded away.
+            { "Plugin_OK", "the self-test report's status column" },
+            { "Plugin_FAIL", "the self-test report's status column" },
+            { "Settings_Skip", "the self-test report's status column" },
+            { "Plugin_FFBTap_Fmt", "a probe report row, indented to its column" },
+            { "Plugin_Wheel_Fmt", "a probe report row, indented to its column" },
+            { "Plugin_PlugGPRORS50", "an indented advice line under a probe row" },
+            { "Settings_FixOpenGHUB", "an indented advice line under a self-test row" },
+            { "Settings_IfWheelPluggedOpen", "an indented advice line under a self-test row" },
+            { "Settings_LikelyWheelUSBPort", "an indented advice line under a self-test row" },
+            { "Settings_TryOrderRebootIf", "an indented advice line under a self-test row" },
+            { "Settings_FoundLogitechWheelUnsupported_Fmt", "an indented advice line under a self-test row" },
+            { "Settings_WheelRecognizedButTrueforce_Fmt", "an indented advice line under a self-test row" },
+            { "Plugin_N1OpenSimHub", "a numbered step in the pack readme, indented" },
+            { "Plugin_N2LeftSidebarTrueforce", "a numbered step in the pack readme, indented" },
+            { "Plugin_N3ClickPresetsTab", "a numbered step in the pack readme, indented" },
+            { "Plugin_N4ClickImportTop", "a numbered step in the pack readme, indented" },
+            { "Plugin_N5PickTfpackFile", "a numbered step in the pack readme, indented" },
+            { "PresetManager_GamePresets_Fmt", "an indented count in the community details body" },
+            { "PresetManager_CarPresets_Fmt", "an indented count in the community details body" },
+            { "PresetManager_CustomEngines_Fmt", "an indented count in the community details body" },
+            { "Plugin_ExePid", "runs into the process id in the G HUB advice" },
+            { "Plugin_MI02", "a mode tag appended to a wheel name" },
+            { "Plugin_RPM", "a unit appended to a number" },
+            { "Plugin_Redline", "a word appended to a redline value" },
+            { "Settings_Hz_Fmt3", "a rate appended to a telemetry source name" },
+            { "Settings_IdleMenuPaused", "appended to a telemetry rate that has stopped" },
             { "Plugin_IracingNoticeStartWithPattern", "a paragraph of the iRacing notice, ends its blank line" },
             { "Plugin_IracingNoticeStart", "a paragraph of the iRacing notice, ends its blank line" },
             // Every one of these is a fragment of a paragraph that is built in
@@ -928,18 +962,32 @@ namespace TrueforceForAll.Core.Tests
             // still pass because both read the weakened files. Changing any of
             // these counts means editing this test in the same commit, which is
             // what puts it in front of a reviewer.
-            if (allow.Files.Count != 2
-                || !allow.Files.Contains("src/TrueforceForAll.Plugin/SettingsControl.DevCodes.cs")
-                || !allow.Files.Contains("src/TrueforceForAll.Plugin/TestCodesWindow.cs"))
-                failures.Add("cs-keep-literal.txt: the whole-file exemptions must be exactly the two the plan's "
-                    + "Phase 2 exit criterion names, DevCodes.cs and TestCodesWindow.cs; a third one hides a "
-                    + "file's labels with no warning");
-            // prop went from 7 to 18 when the sweep learned about display text that
+            // Five files, and each one has to be named here as well as in the
+            // allowlist: an exemption hides every label in a file, so it is the one
+            // thing in this system that can make the count look finished without
+            // routing anything. The two developer-tooling files are the plan's own
+            // exit criterion; the three builders were added when AppendLine became
+            // a sink, and each writes a log line, a report or a CSV rather than
+            // anything in the panel.
+            var expectedFiles = new[]
+            {
+                "src/TrueforceForAll.Plugin/SettingsControl.DevCodes.cs",
+                "src/TrueforceForAll.Plugin/TestCodesWindow.cs",
+                "src/TrueforceForAll.Plugin/Localization/LocDiagnostics.cs",
+                "src/TrueforceForAll.Plugin/ArcadeLeaderboardService.cs",
+                "src/TrueforceForAll.Plugin/FfbTrace.cs",
+            };
+            if (allow.Files.Count != expectedFiles.Length
+                || expectedFiles.Any(f => !allow.Files.Contains(f)))
+                failures.Add("cs-keep-literal.txt: the whole-file exemptions must be exactly the five listed in "
+                    + "LocCsLiteralBudget, two developer-tooling files and three builders that write a log line, "
+                    + "a report or a CSV; another one hides a file's labels with no warning");
+            // prop went from 7 to 28 when the sweep learned about display text that
             // never touches a control directly: a sentence assigned to a local or a
             // controller field and only shown later. textmember and recordprop grew
             // for the same reason, so all three are pinned now rather than one.
-            if (rules.PropNames.Count != 18)
-                failures.Add("cs-ui-sinks.txt: expected 18 prop rules, found " + Inv(rules.PropNames.Count)
+            if (rules.PropNames.Count != 28)
+                failures.Add("cs-ui-sinks.txt: expected 28 prop rules, found " + Inv(rules.PropNames.Count)
                     + ". A property rule decides what counts as a label write: adding or removing one moves every "
                     + "budget number, so update this test in the same commit and say why in the message");
             if (rules.TextMembers.Count != 41)
@@ -1098,6 +1146,12 @@ namespace TrueforceForAll.Core.Tests
                         break;
                     case "call":
                     {
+                        // Two rules for one name is how the walkers came to disagree
+                        // about BuildModCard: this reader keeps a list and applied
+                        // both, the PowerShell one keys by name and kept the last.
+                        if (rules.Calls.Any(c => c.Name == name))
+                            throw new InvalidOperationException(where + " has a second call rule for [" + name
+                                + "]; merge the argument lists, because the two readers keep different ones");
                         // A dotted name is matched as written; a one-part name
                         // matches the method on any receiver, so the lookbehind
                         // lets a dot through.
@@ -1613,7 +1667,9 @@ namespace TrueforceForAll.Core.Tests
             {
                 string esc = Regex.Escape(nm);
                 var re = kind == "labels"
-                    ? new Regex(@"(?<![A-Za-z0-9_.])" + esc + @"\s*=\s*(?:new\b[^={;]*)?\{")
+                    // "Name = { ... }", "Name = new X { ... }" and the property form
+                    // a label table has to use to resolve live, "Name => new[] { ... }".
+                    ? new Regex(@"(?<![A-Za-z0-9_.])" + esc + @"\s*=>?\s*(?:new\b[^={;]*)?\{")
                     : new Regex(@"(?<![A-Za-z0-9_.])" + esc + @"\s*(?:\([^()]*\))?\s*(?:=>|\{)");
                 foreach (Match m in re.Matches(s))
                 {

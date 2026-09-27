@@ -537,13 +537,13 @@ namespace TrueforceForAll.Plugin
                 bool found = t.GameFound;
                 bool inst = found && t.Installed;
                 string status = !found
-                    ? "Game not installed on this PC."
+                    ? Loc.T("Guides_GameNotInstalledPC")
                     : t.Installed
-                        ? "Installed. Tick it in the game's mod list when you load your save."
-                        : "Not installed.";
+                        ? Loc.T("Guides_InstalledTickGameS")
+                        : Loc.T("Guides_NotInstalled");
                 Add(inst, found, BuildModCard(
                     t.DisplayName,
-                    "Enhanced telemetry: ground texture through the wheel, the implement thud, and the vibration cut while your wheels are off the ground.",
+                    Loc.T("Guides_EnhancedTelemetryGroundTexture"),
                     "v" + _plugin.FsModVersionString,
                     found, t.Installed, status,
                     found ? (Action)(() => InstallFsModFor(target)) : null,
@@ -571,8 +571,7 @@ namespace TrueforceForAll.Plugin
                                 : "Not installed.";
                 Add(arcIn, ready, BuildModCard(
                     a.DisplayName,
-                    "Brings the cabinet's own force feedback through the plugin, so you feel the real "
-                    + "arcade forces as Trueforce and the wheel's lights and screen stay free.",
+                    Loc.T("Guides_BringsCabinetSOwn"),
                     "v" + _plugin.ArcadeModVersionString,
                     ready, a.Installed, arcStatus,
                     ready ? (Action)(() => InstallArcadeModFor(target)) : null,
@@ -590,7 +589,7 @@ namespace TrueforceForAll.Plugin
                     : "Not installed.";
             Add(acIn, avail, BuildModCard(
                 Loc.T("Guides_AssettoCorsaTF4ALLCSP"),
-                "Requires Custom Shaders Patch. Unlocks the wheel's Dynamic OLED display and keeps LIGHTSYNC pattern changes from cutting the force feedback.",
+                Loc.T("Guides_RequiresCustomShadersPatch"),
                 "v" + _plugin.AcCspBridgeVersionString,
                 avail, acIn, acStatus,
                 avail ? (Action)(() => InstallAcCspRow()) : null,

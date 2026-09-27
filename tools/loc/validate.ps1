@@ -176,7 +176,12 @@ $unreferenced = 0
 foreach ($k in $en.Keys) {
     if ($k -eq '_meta') { continue }
     if ($referenced.Contains($k)) { continue }
-    if ($k -match '^Effect_.+_Name$' -or $k -match '^EngineLayout_') { continue }
+    # Looked up by a runtime id, never by a literal: the effect names and engine
+    # layouts, plus three tables that pair an id with a key name because the sweep
+    # cannot tell an id from a label inside one initializer.
+    if ($k -match '^Effect_.+_Name$' -or $k -match '^EngineLayout_'
+        -or $k -match '^EffectTag_' -or $k -match '^Report_Category'
+        -or $k -match '^PatternEditor_Dir') { continue }
     $unreferenced++
     $fails.Add("en.json: '$k' is referenced by no XAML, no Loc.T/F/N call and no store binding")
 }

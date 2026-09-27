@@ -25,20 +25,20 @@ namespace TrueforceForAll.Plugin
         // Section tag → display label (matches the upload effect_tags whitelist).
         private static readonly (string tag, string label)[] AllSections = new (string, string)[]
         {
-            ("engine",       "Engine pulse"),
-            ("revlimiter",   "Redline buzz"),
-            ("roadbumps",    "Road bumps"),
-            ("tractionloss", "Traction loss"),
-            ("axleslip",     "Axle slip"),
-            ("kerbthump",    "Curb thump"),
-            ("lockupjudder", "Lockup judder"),
-            ("gearshift",    "Gear shift"),
-            ("abs",          "ABS click"),
-            ("pitlimiter",   "Pit limiter"),
-            ("drs",          "DRS"),
-            ("collision",    "Collision"),
-            ("audio",        "Audio rumble"),
-            ("airborne",     "Airborne ducking"),
+            ("engine",       "EffectTag_EnginePulse"),
+            ("revlimiter",   "EffectTag_RedlineBuzz"),
+            ("roadbumps",    "EffectTag_RoadBumps"),
+            ("tractionloss", "EffectTag_TractionLoss"),
+            ("axleslip",     "EffectTag_AxleSlip"),
+            ("kerbthump",    "EffectTag_CurbThump"),
+            ("lockupjudder", "EffectTag_LockupJudder"),
+            ("gearshift",    "EffectTag_GearShift"),
+            ("abs",          "EffectTag_AbsClick"),
+            ("pitlimiter",   "EffectTag_PitLimiter"),
+            ("drs",          "EffectTag_Drs"),
+            ("collision",    "EffectTag_Collision"),
+            ("audio",        "EffectTag_AudioRumble"),
+            ("airborne",     "EffectTag_AirborneDucking"),
         };
 
         public HashSet<string> ChosenSections { get; private set; } = new HashSet<string>();
@@ -84,7 +84,8 @@ namespace TrueforceForAll.Plugin
             {
                 if (!IsSectionPresent(ovr, tag)) continue;
                 var cb = new CheckBox {
-                    Content = label, IsChecked = true,
+                    // The table holds a key name, so the label resolves here.
+                    Content = Loc.T(label), IsChecked = true,
                     Foreground = TextFg, Margin = new Thickness(0, 0, 0, 4),
                     Tag = tag,
                 };

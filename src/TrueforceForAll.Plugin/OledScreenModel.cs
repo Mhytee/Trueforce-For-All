@@ -109,22 +109,22 @@ namespace TrueforceForAll.Plugin
             OledScreen.Custom,
             OledScreen.None,
         };
-        public static readonly string[] ScreenOrderLabels =
-        {
-            Loc.T("Oled_SpeedOverGearLabelled"),
-            Loc.T("Oled_GearOverSpeedLabelled"),
-            Loc.T("Oled_SpeedOverGear"),
-            Loc.T("Oled_GearOverSpeed"),
-            Loc.T("Oled_SpeedOnly"),
-            Loc.T("Oled_GearOnly"),
-            Loc.T("TelemetryFfb_OledFlashStyleBigGearSpeedBeside"),
-            Loc.T("Oled_BigSpeedGearBeside"),
-            Loc.T("Oled_SpeedLapDelta"),
-            Loc.T("Oled_GearLapDelta"),
-            Loc.T("Oled_SpeedGearLapDelta"),
-            Loc.T("Oled_BuildMyOwn"),
-            Loc.T("Oled_NothingWheelSOwn"),
-        };
+        public static string[] ScreenOrderLabels =>
+            new[]{
+                Loc.T("Oled_SpeedOverGearLabelled"),
+                Loc.T("Oled_GearOverSpeedLabelled"),
+                Loc.T("Oled_SpeedOverGear"),
+                Loc.T("Oled_GearOverSpeed"),
+                Loc.T("Oled_SpeedOnly"),
+                Loc.T("Oled_GearOnly"),
+                Loc.T("TelemetryFfb_OledFlashStyleBigGearSpeedBeside"),
+                Loc.T("Oled_BigSpeedGearBeside"),
+                Loc.T("Oled_SpeedLapDelta"),
+                Loc.T("Oled_GearLapDelta"),
+                Loc.T("Oled_SpeedGearLapDelta"),
+                Loc.T("Oled_BuildMyOwn"),
+                Loc.T("Oled_NothingWheelSOwn"),
+            };
 
         // ---- Field catalog -------------------------------------------------
         // Only what the plugin can actually fill. Revs are deliberately absent:
@@ -132,9 +132,9 @@ namespace TrueforceForAll.Plugin
         public static readonly string[] FieldKeys =
             { "Gear", "Speed", "SpeedUnit", "Delta", "Position", "Laps", "LastLap",
               "Custom", "None" };
-        public static readonly string[] FieldLabels =
-            { Loc.T("Oled_Gear"), Loc.T("Oled_Speed"), Loc.T("Oled_SpeedUnit"), Loc.T("Oled_LapDelta"), Loc.T("Oled_Position"),
-              Loc.T("Oled_LapTotal"), Loc.T("Oled_LastLapTime"), Loc.T("Oled_CustomText"), Loc.T("DashRemote_Empty") };
+        public static string[] FieldLabels =>
+            new[]{ Loc.T("Oled_Gear"), Loc.T("Oled_Speed"), Loc.T("Oled_SpeedUnit"), Loc.T("Oled_LapDelta"), Loc.T("Oled_Position"),
+                  Loc.T("Oled_LapTotal"), Loc.T("Oled_LastLapTime"), Loc.T("Oled_CustomText"), Loc.T("DashRemote_Empty") };
 
         public const string FieldNone = "None";
         public const string FieldCustom = "Custom";
@@ -147,17 +147,17 @@ namespace TrueforceForAll.Plugin
             OledLayoutKind.FourCenter, OledLayoutKind.FourRight,
             OledLayoutKind.Gauge, OledLayoutKind.GaugeLabel, OledLayoutKind.GaugeTwoText,
         };
-        public static readonly string[] LayoutLabels =
-        {
-            Loc.T("Oled_TwoSideSideFirst"),
-            Loc.T("Oled_TwoSideSideSecond"),
-            Loc.T("Oled_TwoStackedSecondOne"),
-            Loc.T("Oled_FourRowsCentered"),
-            Loc.T("Oled_FourRowsRightAligned"),
-            Loc.T("Oled_OneMeter"),
-            Loc.T("Oled_TwoMetersCaption"),
-            Loc.T("Oled_TwoMetersTwoTexts"),
-        };
+        public static string[] LayoutLabels =>
+            new[]{
+                Loc.T("Oled_TwoSideSideFirst"),
+                Loc.T("Oled_TwoSideSideSecond"),
+                Loc.T("Oled_TwoStackedSecondOne"),
+                Loc.T("Oled_FourRowsCentered"),
+                Loc.T("Oled_FourRowsRightAligned"),
+                Loc.T("Oled_OneMeter"),
+                Loc.T("Oled_TwoMetersCaption"),
+                Loc.T("Oled_TwoMetersTwoTexts"),
+            };
 
         // ---- Meter catalog -------------------------------------------------
         // What a 0-to-1 slot can show. Only values the plugin genuinely has as
@@ -166,9 +166,9 @@ namespace TrueforceForAll.Plugin
         public static readonly string[] GaugeFieldKeys =
             { "Throttle", "Brake", "Clutch", "Handbrake", "Revs",
               "FfbTorque", "TrueforceLevel", "FrontGrip", "RearGrip", "Steering", "None" };
-        public static readonly string[] GaugeFieldLabels =
-            { Loc.T("Oled_Throttle"), Loc.T("Oled_Brake"), Loc.T("Oled_Clutch"), Loc.T("Oled_Handbrake"), Loc.T("Oled_Revs"),
-              Loc.T("Oled_ForceOutput"), Loc.T("Oled_TrueforceTexture"), Loc.T("Oled_FrontGrip"), Loc.T("Oled_RearGrip"), Loc.T("Oled_Steering"), Loc.T("DashRemote_Empty") };
+        public static string[] GaugeFieldLabels =>
+            new[]{ Loc.T("Oled_Throttle"), Loc.T("Oled_Brake"), Loc.T("Oled_Clutch"), Loc.T("Oled_Handbrake"), Loc.T("Oled_Revs"),
+                  Loc.T("Oled_ForceOutput"), Loc.T("Oled_TrueforceTexture"), Loc.T("Oled_FrontGrip"), Loc.T("Oled_RearGrip"), Loc.T("Oled_Steering"), Loc.T("DashRemote_Empty") };
 
         public const int MaxSlots = 4;
 
@@ -292,18 +292,16 @@ namespace TrueforceForAll.Plugin
             string size;
             switch (kind)
             {
-                case OledLayoutKind.BigLeft: size = slot == 0 ? "huge" : "medium"; break;
-                case OledLayoutKind.BigRight: size = slot == 0 ? "medium" : "huge"; break;
-                case OledLayoutKind.Stacked: size = slot == 0 ? "small" : "large"; break;
+                case OledLayoutKind.BigLeft: size = slot == 0 ? Loc.T("Oled_SlotSizeHuge") : Loc.T("Oled_SlotSizeMedium"); break;
+                case OledLayoutKind.BigRight: size = slot == 0 ? Loc.T("Oled_SlotSizeMedium") : Loc.T("Oled_SlotSizeHuge"); break;
+                case OledLayoutKind.Stacked: size = slot == 0 ? Loc.T("Oled_SlotSizeSmall") : Loc.T("Oled_SlotSizeLarge"); break;
                 case OledLayoutKind.GaugeLabel:
-                case OledLayoutKind.GaugeTwoText: size = "caption"; break;
-                default: size = (slot % 2 == 0) ? "small" : "large"; break;
+                case OledLayoutKind.GaugeTwoText: size = Loc.T("Oled_SlotSizeCaption"); break;
+                default: size = (slot % 2 == 0) ? Loc.T("Oled_SlotSizeSmall") : Loc.T("Oled_SlotSizeLarge"); break;
             }
-            string hint = $"{size}, up to {w[slot]} character" + (w[slot] == 1 ? "" : "s");
+            string hint = Loc.N("Oled_SlotHintChars", w[slot], size, w[slot]);
             if (SlotSplits(kind, slot))
-                hint += "; 1st character sits left, the rest right. In custom text a leading space "
-                      + "keeps it all on the right, and trailing spaces push it back left, so you "
-                      + "can place it anywhere along the row";
+                hint += Loc.T("Oled_N1stCharacterSitsLeft");
             return hint;
         }
 

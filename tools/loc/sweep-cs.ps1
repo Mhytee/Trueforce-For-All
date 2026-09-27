@@ -78,8 +78,17 @@ function Read-LocCsSinkRules([string]$Path) {
         if ($parts.Count -ge 3) { $sel = @($parts[2] -split ',' | Where-Object { $_.Length -gt 0 }) }
         switch ($kind) {
             'prop'     { $rules.Props.Add($name) }
-            'ctor'     { $rules.Ctors[$name] = $sel }
-            'call'     { $rules.Calls[$name] = $sel }
+            'ctor'     {
+                if ($rules.Ctors.ContainsKey($name)) { throw "cs-ui-sinks.txt:$n has a second ctor rule for [$name]; merge the argument lists, because each reader keeps a different one of the two" }
+                $rules.Ctors[$name] = $sel
+            }
+            'call'     {
+                # A second rule for the same name is how the two walkers came to
+                # disagree about BuildModCard: both key by name, and they kept
+                # opposite ends of the pair.
+                if ($rules.Calls.ContainsKey($name)) { throw "cs-ui-sinks.txt:$n has a second call rule for [$name]; merge the argument lists, because each reader keeps a different one of the two" }
+                $rules.Calls[$name] = $sel
+            }
             'callre'   { $rules.CallRes.Add([pscustomobject]@{ Body = $name; Args = $sel }) }
             'skipcall' { $rules.SkipCalls.Add($name) }
             'textcall' { $rules.TextCalls.Add($name) }
@@ -411,7 +420,9 @@ function Get-LocCsRegionSpans([string]$Text, $Names, [string]$Kind) {
         $esc = [regex]::Escape($nm)
         if ($Kind -eq 'labels') {
             # Ident = { ... } or Ident = new <anything> { ... }
-            $re = [regex]('(?<![A-Za-z0-9_.])' + $esc + '\s*=\s*(?:new\b[^={;]*)?\{')
+            # "Name = { ... }", "Name = new X { ... }" and the property form a
+            # label table has to use to resolve live, "Name => new[] { ... }".
+            $re = [regex]('(?<![A-Za-z0-9_.])' + $esc + '\s*=>?\s*(?:new\b[^={;]*)?\{')
         } else {
             # Name(...) { ... }  |  Name(...) => ...;  |  Name { get ... }  |  Name => ...;
             $re = [regex]('(?<![A-Za-z0-9_.])' + $esc + '\s*(?:\([^()]*\))?\s*(?:=>|\{)')

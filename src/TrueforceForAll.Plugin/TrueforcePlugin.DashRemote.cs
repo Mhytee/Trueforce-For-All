@@ -156,10 +156,10 @@ namespace TrueforceForAll.Plugin
               "Inputs", "Delta", "Presets", "Radar", "Relative",
               "TyreTemps", "TyreWear", "Scope", "None" };
         // Friendly labels for the Settings-tab pickers, index-matched above.
-        internal static readonly string[] DashDriveContentLabels =
-            { Loc.T("Settings_CarFacts"), Loc.T("DashRemote_Damage"), Loc.T("DashRemote_FrictionCircle"), Loc.T("DashRemote_Fuel"), Loc.T("DashRemote_GCircle"),
-              Loc.T("Settings_Gains"), Loc.T("DashRemote_Inputs"), Loc.T("DashRemote_LapTimes"), Loc.T("Presets_PresetsTab_Header"), Loc.T("DashRemote_Radar"),
-              Loc.T("DashRemote_Relative"), Loc.T("DashRemote_TireTemps"), Loc.T("DashRemote_TireWear"), Loc.T("Settings_Visualizer"), Loc.T("DashRemote_Empty") };
+        internal static string[] DashDriveContentLabels =>
+            new[]{ Loc.T("Settings_CarFacts"), Loc.T("DashRemote_Damage"), Loc.T("DashRemote_FrictionCircle"), Loc.T("DashRemote_Fuel"), Loc.T("DashRemote_GCircle"),
+                  Loc.T("Settings_Gains"), Loc.T("DashRemote_Inputs"), Loc.T("DashRemote_LapTimes"), Loc.T("Presets_PresetsTab_Header"), Loc.T("DashRemote_Radar"),
+                  Loc.T("DashRemote_Relative"), Loc.T("DashRemote_TireTemps"), Loc.T("DashRemote_TireWear"), Loc.T("Settings_Visualizer"), Loc.T("DashRemote_Empty") };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.

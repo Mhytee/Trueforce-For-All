@@ -11,6 +11,7 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -38,8 +39,8 @@ namespace TrueforceForAll.Plugin
             string clientId, string[] redirectUris, string scope,
             Action<string> log, CancellationToken ct)
         {
-            if (string.IsNullOrEmpty(clientId)) throw new PatreonOAuthException("Patreon linking isn't configured.");
-            if (redirectUris == null || redirectUris.Length == 0) throw new PatreonOAuthException("Patreon linking isn't configured.");
+            if (string.IsNullOrEmpty(clientId)) throw new PatreonOAuthException(Loc.T("Account_PatreonLinkingIsnT"));
+            if (redirectUris == null || redirectUris.Length == 0) throw new PatreonOAuthException(Loc.T("Account_PatreonLinkingIsnT"));
 
             HttpListener listener = null;
             string redirectUri = null;
@@ -61,7 +62,7 @@ namespace TrueforceForAll.Plugin
                 }
             }
             if (listener == null)
-                throw new PatreonOAuthException("Couldn't open a local port to receive Patreon's response. Close other apps and try again.");
+                throw new PatreonOAuthException(Loc.T("Account_CouldnTOpenLocal2"));
 
             try
             {
@@ -77,7 +78,7 @@ namespace TrueforceForAll.Plugin
                 // Log the URL so support has a manual fallback if the browser didn't actually open.
                 log?.Invoke("[TF4ALL] Patreon authorize URL: " + authorizeUrl);
                 try { Process.Start(new ProcessStartInfo(authorizeUrl) { UseShellExecute = true }); }
-                catch (Exception ex) { throw new PatreonOAuthException("Couldn't open your browser. The link is in the SimHub log. (" + ex.Message + ")"); }
+                catch (Exception ex) { throw new PatreonOAuthException(Loc.F("Account_CouldnTOpenBrowser_Fmt", ex.Message)); }
 
                 HttpListenerContext context;
                 using (var timeoutCts = new CancellationTokenSource(WaitForConsent))
@@ -94,7 +95,7 @@ namespace TrueforceForAll.Plugin
                         {
                             ObserveAbandoned(ctxTask);
                             if (timeoutCts.IsCancellationRequested)
-                                throw new PatreonOAuthException("Timed out waiting for Patreon. If your browser didn't open, the link is in the SimHub log. Try again.");
+                                throw new PatreonOAuthException(Loc.T("Account_TimedOutWaitingPatreon"));
                             throw new OperationCanceledException(ct);
                         }
                         var candidate = await ctxTask.ConfigureAwait(false);
@@ -110,9 +111,9 @@ namespace TrueforceForAll.Plugin
                 WriteBrowserResponse(context.Response, ok);
 
                 if (!string.IsNullOrEmpty(error))
-                    throw new PatreonOAuthException("Patreon linking was cancelled.");
+                    throw new PatreonOAuthException(Loc.T("Account_PatreonLinkingWasCancelled"));
                 if (string.IsNullOrEmpty(code))
-                    throw new PatreonOAuthException("No authorization code from Patreon. Try linking again.");
+                    throw new PatreonOAuthException(Loc.T("Account_NoAuthorizationCodePatreon"));
 
                 return new Result { Code = code, RedirectUri = redirectUri };
             }

@@ -197,9 +197,9 @@ namespace TrueforceForAll.Plugin
             string affirmText;
             switch (state)
             {
-                case ShareState.First:       affirmText = "Share";        break;
-                case ShareState.Confirming:  affirmText = "Confirm";      break;
-                default:                     affirmText = "Share anyway"; break;
+                case ShareState.First:       affirmText = Loc.T("Common_Share");        break;
+                case ShareState.Confirming:  affirmText = Loc.T("CarFactsShare_Confirm");      break;
+                default:                     affirmText = Loc.T("CarFactsShare_ShareAnyway"); break;
             }
             var shareBtn = new Button {
                 Content = affirmText,

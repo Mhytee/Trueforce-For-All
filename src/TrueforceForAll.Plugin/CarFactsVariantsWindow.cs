@@ -311,12 +311,12 @@ namespace TrueforceForAll.Plugin
             // Mirror the resolver: a variant's auto layout derives from its
             // stored cylinders + config; EngineConfig.Custom rows ride a
             // community custom pattern instead.
-            string autoLabel = "Auto (not detected yet)";
+            string autoLabel = Loc.T("CarFactsVariants_AutoNotDetectedYet");
             if (v != null && v.EngineConfig == Effects.EngineConfig.Custom)
-                autoLabel = "Auto (community custom)";
+                autoLabel = Loc.T("CarFactsVariants_AutoCommunityCustom");
             else if (v != null && v.Cylinders >= 1 && v.Cylinders <= 16)
-                autoLabel = "Auto (" + Effects.FiringPatternDb.LayoutDisplayName(
-                    Effects.FiringPatternDb.LayoutFromLegacy(v.Cylinders, v.EngineConfig, false)) + ")";
+                autoLabel = Loc.F("CarFactsVariants_Auto_Fmt", Effects.FiringPatternDb.LayoutDisplayName(
+                    Effects.FiringPatternDb.LayoutFromLegacy(v.Cylinders, v.EngineConfig, false)));
             var options = new List<EngineOption>
             {
                 new EngineOption { Display = autoLabel, Layout = null },

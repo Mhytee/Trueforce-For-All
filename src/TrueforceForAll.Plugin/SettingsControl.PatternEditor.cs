@@ -40,10 +40,10 @@ namespace TrueforceForAll.Plugin
 
         private static readonly (string Label, byte Wire)[] Directions =
         {
-            ("Left to right",          3),
-            ("Right to left",          4),
-            ("Outward from the middle", 1),
-            ("Inward from the ends",    2),
+            ("PatternEditor_DirLeftToRight",          3),
+            ("PatternEditor_DirRightToLeft",          4),
+            ("PatternEditor_DirOutwardMiddle", 1),
+            ("PatternEditor_DirInwardEnds",    2),
         };
 
         /// <summary>Forget the cached library so EnsurePatternUi rebuilds against
@@ -111,7 +111,9 @@ namespace TrueforceForAll.Plugin
             RefreshSlotNames();
 
             if (PatternDirectionCombo != null && PatternDirectionCombo.Items.Count == 0)
-                foreach (var d in Directions) PatternDirectionCombo.Items.Add(d.Label);
+                // The table holds key names, so each label resolves on the way in
+                // and a language change rebuilds the list with the new words.
+                foreach (var d in Directions) PatternDirectionCombo.Items.Add(Loc.T(d.Label));
 
             // Point the library at whatever the wheel is showing right now, so
             // the editor opens on the pattern the user is actually looking at
@@ -390,8 +392,8 @@ namespace TrueforceForAll.Plugin
         /// Shown for context: they are firmware patterns we cannot edit, but a
         /// user picking a pattern is choosing among ALL nine things the wheel can
         /// show, not just ours.</summary>
-        private static readonly string[] WheelBuiltinEffects =
-        { Loc.T("PatternEditor_InsideOut"), Loc.T("Settings_RemoteRevOutsideInRadio"), Loc.T("PatternEditor_RightLeft"), Loc.T("Settings_RemoteRevLtrRadio") };
+        private static string[] WheelBuiltinEffects =>
+            new[]{ Loc.T("PatternEditor_InsideOut"), Loc.T("Settings_RemoteRevOutsideInRadio"), Loc.T("PatternEditor_RightLeft"), Loc.T("Settings_RemoteRevLtrRadio") };
 
         /// <summary>Device direction value for built-in sweep <paramref name="index"/>
         /// (0-based, effect index + 1). One definition, in TrueforcePlugin: the
@@ -663,7 +665,7 @@ namespace TrueforceForAll.Plugin
                 };
                 _editing = _slotScratch;
                 SetPatternStatus(Loc.F("PatternEditor_BuiltIntoWheelFills_Fmt",
-                    Directions.FirstOrDefault(d => d.Wire == _editing.DirectionWire).Label.ToLowerInvariant()));
+                    Loc.T(Directions.FirstOrDefault(d => d.Wire == _editing.DirectionWire).Label).ToLowerInvariant()));
             }
             else
             {

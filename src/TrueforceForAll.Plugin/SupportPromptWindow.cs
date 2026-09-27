@@ -71,14 +71,14 @@ namespace TrueforceForAll.Plugin
         // so this is there to total up what they are getting rather than to explain
         // it, with just enough breadth that a Trueforce-only user learns there is a
         // phone dash. The last bullet carries what the longer list used to spell out.
-        private static readonly string[] Bullets =
-        {
-            Loc.T("SupportPrompt_Bullet1"),
-            Loc.T("SupportPrompt_Bullet2"),
-            Loc.T("SupportPrompt_Bullet3"),
-            Loc.T("SupportPrompt_Bullet4"),
-            Loc.T("SupportPrompt_Bullet5"),
-        };
+        private static string[] Bullets =>
+            new[]{
+                Loc.T("SupportPrompt_Bullet1"),
+                Loc.T("SupportPrompt_Bullet2"),
+                Loc.T("SupportPrompt_Bullet3"),
+                Loc.T("SupportPrompt_Bullet4"),
+                Loc.T("SupportPrompt_Bullet5"),
+            };
 
         /// <summary>True when the user clicked through to Patreon. DialogResult is
         /// true in that case and false on dismiss; the caller feeds it to

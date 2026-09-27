@@ -79,12 +79,31 @@ prop _testStatus
 prop _status
 # The wheel status the panel's pill reads. Its own initializer is the default.
 prop WheelStatus
+
+# Eight more names holding a sentence on its way somewhere: the FFB self-test
+# checklist, the community browser's two empty-state lines, a mod card's status,
+# a popover's affirmative label, the G HUB advice, and the two spike-set errors.
+prop checklist
+prop emptyMsg
+prop foundMsg
+prop status
+prop error
+prop affirmText
+prop loadLabel
+prop autoLabel
+prop hint
+prop GHubQuietDiagnosticMessage
 # ---------------------------------------------------------------- constructors
 # TextBlock, Button and the rest take their text through a property, so Run is
 # the only WPF control the plugin builds with text in the constructor. The
 # plugin's own windows are further down, under the indirect sinks.
 ctor Run 0
 
+
+# Both OAuth flows document their exception as the user-facing failure, and the
+# link clients copy its Message into the result a caller shows.
+ctor DiscordOAuthException 0
+ctor PatreonOAuthException 0
 # ---------------------------------------------------------------- calls
 # TrueforceDialog is the plugin's MessageBox. Parameter names are listed beside
 # the positions because okLabel and cancelLabel are usually passed by name.
@@ -110,6 +129,17 @@ call SetValue 1
 # lambda, whose body is still inside argument 0.
 callre Set[A-Za-z]*Status[A-Za-z]* 0
 
+
+# Composers: each is handed the text it will show. Fail's second argument becomes
+# BackupOutcome.Message, which the backup and restore flows put on screen, and the
+# two builders are handed a card's or a row's own labels.
+call Fail 1
+call MakeRow 1
+# A StringBuilder line is display text when the builder is a panel readout, which
+# is most of them. The loggers are skipped below so a builder that ends up in the
+# log is not counted twice over.
+call AppendLine 0
+call Append 0
 # ---------------------------------------------------------------- indirect sinks
 # A helper that takes text and writes it to a label is a sink at its call site,
 # which is where the literal lives. Without these lines a label routed through a
@@ -154,7 +184,9 @@ call MakeButton 0,content
 call MakeColumn 0,header
 call BuildGroupHeader 0,title
 call BuildPanelHeader 0,text
-call BuildModCard 0,title
+# title, description and status. The version argument is "v1.2.3" and is not
+# prose, and the two Action arguments hold no text.
+call BuildModCard 0,1,5,title
 call BuildLabel 0,text
 call BuildInputTextBox 0,text
 call BuildPackEntryRow 2,title
@@ -188,6 +220,14 @@ skipcall Loc.N
 # one value at a time.
 skipcall .ToString
 
+
+# The loggers. Nothing they are handed is display text, and with AppendLine a sink
+# the [TF4ALL] lines assembled into a builder would otherwise be counted as UI.
+skipcall .Warn
+skipcall .Info
+skipcall .Error
+skipcall .Debug
+skipcall LogError
 # ---------------------------------------------------------------- text calls
 # The two composers whose first argument is the sentence the user reads. A
 # sentence assembled by a helper of the plugin's own ("Fmt(...)", an
@@ -243,6 +283,13 @@ recordprop StandDownCopy.After
 recordprop ImportCandidate.FailureMessage
 recordprop EngineOption.Display
 recordprop LightCycleStop.Label
+# Four tables are deliberately NOT listed here: EffectTagLabels.Map, AllSections
+# in CommunitySectionPickerWindow, Categories in ReportDialog and Directions in
+# the pattern editor. Each pairs an id with a label, and the walker sees two
+# quoted strings in one initializer with no way to tell which is which, so it
+# would ask for a key for "engine" as well as for "Engine pulse". Those tables
+# hold key names instead and resolve through Loc.T where the label is used, which
+# also means a language change reaches them.
 # ---------------------------------------------------------------- watches
 watch TrueforceDialog
 nonsink TrueforceDialog.LogError

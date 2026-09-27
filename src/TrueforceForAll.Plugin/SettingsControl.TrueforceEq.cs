@@ -43,7 +43,8 @@ namespace TrueforceForAll.Plugin
         private bool _eqRowsSuppress;
 
         private static readonly Brush EqRowSelectedBrush = new SolidColorBrush(Color.FromArgb(0x26, 0xE5, 0xC0, 0x4A));
-        private static readonly string[] EqTypeLabels  = { Loc.T("Eq_Bell"), Loc.T("Eq_LowShelf"), Loc.T("Eq_HighShelf"), Loc.T("Eq_LowCut"), Loc.T("Eq_HighCut") };
+        private static string[] EqTypeLabels =>
+            new[]{ Loc.T("Eq_Bell"), Loc.T("Eq_LowShelf"), Loc.T("Eq_HighShelf"), Loc.T("Eq_LowCut"), Loc.T("Eq_HighCut") };
         private static readonly string[] EqSlopeLabels = { "12 dB", "24 dB", "36 dB", "48 dB" };
 
         // Undo: whole-list snapshots, newest last. Gestures on the same band

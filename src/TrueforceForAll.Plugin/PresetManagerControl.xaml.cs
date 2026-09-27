@@ -1934,12 +1934,17 @@ namespace TrueforceForAll.Plugin
             // FFB scale is personal: a shared preset carries no such value, so
             // omit the scale part from community previews. Master gain is a
             // global setting (not preset-scoped), so it is never shown per-preset.
+            string invert = snap.FfbInvertSign ? Loc.T("PresetManager_On") : Loc.T("Eq_Off");
             sb.AppendLine(community
-                ? $"FFB pass-through: smooth {snap.FfbSmoothTimeConstantMs:0} ms, invert {(snap.FfbInvertSign ? "on" : "off")}"
-                : $"FFB pass-through: scale {snap.FfbScale:0.##}, smooth {snap.FfbSmoothTimeConstantMs:0} ms, invert {(snap.FfbInvertSign ? "on" : "off")}");
-            sb.AppendLine($"FFB spike reduction: {(snap.FfbSpikeTamingEnabled ? "on" : "off")}");
+                ? Loc.F("PresetManager_DetailsFfbSmoothInvert_Fmt", snap.FfbSmoothTimeConstantMs, invert)
+                : Loc.F("PresetManager_DetailsFfbScaleSmoothInvert_Fmt", snap.FfbScale,
+                        snap.FfbSmoothTimeConstantMs, invert));
+            sb.AppendLine(Loc.F("PresetManager_DetailsSpikeReduction_Fmt",
+                snap.FfbSpikeTamingEnabled ? Loc.T("PresetManager_On") : Loc.T("Eq_Off")));
             if (snap.StationarySpringEnabled.HasValue)
-                sb.AppendLine($"Stationary spring: {(snap.StationarySpringEnabled.Value ? "on" : "off")} (strength {(snap.StationarySpringStrength ?? 0):0.##})");
+                sb.AppendLine(Loc.F("PresetManager_DetailsStationarySpring_Fmt",
+                    snap.StationarySpringEnabled.Value ? Loc.T("PresetManager_On") : Loc.T("Eq_Off"),
+                    snap.StationarySpringStrength ?? 0));
             AppendEffectLine(sb, Loc.T("Effects_AudioEnabled"),    snap.AudioCapture);
             AppendEffectLine(sb, Loc.T("Effects_AirborneDuckEngine"),     snap.EnginePulse);
             AppendEffectLine(sb, Loc.T("Effects_AirborneDuckRoadBumps"),       snap.RoadBumps);
@@ -1954,13 +1959,14 @@ namespace TrueforceForAll.Plugin
             AppendEffectLine(sb, Loc.T("Effects_AirborneDuckCollision"),        snap.Collision);
             AppendEffectLine(sb, Loc.T("Effects_AirborneDuckRevLimiter"),      snap.RevLimiter);
             AppendEffectLine(sb, Loc.T("Effects_AirborneEnabled"), snap.Airborne);
-            sb.AppendLine($"Sidechain ducking: {(snap.DuckingEnabled ? "on" : "off")} (depth {snap.DuckDepth:0.##})");
+            sb.AppendLine(Loc.F("PresetManager_DetailsSidechainDucking_Fmt",
+                snap.DuckingEnabled ? Loc.T("PresetManager_On") : Loc.T("Eq_Off"), snap.DuckDepth));
             return sb.ToString().TrimEnd();
         }
 
         private static void AppendEffectLine(System.Text.StringBuilder sb, string label, object eff)
         {
-            if (eff == null) { sb.AppendLine($"{label}: (effect default)"); return; }
+            if (eff == null) { sb.AppendLine(Loc.F("PresetManager_EffectDefault_Fmt", label)); return; }
             var t = eff.GetType();
             bool enabled = (t.GetProperty("Enabled")?.GetValue(eff) as bool?) ?? true;
             string gainStr = "";
@@ -1970,7 +1976,7 @@ namespace TrueforceForAll.Plugin
                 if (g is float gf)       gainStr = $" (gain {gf:0.##})";
                 else if (g is double gd) gainStr = $" (gain {gd:0.##})";
             }
-            sb.AppendLine($"{label}: {(enabled ? "on" : "off")}{gainStr}");
+            sb.AppendLine($"{label}: {(enabled ? Loc.T("PresetManager_On") : Loc.T("Eq_Off"))}{gainStr}");
         }
 
         private void CarList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1992,9 +1998,12 @@ namespace TrueforceForAll.Plugin
             if (entry?.Override == null) return "";
             var ov = entry.Override;
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Game: {(string.IsNullOrEmpty(entry.GameName) ? "(none)" : entry.GameName)}");
-            sb.AppendLine($"Car ID: {carId}");
-            sb.AppendLine($"Source: {(entry.IsBuiltin ? "Built-in" : "User preset")}");
+            sb.AppendLine(Loc.F("PresetManager_DetailsGame_Fmt",
+                string.IsNullOrEmpty(entry.GameName) ? Loc.T("Header_HeaderCar") : entry.GameName));
+            sb.AppendLine(Loc.F("PresetManager_CarID_Fmt", carId));
+            sb.AppendLine(Loc.F("PresetManager_DetailsSource_Fmt", entry.IsBuiltin
+                ? Loc.T("PresetManager_DetailsSourceBuiltIn")
+                : Loc.T("PresetManager_DetailsSourceUser")));
 
             var sections = new System.Text.StringBuilder();
             AppendOverrideSection(sections, Loc.T("Effects_AudioEnabled"),    ov.AudioCapture, baseline?.AudioCapture);
@@ -2015,12 +2024,12 @@ namespace TrueforceForAll.Plugin
             sb.AppendLine();
             if (sections.Length > 0)
             {
-                sb.AppendLine("Overrides:");
+                sb.AppendLine(Loc.T("PresetManager_Overrides"));
                 sb.Append(sections);
             }
             else
             {
-                sb.AppendLine("No section overrides (follows the game default).");
+                sb.AppendLine(Loc.T("PresetManager_NoSectionOverridesFollows"));
             }
             return sb.ToString().TrimEnd();
         }
@@ -2062,11 +2071,12 @@ namespace TrueforceForAll.Plugin
         {
             if (def == null) return "";
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Name: {(string.IsNullOrEmpty(def.Name) ? "(unnamed)" : def.Name)}");
+            sb.AppendLine(Loc.F("PresetManager_DetailsName_Fmt",
+                string.IsNullOrEmpty(def.Name) ? Loc.T("PresetPreview_Unnamed") : def.Name));
             if (def.IsElectric)
             {
                 string mode = def.ElectricMode == ElectricCarMode.Silent ? "Silent" : "Muted hum";
-                sb.AppendLine($"Type: Electric ({mode})");
+                sb.AppendLine(Loc.F("PresetManager_TypeElectric_Fmt", mode));
             }
             else
             {
@@ -2076,12 +2086,12 @@ namespace TrueforceForAll.Plugin
                     foreach (var ch in def.Pattern) if (ch == ',') pulses++;
                     pulses++;
                 }
-                sb.AppendLine($"Type: Combustion ({pulses} pulse{(pulses == 1 ? "" : "s")})");
+                sb.AppendLine(Loc.N("PresetManager_DetailsCombustionPulses", pulses, pulses));
                 if (!string.IsNullOrWhiteSpace(def.Pattern))
-                    sb.AppendLine($"Pattern: {def.Pattern}");
+                    sb.AppendLine(Loc.F("PresetManager_Pattern_Fmt", def.Pattern));
             }
             if (!string.IsNullOrEmpty(def.CommunityUploadedVersion))
-                sb.AppendLine($"Your upload: {def.CommunityUploadedVersion}");
+                sb.AppendLine(Loc.F("PresetManager_Upload_Fmt", def.CommunityUploadedVersion));
             return sb.ToString().TrimEnd();
         }
 
@@ -2092,9 +2102,10 @@ namespace TrueforceForAll.Plugin
         {
             if (p == null) return "";
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Pack: {(string.IsNullOrEmpty(p.PackName) ? "(unnamed)" : p.PackName)}");
-            if (!string.IsNullOrEmpty(p.Author))        sb.AppendLine($"Author: {p.Author}");
-            if (!string.IsNullOrEmpty(p.AuthorVersion)) sb.AppendLine($"Version: {p.AuthorVersion}");
+            sb.AppendLine(Loc.F("PresetManager_DetailsPack_Fmt",
+                string.IsNullOrEmpty(p.PackName) ? Loc.T("PresetPreview_Unnamed") : p.PackName));
+            if (!string.IsNullOrEmpty(p.Author))        sb.AppendLine(Loc.F("PresetManager_Author_Fmt", p.Author));
+            if (!string.IsNullOrEmpty(p.AuthorVersion)) sb.AppendLine(Loc.F("Plugin_Version_Fmt", p.AuthorVersion));
             int games = 0, cars = 0, engines = 0;
             if (p.Entries != null)
             {
@@ -2112,9 +2123,9 @@ namespace TrueforceForAll.Plugin
                 $"{cars} car preset{(cars == 1 ? "" : "s")}",
             };
             if (engines > 0) parts.Add($"{engines} custom engine{(engines == 1 ? "" : "s")}");
-            sb.AppendLine($"Entries: {(p.Entries?.Count ?? 0)} ({string.Join(", ", parts)})");
+            sb.AppendLine(Loc.F("PresetManager_Entries_Fmt", (p.Entries?.Count ?? 0), string.Join(", ", parts)));
             if (p.ImportedAt != default(DateTime))
-                sb.AppendLine($"Imported: {p.ImportedAt.ToLocalTime():yyyy-MM-dd}");
+                sb.AppendLine(Loc.F("PresetManager_Imported_Fmt", p.ImportedAt.ToLocalTime()));
             if (!string.IsNullOrWhiteSpace(p.Description))
             {
                 sb.AppendLine();
@@ -2134,24 +2145,26 @@ namespace TrueforceForAll.Plugin
         {
             if (p == null) return "";
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Name: {(string.IsNullOrEmpty(p.Name) ? "(unnamed)" : p.Name)}");
-            sb.AppendLine($"Author: {(string.IsNullOrEmpty(p.Author) ? "(anonymous)" : p.Author)}");
+            sb.AppendLine(Loc.F("PresetManager_DetailsName_Fmt",
+                string.IsNullOrEmpty(p.Name) ? Loc.T("PresetPreview_Unnamed") : p.Name));
+            sb.AppendLine(Loc.F("PresetManager_DetailsAuthor_Fmt",
+                string.IsNullOrEmpty(p.Author) ? Loc.T("Account_AccountUsernameDisplay") : p.Author));
             int score = p.Upvotes - p.Downvotes;
-            sb.AppendLine($"Score: {score} (▲{p.Upvotes} / ▼{p.Downvotes})   Downloads: {p.Downloads}");
-            if (!string.IsNullOrEmpty(p.Game))   sb.AppendLine($"Game: {p.Game}");
-            if (!string.IsNullOrEmpty(p.CarId))  sb.AppendLine($"Car ID: {p.CarId}");
+            sb.AppendLine(Loc.F("PresetManager_ScoreDownloads_Fmt", score, p.Upvotes, p.Downvotes, p.Downloads));
+            if (!string.IsNullOrEmpty(p.Game))   sb.AppendLine(Loc.F("PresetManager_Game_Fmt", p.Game));
+            if (!string.IsNullOrEmpty(p.CarId))  sb.AppendLine(Loc.F("PresetManager_CarID_Fmt", p.CarId));
             if (string.Equals(p.Kind, "game", StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrEmpty(tierBadge))
-                sb.AppendLine($"Scope: {tierBadge}");
+                sb.AppendLine(Loc.F("PresetManager_Scope_Fmt", tierBadge));
             if (string.Equals(p.Kind, "pack", StringComparison.OrdinalIgnoreCase))
             {
                 if (p.EntryCount > 0)
-                    sb.AppendLine($"Items: {p.EntryCount}");
+                    sb.AppendLine(Loc.F("PresetManager_Items_Fmt", p.EntryCount));
                 if (!string.IsNullOrEmpty(p.AuthorVersion))
-                    sb.AppendLine($"Pack version: {p.AuthorVersion}");
+                    sb.AppendLine(Loc.F("PresetManager_PackVersion_Fmt", p.AuthorVersion));
             }
             if (p.EffectTags != null && p.EffectTags.Count > 0)
-                sb.AppendLine($"Tags: {EffectTagLabels.JoinLabels(p.EffectTags)}");
+                sb.AppendLine(Loc.F("PresetManager_Tags_Fmt", EffectTagLabels.JoinLabels(p.EffectTags)));
             if (!string.IsNullOrWhiteSpace(p.Description))
             {
                 sb.AppendLine();
@@ -2201,10 +2214,10 @@ namespace TrueforceForAll.Plugin
                         int games   = (body["game_presets"]    as Newtonsoft.Json.Linq.JArray)?.Count ?? 0;
                         int cars    = (body["car_presets"]     as Newtonsoft.Json.Linq.JArray)?.Count ?? 0;
                         int engines = (body["custom_engines"]  as Newtonsoft.Json.Linq.JArray)?.Count ?? 0;
-                        sb.AppendLine("Contents:");
-                        sb.AppendLine($"  Game presets: {games}");
-                        sb.AppendLine($"  Car presets: {cars}");
-                        sb.AppendLine($"  Custom engines: {engines}");
+                        sb.AppendLine(Loc.T("PresetManager_Contents"));
+                        sb.AppendLine(Loc.F("PresetManager_GamePresets_Fmt", games));
+                        sb.AppendLine(Loc.F("PresetManager_CarPresets_Fmt", cars));
+                        sb.AppendLine(Loc.F("PresetManager_CustomEngines_Fmt", engines));
                         return sb.ToString().TrimEnd();
                     }
                     default:
@@ -2231,12 +2244,12 @@ namespace TrueforceForAll.Plugin
                         AppendOverrideSection(sections, Loc.T("Effects_AirborneEnabled"), ov.Airborne,     null);
                         if (sections.Length > 0)
                         {
-                            sb.AppendLine("Overrides:");
+                            sb.AppendLine(Loc.T("PresetManager_Overrides"));
                             sb.Append(sections);
                         }
                         else
                         {
-                            sb.AppendLine("No section overrides (follows the game default).");
+                            sb.AppendLine(Loc.T("PresetManager_NoSectionOverridesFollows"));
                         }
                         return sb.ToString().TrimEnd();
                     }
@@ -5033,41 +5046,41 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                 {
                     bool hasQuery = capturedSearch.Length > 0;
                     emptyMsg = hasQuery
-                        ? $"No matches for \"{capturedSearch}\"."
-                        : "No community presets for the selected games.";
+                        ? Loc.F("PresetManager_NoMatches_Fmt", capturedSearch)
+                        : Loc.T("PresetManager_NoCommunityPresetsSelected");
                     foundMsg = hasQuery
-                        ? $"{_communityRows.Count} result(s) for \"{capturedSearch}\"."
-                        : $"{_communityRows.Count} result(s).";
+                        ? Loc.F("PresetManager_ResultS_Fmt", _communityRows.Count, capturedSearch)
+                        : Loc.F("PresetManager_ResultS_Fmt2", _communityRows.Count);
                 }
                 else
                 {
                     if (capturedMode == "mine")
                         emptyMsg = capturedKind == "game"
-                            ? "You haven't uploaded any game presets yet."
+                            ? Loc.T("PresetManager_HavenTUploadedAny")
                             : capturedKind == "engine"
-                                ? "You haven't uploaded any custom engines yet."
+                                ? Loc.T("PresetManager_HavenTUploadedAny2")
                                 : capturedKind == "pack"
-                                    ? "You haven't uploaded any packs yet."
-                                    : "You haven't uploaded any car presets yet.";
+                                    ? Loc.T("PresetManager_HavenTUploadedAny3")
+                                    : Loc.T("PresetManager_HavenTUploadedAny4");
                     else if (capturedTrending)
                         emptyMsg = capturedKind == "game"
-                            ? "No community game presets shared yet."
+                            ? Loc.T("PresetManager_NoCommunityGamePresets")
                             : capturedKind == "engine"
-                                ? "No community custom engines shared yet."
+                                ? Loc.T("PresetManager_NoCommunityCustomEngines")
                                 : capturedKind == "pack"
-                                    ? "No community packs shared yet."
-                                    : "No community car presets shared yet.";
+                                    ? Loc.T("PresetManager_NoCommunityPacksShared")
+                                    : Loc.T("PresetManager_NoCommunityCarPresets");
                     else
                         emptyMsg = capturedKind == "game"
-                            ? "No community game presets yet. Be the first to share."
+                            ? Loc.T("PresetManager_NoCommunityGamePresets2")
                             : capturedKind == "engine"
-                                ? "No community custom engines yet. Be the first to share."
+                                ? Loc.T("PresetManager_NoCommunityCustomEngines2")
                                 : capturedKind == "pack"
-                                    ? "No community packs yet. Be the first to share."
-                                    : "No community presets for this car yet. Be the first to share.";
+                                    ? Loc.T("PresetManager_NoCommunityPacksYet")
+                                    : Loc.T("PresetManager_NoCommunityPresetsCar");
                     foundMsg = capturedTrending
-                        ? $"{_communityRows.Count} preset(s) found (load a game/car to filter)."
-                        : $"{_communityRows.Count} preset(s) found.";
+                        ? Loc.F("PresetManager_PresetSFoundLoad_Fmt", _communityRows.Count)
+                        : Loc.F("PresetManager_PresetSFound_Fmt", _communityRows.Count);
                 }
                 CommunityStatusLabel.Text = _communityRows.Count == 0 ? emptyMsg : foundMsg;
             }

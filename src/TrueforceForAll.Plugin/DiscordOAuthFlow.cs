@@ -11,6 +11,7 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -39,8 +40,8 @@ namespace TrueforceForAll.Plugin
             string clientId, string[] redirectUris, string scope,
             Action<string> log, CancellationToken ct)
         {
-            if (string.IsNullOrEmpty(clientId)) throw new DiscordOAuthException("Discord linking isn't configured.");
-            if (redirectUris == null || redirectUris.Length == 0) throw new DiscordOAuthException("Discord linking isn't configured.");
+            if (string.IsNullOrEmpty(clientId)) throw new DiscordOAuthException(Loc.T("Account_DiscordLinkingIsnT"));
+            if (redirectUris == null || redirectUris.Length == 0) throw new DiscordOAuthException(Loc.T("Account_DiscordLinkingIsnT"));
 
             HttpListener listener = null;
             string redirectUri = null;
@@ -62,7 +63,7 @@ namespace TrueforceForAll.Plugin
                 }
             }
             if (listener == null)
-                throw new DiscordOAuthException("Couldn't open a local port to receive Discord's response. Close other apps and try again.");
+                throw new DiscordOAuthException(Loc.T("Account_CouldnTOpenLocal"));
 
             try
             {
@@ -80,7 +81,7 @@ namespace TrueforceForAll.Plugin
                 // (Process.Start can return without throwing on a misconfigured default browser).
                 log?.Invoke("[TF4ALL] Discord authorize URL: " + authorizeUrl);
                 try { Process.Start(new ProcessStartInfo(authorizeUrl) { UseShellExecute = true }); }
-                catch (Exception ex) { throw new DiscordOAuthException("Couldn't open your browser. The link is in the SimHub log. (" + ex.Message + ")"); }
+                catch (Exception ex) { throw new DiscordOAuthException(Loc.F("Account_CouldnTOpenBrowser_Fmt", ex.Message)); }
 
                 HttpListenerContext context;
                 using (var timeoutCts = new CancellationTokenSource(WaitForConsent))
@@ -98,7 +99,7 @@ namespace TrueforceForAll.Plugin
                             // Abandoned the GetContext; make sure its eventual exception is observed.
                             ObserveAbandoned(ctxTask);
                             if (timeoutCts.IsCancellationRequested)
-                                throw new DiscordOAuthException("Timed out waiting for Discord. If your browser didn't open, the link is in the SimHub log. Try again.");
+                                throw new DiscordOAuthException(Loc.T("Account_TimedOutWaitingDiscord"));
                             throw new OperationCanceledException(ct);
                         }
                         var candidate = await ctxTask.ConfigureAwait(false);
@@ -114,9 +115,9 @@ namespace TrueforceForAll.Plugin
                 WriteBrowserResponse(context.Response, ok);
 
                 if (!string.IsNullOrEmpty(error))
-                    throw new DiscordOAuthException("Discord linking was cancelled.");
+                    throw new DiscordOAuthException(Loc.T("Account_DiscordLinkingWasCancelled"));
                 if (string.IsNullOrEmpty(code))
-                    throw new DiscordOAuthException("No authorization code from Discord. Try linking again.");
+                    throw new DiscordOAuthException(Loc.T("Account_NoAuthorizationCodeDiscord"));
 
                 return new Result { Code = code, RedirectUri = redirectUri };
             }

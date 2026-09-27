@@ -28,6 +28,19 @@
 file:src/TrueforceForAll.Plugin/SettingsControl.DevCodes.cs
 file:src/TrueforceForAll.Plugin/TestCodesWindow.cs
 
+# Three builders that assemble text nobody reads in the panel. They are here
+# because AppendLine became a sink in the one-hop pass, which was right: it found
+# the FFB self-test checklist and the preset details panel. These three write a
+# log line, a translator's missing-key report and a CSV header instead.
+#
+# LocDiagnostics writes the startup language report to the log and the LOCREPORT
+# file; both are the plan's "log lines" and "access-code responses".
+file:src/TrueforceForAll.Plugin/Localization/LocDiagnostics.cs
+# The arcade ladder dump is a [TF4ALL] log line assembled over several Appends.
+file:src/TrueforceForAll.Plugin/ArcadeLeaderboardService.cs
+# An FFB trace is a CSV for analysis; its header is column names.
+file:src/TrueforceForAll.Plugin/FfbTrace.cs
+
 # "EffectChangelog entries" are out of scope: the what's-new modal prefers the
 # GitHub release notes, which stay English. ChangelogVersion.Title is the version
 # headline inside those entries, and the only reason it shows up at all is that a

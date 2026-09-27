@@ -26,12 +26,12 @@ namespace TrueforceForAll.Plugin
         // Keep keys in lockstep with migration 0080's category CHECK constraint.
         private static readonly (string Key, string Label)[] Categories =
         {
-            ("broken",        "Broken / doesn't work"),
-            ("inappropriate", "Inappropriate content"),
-            ("spam",          "Spam or low effort"),
-            ("wrong_data",    "Wrong car or data"),
-            ("stolen",        "Stolen (not the uploader's)"),
-            ("other",         "Other"),
+            ("broken",        "Report_CategoryBroken"),
+            ("inappropriate", "Report_CategoryInappropriate"),
+            ("spam",          "Report_CategorySpam"),
+            ("wrong_data",    "Report_CategoryWrongData"),
+            ("stolen",        "Report_CategoryStolen"),
+            ("other",         "Report_CategoryOther"),
         };
 
         public ReportDialog(string targetName, string subjectKind)
@@ -69,7 +69,7 @@ namespace TrueforceForAll.Plugin
             {
                 var rb = new RadioButton
                 {
-                    Content = c.Label,
+                    Content = Loc.T(c.Label),   // the table holds a key name
                     Tag = c.Key,
                     GroupName = "ReportReason",
                     Margin = new Thickness(2, 2, 0, 2),

@@ -558,7 +558,7 @@ namespace TrueforceForAll.Plugin
                          || lower.IndexOf("lgs",   StringComparison.Ordinal) >= 0)
                         {
                             if (any) sb.Append(", ");
-                            sb.Append(name).Append(".exe (pid ").Append(p.Id).Append(")");
+                            sb.Append(name).Append(Loc.T("Plugin_ExePid")).Append(p.Id).Append(")");
                             any = true;
                         }
                     }
@@ -994,8 +994,10 @@ namespace TrueforceForAll.Plugin
         /// <summary>The wheel-quiet diagnostic line for "G HUB is running".
         /// Shared so the settings card can spot when its quiet diagnostic just
         /// restates the dedicated G HUB banner and drop the duplicate.</summary>
-        public const string GHubQuietDiagnosticMessage =
-            "Logitech G HUB is running. It claims the wheel and blocks force feedback. Close G HUB, then restart SimHub.";
+        // A property, not a const: it is a translated sentence now, and it has to
+        // resolve when it is read rather than when this type is loaded.
+        public static string GHubQuietDiagnosticMessage =>
+            Loc.T("Plugin_LogitechGHUBRunning");
 
         /// <summary>Why-is-my-wheel-quiet diagnostic. Walks the "no haptic
         /// output" causes in blocking order and returns the first as one
@@ -6066,7 +6068,7 @@ namespace TrueforceForAll.Plugin
                     bool isMi02 = path.IndexOf("mi_02", StringComparison.OrdinalIgnoreCase) >= 0;
                     if (isMi02) mi02++;
                     if (sb.Length > 0) sb.Append(", ");
-                    sb.Append($"0x{pid:X4}").Append(isMi02 ? " [MI_02]" : "");
+                    sb.Append($"0x{pid:X4}").Append(isMi02 ? Loc.T("Plugin_MI02") : "");
                 }
                 string hids = total == 0 ? "none"
                     : $"{total} interface(s) [MI_02 present: {mi02 > 0}] PIDs {sb}";
@@ -15483,7 +15485,7 @@ namespace TrueforceForAll.Plugin
                 {
                     _irResumeSlot = slot;
                     var ci = System.Globalization.CultureInfo.InvariantCulture;
-                    _irResumeTrace.Append(((int)sinceMs).ToString(ci)).Append("ms:")
+                    _irResumeTrace.Append(((int)sinceMs).ToString(ci)).Append(Loc.T("Plugin_Ms"))
                         .Append(((int)(v * 100.0 / 32767.0)).ToString(ci)).Append("%/")
                         .Append(((int)(f01 * 100.0)).ToString(ci)).Append("%/")
                         .Append(_lastSteerNorm.ToString("0.00", ci)).Append(' ');
@@ -22673,7 +22675,7 @@ namespace TrueforceForAll.Plugin
             {
                 if (Settings?.Presets == null
                     || !Settings.Presets.TryGetValue(presetName, out var snap) || snap == null)
-                { error = "preset not found in library"; return false; }
+                { error = Loc.T("Plugin_PresetNotFoundLibrary"); return false; }
                 string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                     snap, Newtonsoft.Json.Formatting.Indented);
                 string rel = BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, presetName, json);
@@ -22694,7 +22696,7 @@ namespace TrueforceForAll.Plugin
                 var all = GetAllCarPresets();
                 if (all == null || !all.TryGetValue(carId, out var perCar)
                     || !perCar.TryGetValue(presetName, out var entry) || entry == null)
-                { error = "car preset not found"; return false; }
+                { error = Loc.T("Plugin_CarPresetNotFound"); return false; }
 
                 // Promote always writes to the factory folder; presetName from
                 // UI (typically a user row, but harmless on a factory row) may
@@ -27696,11 +27698,11 @@ namespace TrueforceForAll.Plugin
             // with no bake entry). Lead with "engine" instead of "0 cyl"
             // so the label reads cleanly, or with "electric" when the zero
             // is an answer rather than a gap.
-            sb.Append(cyl >= 1 ? (cyl + " cyl") : (isElectric ? "electric" : "engine"));
+            sb.Append(cyl >= 1 ? (Loc.F("Plugin_Cyl_Fmt", cyl)) : (isElectric ? Loc.T("Plugin_Electric") : Loc.T("Plugin_Engine")));
             if (maxRpm.HasValue && maxRpm.Value > 0)
-                sb.Append(", ").Append(maxRpm.Value).Append(" RPM");
+                sb.Append(", ").Append(maxRpm.Value).Append(Loc.T("Plugin_RPM"));
             if (redlineRpm.HasValue && redlineRpm.Value > 0)
-                sb.Append(", ").Append(redlineRpm.Value).Append(" redline");
+                sb.Append(", ").Append(redlineRpm.Value).Append(Loc.T("Plugin_Redline"));
             return sb.ToString();
         }
 
@@ -29977,12 +29979,12 @@ namespace TrueforceForAll.Plugin
             if (signOut)
             {
                 body = Loc.T("Plugin_SigningOutTuningSaved");
-                loadLabel = "Load pre-sign-in tuning";
+                loadLabel = Loc.T("Plugin_LoadPreSignTuning");
             }
             else
             {
                 body = Loc.T("Plugin_AccountSSavedTuning");
-                loadLabel = "Load account tuning";
+                loadLabel = Loc.T("Plugin_LoadAccountTuning");
             }
             bool load = app.Dispatcher.Invoke(() =>
                 TrueforceDialog.Show(null, "Trueforce For All", body,
@@ -32907,29 +32909,29 @@ namespace TrueforceForAll.Plugin
             int presetsCount, int carsCount)
         {
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("Trueforce For All - preset pack");
+            sb.AppendLine(Loc.T("Plugin_TrueforceAllPresetPack"));
             sb.AppendLine();
-            if (!string.IsNullOrEmpty(packName))   sb.AppendLine($"Pack:    {packName}");
-            if (!string.IsNullOrEmpty(author))     sb.AppendLine($"Author:  {author}");
-            if (!string.IsNullOrEmpty(version))    sb.AppendLine($"Version: {version}");
+            if (!string.IsNullOrEmpty(packName))   sb.AppendLine(Loc.F("Plugin_Pack_Fmt", packName));
+            if (!string.IsNullOrEmpty(author))     sb.AppendLine(Loc.F("Plugin_Author_Fmt", author));
+            if (!string.IsNullOrEmpty(version))    sb.AppendLine(Loc.F("Plugin_Version_Fmt", version));
             if (presetsCount > 0 || carsCount > 0)
             {
                 var parts = new List<string>();
                 if (presetsCount > 0) parts.Add($"{presetsCount} game preset(s)");
                 if (carsCount    > 0) parts.Add($"{carsCount} car preset(s)");
-                sb.AppendLine($"Contents: " + string.Join(", ", parts));
+                sb.AppendLine(Loc.F("Plugin_Contents_Fmt", string.Join(", ", parts)));
             }
             sb.AppendLine();
-            sb.AppendLine("To install:");
-            sb.AppendLine("  1. Open SimHub.");
-            sb.AppendLine("  2. Left sidebar -> Trueforce For All plugin.");
-            sb.AppendLine("  3. Click the Presets tab.");
-            sb.AppendLine("  4. Click Import (top right of the preset list).");
-            sb.AppendLine("  5. Pick this .tfpack file (or this extracted folder).");
+            sb.AppendLine(Loc.T("Plugin_Install"));
+            sb.AppendLine(Loc.T("Plugin_N1OpenSimHub"));
+            sb.AppendLine(Loc.T("Plugin_N2LeftSidebarTrueforce"));
+            sb.AppendLine(Loc.T("Plugin_N3ClickPresetsTab"));
+            sb.AppendLine(Loc.T("Plugin_N4ClickImportTop"));
+            sb.AppendLine(Loc.T("Plugin_N5PickTfpackFile"));
             sb.AppendLine();
-            sb.AppendLine("All presets in the pack share the (Author, Version, Pack Name) identity,");
-            sb.AppendLine("so the manager can later show them grouped and let you remove or set");
-            sb.AppendLine("them as defaults as a unit.");
+            sb.AppendLine(Loc.T("Plugin_AllPresetsPackShare"));
+            sb.AppendLine(Loc.T("Plugin_SoManagerCanLater"));
+            sb.AppendLine(Loc.T("Plugin_ThemAsDefaultsAs"));
             return sb.ToString();
         }
 
@@ -35600,15 +35602,15 @@ namespace TrueforceForAll.Plugin
         /// shows the conflict dialog and then calls ResolveBackupConflictAsync.</summary>
         internal async Task<BackupOutcome> BackupNowAsync()
         {
-            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, "Backup is not available.");
-            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, "Sign in to back up.");
+            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, Loc.T("Plugin_BackupNotAvailable"));
+            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignBackUp"));
             if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
-                return Fail(BackupStatus.Failed, "A backup is already in progress.");
+                return Fail(BackupStatus.Failed, Loc.T("Plugin_BackupAlreadyProgress"));
             try
             {
                 var (revResult, cloudRev) = await _backupClient.GetRevisionAsync().ConfigureAwait(false);
-                if (revResult == BackupTransfer.NotSignedIn) return Fail(BackupStatus.NotSignedIn, "Sign-in expired; sign in again.");
-                if (revResult == BackupTransfer.NotConfigured) return Fail(BackupStatus.NotConfigured, "Backup is not configured.");
+                if (revResult == BackupTransfer.NotSignedIn) return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignExpiredSignAgain2"));
+                if (revResult == BackupTransfer.NotConfigured) return Fail(BackupStatus.NotConfigured, Loc.T("Plugin_BackupNotConfigured"));
                 if (revResult != BackupTransfer.Success && revResult != BackupTransfer.NotFound)
                     return FromTransfer(revResult, "Couldn't reach the backup server");
 
@@ -35650,7 +35652,7 @@ namespace TrueforceForAll.Plugin
                     BuildEnvelopeLocked())).ConfigureAwait(false);
             }
             catch (BackupTooLargeException ex) { return Fail(BackupStatus.TooLarge, ex.Message); }   // permanent: caller won't retry-spin
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Build backup failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't back up. Check the folder and your connection, then try again."); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Build backup failed: " + ex.Message); return Fail(BackupStatus.Failed, Loc.T("Plugin_CouldnTBackUp")); }
 
             var up = await _backupClient.UploadAsync(json).ConfigureAwait(false);
             if (up != BackupTransfer.Success) return FromTransfer(up, "Backup upload failed");
@@ -35707,10 +35709,10 @@ namespace TrueforceForAll.Plugin
         /// <summary>Resolve a detected divergence per the user's choice from the dialog.</summary>
         internal async Task<BackupOutcome> ResolveBackupConflictAsync(BackupConflictChoice choice, bool keepCloudSettings)
         {
-            if (choice == BackupConflictChoice.Cancel) return Fail(BackupStatus.Failed, "Cancelled.");
-            if (!BackupReady) return Fail(BackupStatus.NotSignedIn, "Sign in to back up.");
+            if (choice == BackupConflictChoice.Cancel) return Fail(BackupStatus.Failed, Loc.T("Plugin_Cancelled"));
+            if (!BackupReady) return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignBackUp"));
             if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
-                return Fail(BackupStatus.Failed, "A backup is already in progress.");
+                return Fail(BackupStatus.Failed, Loc.T("Plugin_BackupAlreadyProgress"));
             try
             {
                 if (choice == BackupConflictChoice.UseThisPc)
@@ -35723,7 +35725,7 @@ namespace TrueforceForAll.Plugin
                 if (dl == BackupTransfer.NotFound) return await UploadCurrentAsync().ConfigureAwait(false);
                 if (dl != BackupTransfer.Success) return FromTransfer(dl, "Couldn't fetch the cloud backup");
                 var cloudEnv = SafeParse(json);
-                if (cloudEnv == null) return Fail(BackupStatus.Failed, "The cloud backup was unreadable.");
+                if (cloudEnv == null) return Fail(BackupStatus.Failed, Loc.T("Plugin_CloudBackupWasUnreadable"));
 
                 if (choice == BackupConflictChoice.UseCloud)
                 {
@@ -35744,7 +35746,7 @@ namespace TrueforceForAll.Plugin
                 await StampSyncedRevisionAsync().ConfigureAwait(false);
                 return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_MergedBackedUp") };
             }
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup conflict resolution failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't resolve the backup conflict. See the SimHub log, then try again."); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup conflict resolution failed: " + ex.Message); return Fail(BackupStatus.Failed, Loc.T("Plugin_CouldnTResolveBackup")); }
             finally { _backupOp.Release(); }
         }
 
@@ -35752,22 +35754,22 @@ namespace TrueforceForAll.Plugin
         /// Additive: local-only presets survive. Recommends a restart.</summary>
         internal async Task<BackupOutcome> RestoreFromCloudAsync()
         {
-            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, "Backup is not available.");
-            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, "Sign in to restore.");
+            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, Loc.T("Plugin_BackupNotAvailable"));
+            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignRestore"));
             if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
-                return Fail(BackupStatus.Failed, "A backup is already in progress.");
+                return Fail(BackupStatus.Failed, Loc.T("Plugin_BackupAlreadyProgress"));
             try
             {
                 var (dl, json) = await _backupClient.DownloadAsync().ConfigureAwait(false);
                 if (dl == BackupTransfer.NotFound) return new BackupOutcome { Status = BackupStatus.NothingToRestore, Message = Loc.T("Plugin_NoCloudBackupFound") };
                 if (dl != BackupTransfer.Success) return FromTransfer(dl, "Couldn't fetch the cloud backup");
                 var env = SafeParse(json);
-                if (env == null) return Fail(BackupStatus.Failed, "The cloud backup was unreadable.");
+                if (env == null) return Fail(BackupStatus.Failed, Loc.T("Plugin_CloudBackupWasUnreadable"));
                 ApplyRestoredEnvelope(env);
                 await StampSyncedRevisionAsync().ConfigureAwait(false);
                 return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_RestoredCloudApplied") };
             }
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Restore failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't restore. Check your connection, then try again."); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Restore failed: " + ex.Message); return Fail(BackupStatus.Failed, Loc.T("Plugin_CouldnTRestoreCheck")); }
             finally { _backupOp.Release(); }
         }
 
@@ -36579,11 +36581,11 @@ namespace TrueforceForAll.Plugin
         {
             switch (t)
             {
-                case BackupTransfer.NotSignedIn:   return Fail(BackupStatus.NotSignedIn, "Sign-in expired; sign in again.");
-                case BackupTransfer.Forbidden:     return Fail(BackupStatus.Forbidden, "Backup is for supporters (coming soon).");
-                case BackupTransfer.NotConfigured: return Fail(BackupStatus.NotConfigured, "Backup is not configured.");
-                case BackupTransfer.TooLarge:      return Fail(BackupStatus.TooLarge, ctx + ": the backup is too large.");
-                case BackupTransfer.NotFound:      return Fail(BackupStatus.NothingToRestore, "No cloud backup found.");
+                case BackupTransfer.NotSignedIn:   return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignExpiredSignAgain2"));
+                case BackupTransfer.Forbidden:     return Fail(BackupStatus.Forbidden, Loc.T("Plugin_BackupSupportersComingSoon"));
+                case BackupTransfer.NotConfigured: return Fail(BackupStatus.NotConfigured, Loc.T("Plugin_BackupNotConfigured"));
+                case BackupTransfer.TooLarge:      return Fail(BackupStatus.TooLarge, Loc.F("Plugin_BackupTooLarge_Fmt", ctx));
+                case BackupTransfer.NotFound:      return Fail(BackupStatus.NothingToRestore, Loc.T("Plugin_NoCloudBackupFound2"));
                 default:                           return Fail(BackupStatus.Failed, ctx + ".");
             }
         }
@@ -37419,22 +37421,20 @@ namespace TrueforceForAll.Plugin
                 var matches = WheelDiscovery.FindAll();
                 if (matches.Count == 0)
                 {
-                    sb.AppendLine("[FAIL] Discovery: no supported wheel on the bus.");
-                    sb.Append("        Plug in a G PRO / RS50 / G923 and close G HUB.");
+                    sb.AppendLine(Loc.T("Plugin_FAILDiscoveryNoSupported"));
+                    sb.Append(Loc.T("Plugin_PlugGPRORS50"));
                     return sb.ToString();
                 }
-                sb.AppendLine($"[OK]   Discovery: {WheelDiscovery.DisplayModel(matches[0])} "
-                    + $"(VID 0x{matches[0].Vid:X4}, PID 0x{matches[0].Pid:X4})");
+                sb.AppendLine(Loc.F("Plugin_OKDiscoveryVID0x_Fmt", WheelDiscovery.DisplayModel(matches[0]), matches[0].Vid, matches[0].Pid));
 
                 CleanupDevice();
                 if (_shuttingDown) return Loc.T("Plugin_AbortedPluginShuttingDown");
 
                 bool ok = TryBringUpDevice();
-                sb.AppendLine((ok ? "[OK]   " : "[FAIL] ")
-                    + "Open + init sequence + stream: "
-                    + (StreamStatus ?? "(unknown)"));
-                sb.AppendLine("       Wheel:  " + (WheelStatus ?? "(unknown)"));
-                sb.Append("       FFB tap: " + (FfbTapStatus ?? "(not started)"));
+                sb.AppendLine((ok ? Loc.T("Plugin_OK") : Loc.T("Plugin_FAIL"))
+                    + Loc.F("Plugin_OpenInitSequenceStream_Fmt", (StreamStatus ?? Loc.T("Settings_Unknown"))));
+                sb.AppendLine(Loc.F("Plugin_Wheel_Fmt", (WheelStatus ?? Loc.T("Settings_Unknown"))));
+                sb.Append(Loc.F("Plugin_FFBTap_Fmt", (FfbTapStatus ?? Loc.T("Plugin_NotStarted"))));
                 return sb.ToString();
             }
             catch (Exception ex)
@@ -42463,7 +42463,7 @@ namespace TrueforceForAll.Plugin
                     try { v = p.GetValue(di, null); } catch { }
                     if (sb.Length > 0) sb.Append(' ');
                     sb.Append(p.Name).Append('=').Append(Convert.ToString(v,
-                        System.Globalization.CultureInfo.InvariantCulture) ?? "null");
+                        System.Globalization.CultureInfo.InvariantCulture) ?? Loc.T("Plugin_Null"));
                 }
                 SimHub.Logging.Current.Info("[TF4ALL] IRRAW session DriverInfo: " + sb.ToString());
             }
@@ -42490,8 +42490,8 @@ namespace TrueforceForAll.Plugin
                 return "present, NOT an array, type=" + v.GetType().FullName + ", value=" + scalar;
             }
             var sb = new System.Text.StringBuilder();
-            sb.Append("present, type=").Append(v.GetType().FullName)
-              .Append(", len=").Append(arr.Length.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            sb.Append(Loc.T("Plugin_PresentType")).Append(v.GetType().FullName)
+              .Append(Loc.T("Plugin_Len")).Append(arr.Length.ToString(System.Globalization.CultureInfo.InvariantCulture))
               .Append(", [");
             int n = arr.Length < 8 ? arr.Length : 8;
             for (int i = 0; i < n; i++)
@@ -42502,7 +42502,7 @@ namespace TrueforceForAll.Plugin
                 string text;
                 try { text = Convert.ToString(e, System.Globalization.CultureInfo.InvariantCulture); }
                 catch { text = "?"; }
-                sb.Append(text ?? "null");
+                sb.Append(text ?? Loc.T("Plugin_Null"));
             }
             if (n < arr.Length) sb.Append(" ...");
             sb.Append(']');
