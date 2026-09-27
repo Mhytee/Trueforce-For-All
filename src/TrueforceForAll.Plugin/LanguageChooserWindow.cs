@@ -145,8 +145,12 @@ namespace TrueforceForAll.Plugin
             Grid.SetRow(_grid, 2);
             root.Children.Add(_grid);
 
-            var bottom = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-            bottom.Children.Add(new TextBlock
+            // The tag box on the left, the buttons where a dialog's buttons go.
+            var bottom = new Grid { Margin = new Thickness(0, 10, 0, 0) };
+            bottom.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            bottom.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var tagRow = new StackPanel { Orientation = Orientation.Horizontal };
+            tagRow.Children.Add(new TextBlock
             {
                 Text = Loc.T("LangPicker_OtherTag"), Foreground = MutedFg, FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
@@ -155,19 +159,26 @@ namespace TrueforceForAll.Plugin
             {
                 Width = 140, MaxLength = 32, Foreground = TextFg, Background = InputBg,
                 BorderBrush = BorderFg, Padding = new Thickness(5, 3, 5, 3), FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
                 ToolTip = Loc.T("LangPicker_OtherTag_Tip"),
             };
-            bottom.Children.Add(_otherTag);
+            tagRow.Children.Add(_otherTag);
+            Grid.SetColumn(tagRow, 0);
+            bottom.Children.Add(tagRow);
 
-            var spacer = new FrameworkElement { Width = 20 };
-            bottom.Children.Add(spacer);
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+            };
             var open = MakeButton(Loc.T("LangPicker_Open"), (s, e) => Accept());
             open.IsDefault = true;
-            bottom.Children.Add(open);
+            buttons.Children.Add(open);
             var close = MakeButton(Loc.T("Settings_Close"), (s, e) => Close());
             close.IsCancel = true;
-            bottom.Children.Add(close);
-            bottom.HorizontalAlignment = HorizontalAlignment.Stretch;
+            buttons.Children.Add(close);
+            Grid.SetColumn(buttons, 1);
+            bottom.Children.Add(buttons);
             Grid.SetRow(bottom, 3);
             root.Children.Add(bottom);
 

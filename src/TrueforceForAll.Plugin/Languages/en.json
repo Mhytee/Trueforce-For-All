@@ -2092,7 +2092,7 @@
   "Settings_LanguagePanelLanguage": "Panel language",
   "Settings_LanguageRowProgress_Fmt": "{0}  ({1})  {2}%",
   "Settings_LanguageRow_Fmt": "{0}  ({1})",
-  "Settings_LanguageStartNew": "Start a new language…",
+  "Settings_LanguageStartNew": "Translate a language…",
   "Settings_LanguageTranslate": "Translate…",
   "Settings_LanguageTranslateFailed": "The translation window could not be opened.",
   "Settings_LanguageTranslate_Tip": "Open a window with the English on one side and your language on the other.",
