@@ -312,7 +312,17 @@ namespace TrueforceForAll.Plugin
         {
             var st = new Style(typeof(TextBox));
             st.Setters.Add(new Setter(TextBox.TextWrappingProperty, TextWrapping.Wrap));
-            st.Setters.Add(new Setter(TextBox.AcceptsReturnProperty, false));
+            // Thirty-two of the strings carry a line break: the dialog bodies, the
+            // numbered setup steps, the game notices. Without this a translator can
+            // read those breaks and not type one, so the longest strings in the
+            // plugin cannot be translated. The box takes the Enter key before the
+            // grid sees it, which leaves Tab and clicking away as the ways to
+            // finish a row.
+            st.Setters.Add(new Setter(TextBox.AcceptsReturnProperty, true));
+            st.Setters.Add(new Setter(TextBox.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto));
+            // The longest English string is 769 characters; past this the editor
+            // scrolls rather than pushing the rest of the grid off screen.
+            st.Setters.Add(new Setter(TextBox.MaxHeightProperty, 180.0));
             st.Setters.Add(new Setter(TextBox.BackgroundProperty, InputBg));
             st.Setters.Add(new Setter(TextBox.ForegroundProperty, TextFg));
             st.Setters.Add(new Setter(TextBox.BorderBrushProperty, BorderFg));

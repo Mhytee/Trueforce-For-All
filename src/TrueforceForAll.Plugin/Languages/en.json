@@ -2880,7 +2880,7 @@
   "Translate_ColumnKey": "Key",
   "Translate_ColumnNote": "Check",
   "Translate_ColumnYours_Fmt": "Your language ({0})",
-  "Translate_Intro": "English on the left, your language on the right. Each row you finish is saved as you leave it, and the panel behind this window changes with it. Leave a row empty to keep the English.",
+  "Translate_Intro": "English on the left, your language on the right. Enter starts a new line inside a row, and leaving a row saves it: the panel behind this window changes as you go. Leave a row empty to keep the English.",
   "Translate_LanguageName": "Language name",
   "Translate_LanguageName_Tip": "What this language calls itself, as the picker should list it: Español, Deutsch, Português.",
   "Translate_NoLanguagesFolder": "This install has no languages folder, so there is nowhere to save. Restart SimHub and open this window again.",
