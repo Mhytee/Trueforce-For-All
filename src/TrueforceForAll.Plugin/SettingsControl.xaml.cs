@@ -527,7 +527,13 @@ namespace TrueforceForAll.Plugin
                         (_plugin.Settings?.UpdateCheckIntervalHours ?? 2).ToString());
                 // The language picker is filled from the languages this install
                 // has, not from a fixed list, so it is built rather than selected.
-                RebuildLanguageSection();
+                // Guarded on its own: this sits inside the load's one try, so an
+                // exception here would skip every control below it.
+                try { RebuildLanguageSection(); }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Warn("[TF4ALL] Language picker could not be built: " + ex.Message);
+                }
                 if (BetaUpdatesCheck != null)
                 {
                     BetaUpdatesCheck.IsChecked = _plugin.Settings?.BetaUpdatesEnabled == true;
