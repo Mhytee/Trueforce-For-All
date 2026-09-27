@@ -110,6 +110,65 @@ grepping the effect's full name alone will miss those. The steps:
    affect it, add a `DuckXxx` flag to `AirborneSettings` and honor it where the
    other voices are ducked.
 
+## Adding or changing UI text
+
+Every string a user reads is a key, and `src/TrueforceForAll.Plugin/Languages/en.json`
+holds the English for it. A bare English literal in a label is a string nobody can
+translate, so the checks below refuse one. The tooling and its reasoning live in
+`tools/loc/README.md`; this is what you do.
+
+1. **Write it as a key from the start.** In XAML, `Text="{loc:T Area_Meaning}"`.
+   In C#, `Loc.T("Area_Meaning")`, or `Loc.F("Area_Meaning_Fmt", value)` when the
+   sentence carries a value, or `Loc.N("Area_Meaning", count, count)` when it
+   carries a count. A `Loc.N` key needs both an `Area_Meaning.one` and an
+   `Area_Meaning.other`.
+2. **Add the English to `en.json`.** Keys are `Area_Meaning`, where the area is the
+   tab or window a reader would name: `Settings`, `PresetManager`, `Translate`. The
+   file is sorted and UTF-8 without a BOM; if you are scripting the edit, go
+   through `Read-LocJson` and `Write-LocJson` in `tools/loc/_common.ps1` so the
+   ordering and escaping stay as every reader of that file expects.
+3. **Run the three checks.** `tools/loc/validate.ps1` (every key a call names
+   exists, and nothing in `en.json` is unreferenced), `tools/loc/sweep-cs.ps1` (no
+   bare English literal reaches a label; it must report zero) and
+   `dotnet test src/TrueforceForAll.Core.Tests` (the same sweep again in C#, plus
+   the guards below). The test project needs no SimHub DLLs, so it runs anywhere.
+
+The rules the guards enforce, and why each one exists:
+
+- **One whole sentence per key.** Do not build a sentence by concatenating keys;
+  pass the value as `{0}` instead. Word order is the translator's to choose, and a
+  fragment like `"Saved to "` cannot be moved.
+- **A count goes through `Loc.N`.** Writing `"{0} file(s)"` is English dodging its
+  own plural, and a language with three plural forms cannot dodge with it.
+- **No invisible space at either end of a value.** A translator cannot see it and a
+  JSON editor may trim it. Fold it into the code that writes the string, or declare
+  the key in `EdgeSpaceKeys` in `LocalizationTests.cs` with what it runs into.
+- **A key and its `_Fmt` sibling must be the same caption.** If they are two
+  different strings, the second gets its own name. "Patreon supporter" and "Patreon
+  supporter ({0})" are one caption; a window title and the question inside it are
+  not.
+- **Never put `Loc.T` in a static initializer.** It runs once, possibly before the
+  language table exists, and it never follows a language change. Use an
+  expression-bodied property (`static string[] Labels => new[] { ... }`) so every
+  read resolves live.
+- **A table that pairs an id with a label stores the key name**, not the label, and
+  resolves it where the label is used. The sweep cannot tell `"engine"` from
+  `"Engine pulse"` inside one initializer.
+- **Text assigned to a local first is invisible to the sweep**, which only sees
+  writes to a sink it knows. Either name the sink in `tools/loc/cs-ui-sinks.txt`, or
+  check what `tools/loc/sweep-cs.ps1 -Prose` says about the member you touched.
+- **Log lines, access-code replies and file contents stay English.** They are not
+  labels, and the allowlist in `tools/loc/cs-keep-literal.txt` names the files whose
+  builders write them.
+
+Changing English that already shipped is a separate decision. A key is never renamed
+or reused for other text once a release carries it, because translations and
+people's own override files match on the key. Fixing a typo keeps the key, and every
+translation of it keeps showing the old wording until someone updates it. Changing
+what a string *means* needs a new key, so no translation silently says the wrong
+thing. Deleting text means deleting its key too, or `validate.ps1` will report it as
+unreferenced.
+
 ## License
 
 By submitting a change, you agree that your contribution is licensed

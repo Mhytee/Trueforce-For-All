@@ -66,6 +66,12 @@ For each release:
      "since vX.Y.Z" baseline to this version so it never goes stale.
 4. Hardware-validate any new telemetry source or game-detection change on the
    rig before tagging.
+   - If anything in the UI changed, run the string checks: `tools/loc/validate.ps1`,
+     `tools/loc/sweep-cs.ps1` and `dotnet test src/TrueforceForAll.Core.Tests`. The
+     sweep must report zero and `tools/loc/cs-literal-budget.txt` must stay empty. A
+     bare English literal in a label is a string no translator can reach, and the
+     test names the file that introduced it. See "Adding or changing UI text" in
+     `.github/CONTRIBUTING.md`.
 5. Commit the version bump (plus any README / changelog / guides changes) on
    `dev` and push it. Every recent bump was authored there and reached the
    other channels by promotion: `dev` to `beta` for the pre-release, then
