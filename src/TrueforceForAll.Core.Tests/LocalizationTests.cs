@@ -718,6 +718,9 @@ namespace TrueforceForAll.Core.Tests
             // lead fragment ends where its link begins.
             { "SignIn_PrivacyLead", "runs into the Privacy policy hyperlink" },
             { "SignIn_DidntGetIt", "runs into the Resend code link" },
+            { "Plugin_Screen", "an inserted clause in the MAIRA notice title" },
+            { "Plugin_WheelSScreen", "an inserted clause in the MAIRA notice body" },
+            { "Plugin_CloseMAIRAThenFollow", "runs into the iRacing setup link" },
             // Two optional clauses of the auto-tune summary, appended mid sentence
             // when they apply, so each opens with its separating space.
             { "Plugin_Median_Fmt", "an optional clause of the auto-tune summary" },
@@ -986,16 +989,16 @@ namespace TrueforceForAll.Core.Tests
                 failures.Add("cs-keep-literal.txt: the whole-file exemptions must be exactly the five listed in "
                     + "LocCsLiteralBudget, two developer-tooling files and three builders that write a log line, "
                     + "a report or a CSV; another one hides a file's labels with no warning");
-            // prop went from 7 to 28 when the sweep learned about display text that
+            // prop went from 7 to 33 when the sweep learned about display text that
             // never touches a control directly: a sentence assigned to a local or a
             // controller field and only shown later. textmember and recordprop grew
             // for the same reason, so all three are pinned now rather than one.
-            if (rules.PropNames.Count != 28)
-                failures.Add("cs-ui-sinks.txt: expected 28 prop rules, found " + Inv(rules.PropNames.Count)
+            if (rules.PropNames.Count != 33)
+                failures.Add("cs-ui-sinks.txt: expected 33 prop rules, found " + Inv(rules.PropNames.Count)
                     + ". A property rule decides what counts as a label write: adding or removing one moves every "
                     + "budget number, so update this test in the same commit and say why in the message");
-            if (rules.TextMembers.Count != 44)
-                failures.Add("cs-ui-sinks.txt: expected 44 textmember rules, found " + Inv(rules.TextMembers.Count)
+            if (rules.TextMembers.Count != 47)
+                failures.Add("cs-ui-sinks.txt: expected 47 textmember rules, found " + Inv(rules.TextMembers.Count)
                     + ". Each one says a member returns display text, which is a judgement about that member, so "
                     + "adding or removing one belongs in a commit that says which member and why");
             // Counted by property name, not by line: RecordProps maps a property to

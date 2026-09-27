@@ -3790,7 +3790,7 @@ namespace TrueforceForAll.Plugin
                     if (current.Length == 0) current = DashCarPresetNoneRow;
                     // Key the empty-library title off the REAL entries; the
                     // sentinel row alone doesn't count as having presets.
-                    title = names.Length > 0 ? "CAR PRESETS" : "CAR PRESETS  (none for this car)";
+                    title = names.Length > 0 ? Loc.T("DashRemote_CARPRESETS") : Loc.T("DashRemote_CARPRESETSNoneCar");
                 }
                 else
                 {
@@ -3800,7 +3800,7 @@ namespace TrueforceForAll.Plugin
                         .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
                         .ToArray();
                     current = _activePresetName ?? "";
-                    title = list.Length > 0 ? "GAME PRESETS" : "GAME PRESETS  (library empty)";
+                    title = list.Length > 0 ? Loc.T("DashRemote_GAMEPRESETS") : Loc.T("DashRemote_GAMEPRESETSLibraryEmpty");
                 }
                 _dashPresetList = list;
                 _dashPresetCurrent = current;

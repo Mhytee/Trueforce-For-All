@@ -13591,10 +13591,11 @@ namespace TrueforceForAll.Plugin
             if (key == _lmuLockLogKey) return;
             _lmuLockLogKey = key;
             var ci = System.Globalization.CultureInfo.InvariantCulture;
-            string head = "[TF4ALL] Le Mans Ultimate soft lock: the car's wheel animates through " + carRot + " degrees; ";
+            // logHead, not head: this is the [TF4ALL] line, not a dialog heading.
+            string logHead = "[TF4ALL] Le Mans Ultimate soft lock: the car's wheel animates through " + carRot + " degrees; ";
             if (!float.IsNaN(wheelOverCar))
             {
-                SimHub.Logging.Current.Info(head
+                SimHub.Logging.Current.Info(logHead
                     + (src == "measured"
                         ? "the sim's steering axis reads " + wheelOverCar.ToString("F2", ci) + " times the physical position, so the car's lock"
                         : "the " + src + " puts the car's lock")
@@ -13602,13 +13603,13 @@ namespace TrueforceForAll.Plugin
             }
             else if (src == "device axis")
             {
-                SimHub.Logging.Current.Info(head
+                SimHub.Logging.Current.Info(logHead
                     + "the sim's raw axis equals the physical position, so either the wheel's stop already is the car's lock "
                     + "or the sim is not rescaling; with no rotation range in degrees from the sim or the host, the lock stays quiet.");
             }
             else
             {
-                SimHub.Logging.Current.Info(head
+                SimHub.Logging.Current.Info(logHead
                     + "measuring the sim's raw axis against the wheel (a few seconds of cornering) before the lock is placed.");
             }
         }
@@ -41847,7 +41848,7 @@ namespace TrueforceForAll.Plugin
             var app = System.Windows.Application.Current;
             if (app == null || _mairaTapNoticeShowing) return;
             if (Settings == null || Settings.MairaTapNoticeDismissed) return;
-            string title = "MAIRA detected: rev lights" + (WheelHasOledScreen ? " and screen" : "") + " are off";
+            string title = Loc.F("Plugin_MAIRADetectedRevLights_Fmt", (WheelHasOledScreen ? Loc.T("Plugin_Screen") : ""));
             string body = MairaTapDegradedLead;
             string tailAfter = MairaTapDegradedTailAfterLink;
             app.Dispatcher.BeginInvoke(new Action(() =>
@@ -41895,11 +41896,11 @@ namespace TrueforceForAll.Plugin
         /// "iRacing setup" a link: the lead (what is happening), then the cure
         /// split around the link text. The log joins them into one line.</summary>
         public string MairaTapDegradedLead =>
-            "MAIRA is running and its force is reaching the wheel through the plugin's USBPcap capture. That "
-            + "works, but with force on that path the rev lights" + (WheelHasOledScreen ? " and the wheel's screen" : "")
-            + " stay off.";
-        public const string MairaTapDegradedTailBeforeLink = "Close MAIRA, then follow the ";
-        public const string MairaTapDegradedLinkText = "iRacing setup";
+            Loc.F("Plugin_MAIRARunningForceReaching_Fmt", (WheelHasOledScreen ? Loc.T("Plugin_WheelSScreen") : ""));
+        // Properties, not consts: both are translated sentences now, so they have
+        // to resolve when they are read rather than when this type is loaded.
+        public static string MairaTapDegradedTailBeforeLink => Loc.T("Plugin_CloseMAIRAThenFollow");
+        public static string MairaTapDegradedLinkText => Loc.T("Plugin_IRacingSetup");
         public string MairaTapDegradedTailAfterLink =>
             " for the sim's own force with the plugin's effects" + (WheelHasOledScreen ? ", lights and screen." : " and lights.");
 

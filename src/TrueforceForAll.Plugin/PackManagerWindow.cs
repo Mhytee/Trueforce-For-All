@@ -246,7 +246,7 @@ namespace TrueforceForAll.Plugin
         {
             int gameCount = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindGame) ?? 0;
             int carCount  = p.Entries?.Count(e => e?.Kind == InstalledPackEntry.KindCar)  ?? 0;
-            string title  = string.IsNullOrEmpty(p.PackName) ? "(unnamed pack)" : p.PackName;
+            string title  = string.IsNullOrEmpty(p.PackName) ? Loc.T("ImportPreview_UnnamedPack") : p.PackName;
             string author = string.IsNullOrEmpty(p.Author) ? "" : $"  ·  {UiContentSanitizer.SafeDisplayText(p.Author, 96)}";
             string ver    = string.IsNullOrEmpty(p.AuthorVersion) ? "" : $"  ·  v{UiContentSanitizer.SafeDisplayText(p.AuthorVersion, 32)}";
             string counts = $"{gameCount} game · {carCount} car";

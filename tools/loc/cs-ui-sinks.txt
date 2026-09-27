@@ -93,6 +93,15 @@ prop loadLabel
 prop autoLabel
 prop hint
 prop GHubQuietDiagnosticMessage
+
+# A dialog's title, a confirmation's first line, the two save-popover tips and the
+# arcade mod card's status. Seven of the eight "title" locals in the plugin are a
+# dialog title; the eighth was a GitHub issue title and is named issueTitle now.
+prop title
+prop head
+prop presetTip
+prop carTip
+prop arcStatus
 # ---------------------------------------------------------------- constructors
 # TextBlock, Button and the rest take their text through a property, so Run is
 # the only WPF control the plugin builds with text in the constructor. The
@@ -144,6 +153,9 @@ call Append 0
 # The USB picker's per-row notes, and the auto-tune callback the panel prints.
 call notes.Add 0
 call status 0
+
+# The delete-engine confirmation lists what the engine is used by.
+call usedBy.Add 0
 # ---------------------------------------------------------------- indirect sinks
 # A helper that takes text and writes it to a label is a sink at its call site,
 # which is where the literal lives. Without these lines a label routed through a
@@ -303,6 +315,11 @@ textmember ExchangeAsync
 textmember AuthorizeAsync
 recordprop Row.Description
 recordprop Row.Notes
+
+# The MAIRA notice, in the three parts the panel needs to make the middle a link.
+textmember MairaTapDegradedLead
+textmember MairaTapDegradedTailBeforeLink
+textmember MairaTapDegradedLinkText
 # ---------------------------------------------------------------- watches
 watch TrueforceDialog
 nonsink TrueforceDialog.LogError

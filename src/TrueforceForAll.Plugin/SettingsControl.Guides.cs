@@ -559,16 +559,16 @@ namespace TrueforceForAll.Plugin
                 bool ready = a.GameFound && a.IniFound && !string.IsNullOrEmpty(a.WrapperName);
                 bool arcIn = ready && a.Installed;
                 string arcStatus = !a.GameFound
-                    ? "Game folder not found on this PC."
+                    ? Loc.T("Guides_GameFolderNotFound")
                     : string.IsNullOrEmpty(a.WrapperName)
-                    ? "Set FFBArcadePlugin up for this game first, then this can take it over."
+                    ? Loc.T("Guides_SetFFBArcadePluginUpGame")
                     : !a.IniFound
-                        ? "Run this game once in TeknoParrot first, so its FFB settings file exists."
+                        ? Loc.T("Guides_RunGameOnceTeknoParrot")
                         : a.Installed
-                            ? "Installed. Restart the game so it loads."
+                            ? Loc.T("Guides_InstalledRestartGameSoLoads")
                             : a.HasStamp && !a.PublishModeOn
-                                ? "Installed, but this game is no longer set to send us its force. Install again to fix it."
-                                : "Not installed.";
+                                ? Loc.T("Guides_InstalledButGameNo")
+                                : Loc.T("Guides_NotInstalled");
                 Add(arcIn, ready, BuildModCard(
                     a.DisplayName,
                     Loc.T("Guides_BringsCabinetSOwn"),

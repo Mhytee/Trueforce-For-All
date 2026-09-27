@@ -3407,7 +3407,9 @@ namespace TrueforceForAll.Plugin
                 ? $"{_plugin.HidWheelVid:X4}:{_plugin.HidWheelPid:X4}" : "unknown";
             string fp      = _plugin?.CaptureFingerprint ?? "(not confirmed)";
 
-            string title = $"[FFB report] {vidpid} on {game}";
+            // issueTitle, not title: a GitHub issue subject, in English for the
+            // project, beside the issueBody below it.
+            string issueTitle = $"[FFB report] {vidpid} on {game}";
             // issueBody, not body: this is Markdown for a GitHub issue, read by
             // the project in English and escaped into a URL a moment later, so it sits
             // outside the display-text sinks in tools/loc/cs-ui-sinks.txt.
@@ -3421,7 +3423,7 @@ namespace TrueforceForAll.Plugin
                 + "(Optional but very helpful: use the Export logs button at the bottom of the Settings tab and drag the zip in here.)\n";
 
             string url = FfbReportDiscussionsBase
-                       + "&title=" + Uri.EscapeDataString(title)
+                       + "&title=" + Uri.EscapeDataString(issueTitle)
                        + "&body="  + Uri.EscapeDataString(issueBody);
             OpenUrl(url);
         }
@@ -15706,11 +15708,11 @@ namespace TrueforceForAll.Plugin
 
             string presetTip = !hasPreset
                 ? (hasGame
-                    ? "No preset is active: saves your tuning as a new preset and makes it this game's default."
-                    : "No preset is active: saves your tuning as a new preset.")
+                    ? Loc.T("Settings_NoPresetActiveSaves")
+                    : Loc.T("Settings_NoPresetActiveSaves2"))
                 : builtin
-                    ? $"'{activeP}' is built-in and can't be overwritten: saves a copy as a new user preset and makes it this game's default."
-                    : $"Overwrites '{activeP}' with the current {label} values. Cars follow it unless they have their own override.";
+                    ? Loc.F("Settings_BuiltCanTOverwritten_Fmt", activeP)
+                    : Loc.F("Settings_OverwritesCurrentValuesCars_Fmt", activeP, label);
             var presetBtn = new Button
             {
                 Content = Loc.T("Header_GamePreset"),

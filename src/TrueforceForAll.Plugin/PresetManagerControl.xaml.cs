@@ -4089,13 +4089,13 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
 
             bool one = targets.Count == 1;
-            string title = one ? "Delete custom engine" : "Delete custom engines";
+            string title = one ? Loc.T("PresetManager_DeleteCustomEngine") : Loc.T("PresetManager_DeleteCustomEngines");
             string head  = one
-                ? $"Delete custom engine '{targets[0].Def.Name}'?"
-                : $"Delete {targets.Count} custom engine(s)?";
+                ? Loc.F("PresetManager_DeleteEngineQuestion_Fmt", targets[0].Def.Name)
+                : Loc.F("PresetManager_DeleteCustomEngineS_Fmt", targets.Count);
             var usedBy = new List<string>();
-            if (presetTotal > 0) usedBy.Add($"{presetTotal} preset(s)");
-            if (pinTotal    > 0) usedBy.Add($"{pinTotal} car variant(s)");
+            if (presetTotal > 0) usedBy.Add(Loc.F("PresetManager_PresetS_Fmt", presetTotal));
+            if (pinTotal    > 0) usedBy.Add(Loc.F("PresetManager_CarVariantS_Fmt", pinTotal));
             string usageClause = usedBy.Count > 0
                 ? $"\n\n{string.Join(" and ", usedBy)} use {(one ? "it" : "them")}. "
                   + $"Those switch to Auto engine detection until you pick another."
