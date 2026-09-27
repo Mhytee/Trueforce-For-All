@@ -16,7 +16,7 @@ dot-sourced, never run.
 | `convert-xaml.ps1 -Keys <csv> [-DryRun]` | Replaces each listed value with `{loc:T Key}` and merges the English into `en.json`. Each row must match exactly one occurrence on its recorded line, on the element with its recorded `x:Name` or path, or nothing is written. Files are read and written as bytes: BOM and line endings survive, nothing outside the replaced spans changes, and the result must parse as XML. Adds `xmlns:loc` to the root when missing and records the scopes it converted on the file's line in `converted-files.txt`. Element text moves to an attribute only on TextBlock, Label, Run, Button, CheckBox, RadioButton, ComboBoxItem and ListBoxItem (Hyperlink text is wrapped in a Run); a property element such as `Button.Content` or any other element is refused with "convert by hand". `-DryRun` prints the plan, including the scopes each file would get, and writes nothing. |
 | `pseudo.ps1 -In en.json -Out qps-ploc.json` | Accent-swaps every value, pads it 30 percent with `~`, wraps it in brackets and keeps `{n}` placeholders intact. |
 | `validate.ps1 [-Root <repo>]` | The test suite's checks, printed: no duplicate key in any `Languages\*.json`, every `{loc:T Key}` (positional or `Key=` form) and `Loc.T/F/N("Key")` exists in `en.json`, every `new Binding("[Key]")` bound straight to the store names a key that exists and holds no placeholders, no unreferenced key (`Effect_*_Name` and `EngineLayout_*` exempt), `Loc.F` arity against the placeholders, `Loc.N` arity against the values after the count (the count itself is not a format argument), placeholder parity per translation, the same leading and trailing whitespace as English per translated key (a value that ends in a space butts against its neighbor in one sentence, and a translator cannot see it), and no literal left in the converted scopes of each file `converted-files.txt` lists. C# call sites use string literal keys, `Loc.T("Key")`; there is no generated constants class (decision of 2026-09-24). A label a helper sets once at wire time binds instead of assigning, `new Binding("[Key]") { Source = Loc.Instance, Mode = BindingMode.OneWay }`, the shape `{loc:T}` itself produces, so it follows a language change with no relabel pass; the checks count that as a reference too. A key built by concatenation is dynamic: the checks never see it, and the `en.json` keys it reaches must belong to an exempt family. Exit code 1 on any failure. |
-| `sweep-cs.ps1 [-Detail] [-Indirect] [-WriteBudget] [-NoBudget] [-Only <file>]` | The C# half: every literal that reaches a UI sink and is not routed through `Loc.T/F/N`, counted per file and held against `cs-literal-budget.txt`. Its own section is below. |
+| `sweep-cs.ps1 [-Detail] [-Indirect] [-Prose] [-WriteBudget] [-NoBudget] [-Only <file>]` | The C# half: every literal that reaches a UI sink and is not routed through `Loc.T/F/N`, counted per file and held against `cs-literal-budget.txt`. `-Prose` is the wider report, for finding what the sink rules do not reach. Its own section is below. |
 
 ## Scopes
 
@@ -126,6 +126,7 @@ numbers in C# from the same three data files, so the budget is enforced by
 | `.\sweep-cs.ps1 -Indirect` | The sinks whose value arrives as a bare identifier, grouped by the member they sit in. This is the tool's own blind-spot report: the literal, if any, is at the caller. |
 | `.\sweep-cs.ps1 -WriteBudget` | Rewrites `cs-literal-budget.txt` from today's counts. |
 | `.\sweep-cs.ps1 -NoBudget` | Counts only, no verdict. |
+| `.\sweep-cs.ps1 -Prose` | Every literal in the plugin that reads like a sentence and is not routed through `Loc`, whether or not it reaches a known sink, grouped by the member it sits in. A report, not a check: nothing fails on its output and the C# test does not mirror it. This is how the next blind spot gets found. |
 
 The check fails when a file holds **more** than its budget (a label was written
 in English, or moved into a file whose number was lower), when it holds
@@ -205,40 +206,57 @@ goes up: the sweep starts seeing writes it was blind to. Re-run with
 ### Known blind
 
 The budget counts literals written AT a sink, where a sink is what
-`cs-ui-sinks.txt` names. It is not the Phase 2 remainder, and an empty budget
-file is a necessary condition for the phase rather than a sufficient one.
+`cs-ui-sinks.txt` names. An empty budget file is a necessary condition for Phase 2
+rather than a sufficient one, so the second question has its own report.
 
-Three shapes that used to be wholly invisible now have directives, added
-2026-09-26 and seeded with a named subset rather than everything of their kind:
+**What the rules cover now.** The three directives added on 2026-09-26 started with
+a named subset of their kind and were extended the same day from a scan of every
+prose literal in the plugin, which is what `-Prose` runs:
 
-| Directive | Seeded with | Still invisible |
+| Directive | Seeded with | Now |
 | --- | --- | --- |
-| `labels <Identifier>` | 15 collections, chosen from a mechanical enumeration of every string collection in the plugin | a collection nobody has named yet |
-| `textmember <Name>` | 2 members, `EffectLabel` and `DescribeLastUploadError` | the rest of the members that return display text, which a review put at 218 literals across 68 members |
-| `recordprop <Type>.<Prop>` | 4 pairs | the rest, out of about 560 literals on non-sink initializer properties |
+| `labels <Identifier>` | 15 collections | 14, and all fourteen resolve on every read rather than at type load, because a static initializer freezes the language and can run before `Loc.Initialize` |
+| `textmember <Name>` | 2 members | 47, including the status and advice layer, the three native-Trueforce notices, the install and uninstall results and the link flows' error tuples |
+| `recordprop <Type>.<Prop>` | 4 pairs | 11 over 9 property names |
+| `prop <Name>` | 7 WPF properties | 34, the extra ones being locals and controller fields that hold a sentence on its way to a control |
 
-A literal inside an interpolation hole is now counted too, which is what makes
-`$"...invert {(on ? "on" : "off")}"` visible; the fallback word in
-`{name ?? "preset"}` is the same shape and reads to a user as part of the
-sentence.
+Four shapes that were wholly blind are not any more:
 
-Two shapes are still wholly blind, and one file set is out of scope:
+- A `StringBuilder` line. `AppendLine` and `Append` are sinks, which found the FFB
+  self-test checklist and the preset details panel. Three builders that write a log
+  line, a translator report or a CSV are named in `cs-keep-literal.txt` instead.
+- One hop through a local. The locals that hold display text are named in the
+  `prop` list, and the two that hold Markdown for a GitHub issue are called
+  `issueTitle` and `issueBody` so the name says which is which.
+- A member written as an expression body. `textmember` was narrowed to return
+  position, which left out `Name => expr;`, where the member IS its return. An
+  arrow region is one return span now.
+- `return (a, "text")`. The literal collector read that as a call to something
+  named return and stepped over it, which hid both link clients' error messages. A
+  keyword before a bracket means a grouping parenthesis in both walkers.
 
-| Shape | Size | Example |
+**What is still not covered**, from the `-Prose` report (434 literals in 177
+members on 2026-09-26, and the number in a fresh run is the one to trust):
+
+| Shape | Roughly | Why it stays |
 | --- | --- | --- |
-| Panel text built with a `StringBuilder` | 89 literals | the preset summary, the Diagnostics text |
-| One hop through a local or a helper | 92 sinks take a bare identifier | `-Indirect` lists these; the literal is at the caller |
-| Core and Engine, not walked at all | 4 sentences | `UsbPcapFfbTap.Status`, which the plugin composes into `FfbTapStatus` and the panel polls into a label |
+| Readme and export text | 60 | The folder readmes, the pack readme and the log export write files, not labels |
+| GitHub issue and discussion bodies | 25 | Written for the project to read, in English, and escaped into a URL |
+| Access-code and Mode B surfaces | 60 | Developer tooling, per the plan |
+| Exception messages | 50 | `TrueforceDialog.ShowError` logs `ex.Message` and shows the caller's own sentence, so these never reach a user |
+| Core and Engine | 4 sentences | Not walked at all. `UsbPcapFfbTap.Status` is composed into `FfbTapStatus`, which the panel polls into a label |
+| The rest | 1 to 3 per member, across about 150 members | Each needs a judgement about that member, which is what the report is for |
 
 Naming more instances of a covered shape, or teaching the sweep a new one, is the
 one legitimate reason a budget number goes up. Re-run with `-WriteBudget` in that
 commit and say so in the message.
 
-Two more things the number is not. It counts literals, not translation units, so
-one sentence split across four concatenated fragments counts four (real, in
-`SupportPromptWindow`). It also counts only what reaches a sink, so it is at once
-an overcount of strings a translator will type and an undercount of English a
-user can read. Treat it as a work proxy.
+Two things the number is not. It counts literals, not translation units, so one
+sentence split across four concatenated fragments counts four; the chain joiner
+turns those into one key each time it can, which is why the count fell faster than
+the key count rose. It also counts only what reaches a sink, so on its own it is at
+once an overcount of strings a translator will type and an undercount of English a
+user can read. Read it with the `-Prose` report beside it.
 
 ## Rules worth knowing
 

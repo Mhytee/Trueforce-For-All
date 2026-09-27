@@ -281,6 +281,49 @@ run after `RefreshFromPlugin` has executed at least once, not on a cold
 panel; `BackupSelfTest` passes with `UiLanguage` classified; the two
 `TestEffect` log lines still print English.
 
+**Status, 2026-09-26.** The sweep reports zero bare UI literals across 126
+plugin files and `cs-literal-budget.txt` is empty. en.json holds about 2,940
+keys, read by 1,284 `{loc:T}` references in XAML and about 2,500 `Loc.T/F/N`
+calls in C#; `validate.ps1` is green with no unreferenced key. What got there:
+
+- every direct UI sink, file by file, with chains joined into one format key
+  rather than keyed per fragment, so word order belongs to the translator;
+- the shapes the sink model could not see, each now a rule rather than a
+  one-off edit: display text held in a local or a controller field, members
+  written as expression bodies, `StringBuilder` lines, `return (a, "text")`
+  tuples, and file-dialog filters;
+- about 30 plural sites through `Loc.N`, including the ones that wrote
+  "file(s)" to dodge the plural, which a language with three forms cannot;
+- the fourteen declared label tables, which now resolve on every read: a
+  static initializer froze the language and could run before the table loaded;
+- the `UiLanguage` setting with one `BackupProjection.Portable` line, the
+  Settings-tab picker (the languages this install has, each under its own
+  name, Automatic naming what it resolves to), and one resolver,
+  `ResolveUiLanguageTag`, shared by startup and the picker;
+- `TranslateWindow`: English on the left, the language on the right, search,
+  an untranslated-only filter, keys hidden by default, a placeholder check,
+  and a save that writes the root override and reloads the store so the panel
+  changes as the translator works;
+- a regional file of the same language now beats English, so a community
+  `pt-BR.json` reaches a reader whose language is plain `pt`.
+
+The allowlist criterion above needs one correction: it holds five files, not
+two. `LocDiagnostics.cs` writes the startup language report and the LOCREPORT
+file, `ArcadeLeaderboardService.cs` assembles a `[TF4ALL]` log line, and
+`FfbTrace.cs` writes a CSV header. All three became visible only because
+`AppendLine` is a sink now, which was the right call: that rule found the FFB
+self-test checklist and the preset details panel.
+
+Still English, and deliberately: the folder and pack readmes, the log export,
+the GitHub issue and discussion bodies, the access-code and Mode B surfaces,
+and the exception messages `TrueforceDialog.ShowError` logs rather than shows.
+`sweep-cs.ps1 -Prose` lists what is left by member, 434 literals in 177
+members at that count, most of it in those families; a fresh run is the number
+to trust.
+
+Not done in Phase 2, and not blocking a translation: the `LocKeys` constants,
+and the guides (Phase 3 owns them).
+
 ### Phase 3: layout, pipeline, Spanish (3 to 4 days plus review time)
 
 Layout from the `PSEUDO` log: `LabelText` gets
