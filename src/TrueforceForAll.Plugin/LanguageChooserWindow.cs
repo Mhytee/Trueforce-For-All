@@ -1,21 +1,28 @@
-// Which language to translate, out of every language Windows knows.
+// Which language to translate: a list of languages.
 //
 // The Settings picker lists the languages this install HAS, which is the right
 // list for choosing what to read the panel in. It is the wrong list for deciding
 // what to translate: on a fresh install it holds English and nothing else, so a
 // German speaker who would happily write German has no way to see that German is
-// open. This window is that list. It is not a curated set of languages we have
-// blessed; it is the 310 neutral cultures the framework enumerates, plus a box for
-// any other tag, because who translates the plugin is not ours to decide.
+// open. This window is that list, and it is not a curated set we have blessed: it
+// is every language the framework enumerates, because who translates the plugin is
+// not ours to decide.
 //
-// The percentage beside each one is what THIS PC has: a file in the languages
-// folder, or one the build ships. It cannot say whether someone else has started a
-// language, and the window says so rather than implying otherwise. That answer
-// needs the community service (docs/localization-plan.md, Phase 3b).
+// Two columns, because two things are being asked: which language, and how much of
+// it exists already. The code (de, pt-BR) is deliberately not a column; it is what
+// the search box accepts and what the Translate window's title shows. One box does
+// both jobs: it filters the list, and when it matches nothing it is taken as the
+// code of a language the list does not offer, which is how pt-BR or a test locale
+// is reached without a second control.
+//
+// The percentage is what THIS PC has: a file in the languages folder, or one the
+// build ships. It cannot say whether someone else has started a language, and the
+// window says so rather than implying otherwise. That answer needs the community
+// service (docs/localization-plan.md, Phase 3b).
 //
 // Progress is only computed for a language that has a layer. Describe() on the
-// other 300 would build a 2,900-name missing list each time to tell us what we
-// already know from its absence.
+// other three hundred would build a 2,900-name missing list each time to tell us
+// what we already know from its absence.
 
 using System;
 using System.Collections.Generic;
@@ -40,11 +47,12 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush HeaderFg = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x4A));
         private static readonly Brush BorderFg = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
 
-        /// <summary>The tag the user chose, or null when they closed the window.</summary>
+        /// <summary>The language the user chose, as its code, or null when they
+        /// closed the window.</summary>
         public string ChosenTag { get; private set; }
 
         /// <summary>The name that language calls itself, to prefill the Translate
-        /// window's name box. Null when the tag is one Windows does not know.</summary>
+        /// window's name box. Null when it is a code Windows does not know.</summary>
         public string ChosenName { get; private set; }
 
         private sealed class Row
@@ -52,8 +60,10 @@ namespace TrueforceForAll.Plugin
             public string Tag { get; set; }
             public string Native { get; set; }
             public string English { get; set; }
+            /// <summary>Both names in one cell: a reader finds their language by its
+            /// own name, and the English one is there for anyone helping them.</summary>
+            public string Language { get; set; }
             public string Progress { get; set; }
-            public string Note { get; set; }
             // Sort key, not shown: languages with work in them first, then the
             // reader's own Windows language, then everything else by its own name.
             public int Rank { get; set; }
@@ -63,12 +73,11 @@ namespace TrueforceForAll.Plugin
         private readonly List<Row> _rows = new List<Row>();
         private readonly DataGrid _grid;
         private readonly TextBox _search;
-        private readonly TextBox _otherTag;
 
         internal LanguageChooserWindow(LocStore store, string windowsLang)
         {
             Title = Loc.T("LangPicker_Title");
-            Width = 760;
+            Width = 620;
             Height = 560;
             Background = WindowBg;
             Foreground = TextFg;
@@ -104,7 +113,7 @@ namespace TrueforceForAll.Plugin
             });
             _search = new TextBox
             {
-                Width = 240, Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
+                Width = 260, Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
                 Padding = new Thickness(5, 3, 5, 3), FontSize = 12,
                 ToolTip = Loc.T("LangPicker_Search_Tip"),
             };
@@ -133,43 +142,21 @@ namespace TrueforceForAll.Plugin
                 SelectionMode = DataGridSelectionMode.Single,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             };
-            AddColumn(Loc.T("LangPicker_ColumnLanguage"), nameof(Row.Native), 180);
-            AddColumn(Loc.T("LangPicker_ColumnEnglishName"), nameof(Row.English), 170);
-            AddColumn(Loc.T("LangPicker_ColumnTag"), nameof(Row.Tag), 90);
-            AddColumn(Loc.T("LangPicker_ColumnProgress"), nameof(Row.Progress), 130);
-            AddColumn(Loc.T("LangPicker_ColumnNote"), nameof(Row.Note), 150);
-            // A double-click is how a list of 310 rows is used; the button is for
-            // anyone who reaches it by keyboard.
+            AddColumn(Loc.T("LangPicker_ColumnLanguage"), nameof(Row.Language),
+                      new DataGridLength(1, DataGridLengthUnitType.Star));
+            AddColumn(Loc.T("LangPicker_ColumnProgress"), nameof(Row.Progress),
+                      new DataGridLength(170));
+            // A double-click is how a long list is used; Enter is for the keyboard.
             _grid.MouseDoubleClick += (s, e) => Accept();
             _grid.PreviewKeyDown += (s, e) => { if (e.Key == Key.Enter) { Accept(); e.Handled = true; } };
             Grid.SetRow(_grid, 2);
             root.Children.Add(_grid);
 
-            // The tag box on the left, the buttons where a dialog's buttons go.
-            var bottom = new Grid { Margin = new Thickness(0, 10, 0, 0) };
-            bottom.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            bottom.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var tagRow = new StackPanel { Orientation = Orientation.Horizontal };
-            tagRow.Children.Add(new TextBlock
-            {
-                Text = Loc.T("LangPicker_OtherTag"), Foreground = MutedFg, FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
-            });
-            _otherTag = new TextBox
-            {
-                Width = 140, MaxLength = 32, Foreground = TextFg, Background = InputBg,
-                BorderBrush = BorderFg, Padding = new Thickness(5, 3, 5, 3), FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = Loc.T("LangPicker_OtherTag_Tip"),
-            };
-            tagRow.Children.Add(_otherTag);
-            Grid.SetColumn(tagRow, 0);
-            bottom.Children.Add(tagRow);
-
             var buttons = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0),
             };
             var open = MakeButton(Loc.T("LangPicker_Open"), (s, e) => Accept());
             open.IsDefault = true;
@@ -177,16 +164,14 @@ namespace TrueforceForAll.Plugin
             var close = MakeButton(Loc.T("Settings_Close"), (s, e) => Close());
             close.IsCancel = true;
             buttons.Children.Add(close);
-            Grid.SetColumn(buttons, 1);
-            bottom.Children.Add(buttons);
-            Grid.SetRow(bottom, 3);
-            root.Children.Add(bottom);
+            Grid.SetRow(buttons, 3);
+            root.Children.Add(buttons);
 
             Build(store, windowsLang);
             ApplyFilter();
         }
 
-        private void AddColumn(string header, string path, double width)
+        private void AddColumn(string header, string path, DataGridLength width)
         {
             var style = new Style(typeof(TextBlock));
             style.Setters.Add(new Setter(TextBlock.PaddingProperty, new Thickness(4, 3, 4, 3)));
@@ -196,7 +181,7 @@ namespace TrueforceForAll.Plugin
             {
                 Header = header,
                 Binding = new Binding(path),
-                Width = new DataGridLength(width),
+                Width = width,
                 ElementStyle = style,
             });
         }
@@ -213,9 +198,9 @@ namespace TrueforceForAll.Plugin
             return b;
         }
 
-        /// <summary>One row per neutral culture, plus any tag that has a file here
-        /// and is not one of them (a regional file someone wrote, or a test
-        /// locale). Progress is read only for the tags that have a layer.</summary>
+        /// <summary>One row per language the framework knows, plus any code that has
+        /// a file here and is not one of them (a regional file someone wrote, or a
+        /// test locale). Progress is read only for codes that have a layer.</summary>
         private void Build(LocStore store, string windowsLang)
         {
             var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -225,10 +210,7 @@ namespace TrueforceForAll.Plugin
             }
             catch { }
 
-            int total = store == null ? 0 : store.EnglishKeyCount;
-            string active = store == null ? LocStore.EnglishTag : store.ActiveTag;
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
             var cultures = new List<CultureInfo>();
             try
             {
@@ -240,10 +222,10 @@ namespace TrueforceForAll.Plugin
             foreach (var c in cultures)
             {
                 seen.Add(c.Name);
-                _rows.Add(MakeRow(store, c.Name, c.NativeName, c.EnglishName, known, total, active, windowsLang));
+                _rows.Add(MakeRow(store, c.Name, c.NativeName, c.EnglishName, known, windowsLang));
             }
-            // A tag with a file here that is not a neutral culture still belongs in
-            // the list, or the one language this PC is already translating could be
+            // A code with a file here that is not one of those still belongs in the
+            // list, or the one language this PC is already translating could be
             // missing from it.
             foreach (string tag in known)
             {
@@ -256,7 +238,7 @@ namespace TrueforceForAll.Plugin
                     english = ci.EnglishName;
                 }
                 catch { }
-                _rows.Add(MakeRow(store, tag, native, english, known, total, active, windowsLang));
+                _rows.Add(MakeRow(store, tag, native, english, known, windowsLang));
             }
 
             _rows.Sort((a, b) =>
@@ -268,15 +250,18 @@ namespace TrueforceForAll.Plugin
         }
 
         private Row MakeRow(LocStore store, string tag, string native, string english,
-                            HashSet<string> known, int total, string active, string windowsLang)
+                            HashSet<string> known, string windowsLang)
         {
+            string ownName = string.IsNullOrEmpty(native) ? tag : native;
             var row = new Row
             {
                 Tag = tag,
-                Native = string.IsNullOrEmpty(native) ? tag : native,
+                Native = ownName,
                 English = english ?? "",
+                Language = string.IsNullOrEmpty(english) || english == ownName
+                    ? ownName
+                    : Loc.F("LangPicker_Row_Fmt", ownName, english),
                 Progress = Loc.T("LangPicker_NotStarted"),
-                Note = "",
                 Rank = 2,
             };
             if (known.Contains(tag) && store != null)
@@ -296,15 +281,14 @@ namespace TrueforceForAll.Plugin
                 }
                 catch { }
             }
-            bool isActive = string.Equals(tag, active, StringComparison.OrdinalIgnoreCase);
-            bool isWindows = !string.IsNullOrEmpty(windowsLang)
-                && string.Equals(tag, windowsLang, StringComparison.OrdinalIgnoreCase);
-            if (isActive) row.Note = Loc.T("LangPicker_NoteShowingNow");
-            else if (isWindows) row.Note = Loc.T("LangPicker_NoteYourWindowsLanguage");
-            if (isWindows && row.Rank == 2) row.Rank = 1;
+            if (row.Rank == 2 && !string.IsNullOrEmpty(windowsLang)
+                && string.Equals(tag, windowsLang, StringComparison.OrdinalIgnoreCase))
+                row.Rank = 1;
             return row;
         }
 
+        /// <summary>The search box matches a language's own name, its English name
+        /// and its code, so typing "de", "German" or "Deutsch" all find German.</summary>
         private void ApplyFilter()
         {
             string needle = (_search.Text ?? "").Trim();
@@ -318,29 +302,30 @@ namespace TrueforceForAll.Plugin
             if (_grid.Items.Count > 0) _grid.SelectedIndex = 0;
         }
 
-        /// <summary>The typed tag wins over the selected row, since someone who
-        /// typed one is asking for a language the list does not offer.</summary>
+        /// <summary>A selected row wins. When the search matched nothing, what was
+        /// typed is taken as the code of a language the list does not offer, which
+        /// is how a regional code like pt-BR is reached with no second control.</summary>
         private void Accept()
         {
-            string typed = (_otherTag.Text ?? "").Trim();
-            if (typed.Length > 0)
+            var row = _grid.SelectedItem as Row;
+            if (row != null)
             {
-                if (!SettingsControl.IsCultureTagShape(typed))
-                {
-                    TrueforceDialog.Show(this, Loc.T("LangPicker_Title"),
-                        Loc.T("Settings_LanguageBadTag"), DialogKind.Warning);
-                    return;
-                }
-                ChosenTag = typed;
-                try { ChosenName = CultureInfo.GetCultureInfo(typed).NativeName; }
-                catch { ChosenName = null; }
+                ChosenTag = row.Tag;
+                ChosenName = row.Native;
                 DialogResult = true;
                 return;
             }
-            var row = _grid.SelectedItem as Row;
-            if (row == null) return;
-            ChosenTag = row.Tag;
-            ChosenName = row.Native;
+            string typed = (_search.Text ?? "").Trim();
+            if (typed.Length == 0) return;
+            if (!SettingsControl.IsCultureTagShape(typed))
+            {
+                TrueforceDialog.Show(this, Loc.T("LangPicker_Title"),
+                    Loc.T("Settings_LanguageBadTag"), DialogKind.Warning);
+                return;
+            }
+            ChosenTag = typed;
+            try { ChosenName = CultureInfo.GetCultureInfo(typed).NativeName; }
+            catch { ChosenName = null; }
             DialogResult = true;
         }
     }
