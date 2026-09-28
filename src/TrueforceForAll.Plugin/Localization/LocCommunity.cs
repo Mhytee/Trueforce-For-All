@@ -308,7 +308,7 @@ namespace TrueforceForAll.Plugin.Localization
 
             var kept = new Dictionary<string, string>(StringComparer.Ordinal);
             var stale = new List<string>();
-            int droppedUnknown = 0, droppedStale = 0, droppedUnsafe = 0, droppedRedundant = 0;
+            int droppedUnknown = 0, droppedStale = 0, droppedUnsafe = 0, sameAsShipped = 0;
             foreach (var row in rows)
             {
                 string key = row?["k"]?.ToString();
@@ -333,13 +333,12 @@ namespace TrueforceForAll.Plugin.Localization
                     _log("[TF4ALL] Translations: " + tag + " dropped " + key + ": " + why + ".");
                     continue;
                 }
-                // Equal to what this install would show anyway: keeping it would make
-                // the cache a copy of the shipped file rather than a set of fixes.
+                // Counted, not dropped. It was dropped when this file was only a set
+                // of fixes; now it is also the record of what the server holds, which is
+                // how the window knows which rows are still unsent. Overlaying text that
+                // matches the layer below changes nothing on screen.
                 if (string.Equals(text, _store.ResolveBelowCommunity(tag, key), StringComparison.Ordinal))
-                {
-                    droppedRedundant++;
-                    continue;
-                }
+                    sameAsShipped++;
                 if (kept.ContainsKey(key))
                     _log("[TF4ALL] Translations: " + tag + " served " + key + " twice; taking the last.");
                 kept[key] = text;
@@ -371,15 +370,15 @@ namespace TrueforceForAll.Plugin.Localization
                 ["dropped_unknown"] = droppedUnknown,
                 ["dropped_stale"] = droppedStale,
                 ["dropped_unsafe"] = droppedUnsafe,
-                ["dropped_redundant"] = droppedRedundant,
+                ["same_as_shipped"] = sameAsShipped,
             };
             if (stale.Count > 0) meta["stale"] = new JArray(stale.ToArray());
             try
             {
                 LocFile.WriteAtomic(path, LocFile.Serialize(kept, meta.ToString(Newtonsoft.Json.Formatting.None)));
                 _log("[TF4ALL] Translations: " + tag + " at revision " + revision + ", " + kept.Count
-                     + " served, dropped " + droppedStale + " stale, " + droppedRedundant + " already shown, "
-                     + droppedUnsafe + " refused, " + droppedUnknown + " unknown.");
+                     + " held, " + sameAsShipped + " of them already what this build shows, dropped "
+                     + droppedStale + " stale, " + droppedUnsafe + " refused, " + droppedUnknown + " unknown.");
                 return true;
             }
             catch (Exception ex)
@@ -387,6 +386,35 @@ namespace TrueforceForAll.Plugin.Localization
                 _log("[TF4ALL] Translations: could not write " + tag + ": " + ex.Message);
                 return false;
             }
+        }
+
+        /// <summary>What the server holds for this language, as key to text, read from
+        /// the cache the fetch writes. Empty when there is no cache yet, which reads as
+        /// "the server has nothing of mine", so a first publish sends everything.
+        ///
+        /// This is the whole bookkeeping behind publishing as you type: a row whose local
+        /// text differs from this has not reached the server, and one that matches has.
+        /// No separate ledger to keep in step, and it survives a restart because it is a
+        /// file.</summary>
+        public Dictionary<string, string> Published(string tag)
+        {
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            try
+            {
+                string path = _store.CommunityPath(tag);
+                if (path == null || !File.Exists(path)) return map;
+                var o = JObject.Parse(File.ReadAllText(path));
+                foreach (var p in o.Properties())
+                {
+                    if (p.Name == LocStore.MetaMember) continue;
+                    map[p.Name] = p.Value?.ToString() ?? "";
+                }
+            }
+            catch (Exception ex)
+            {
+                _log("[TF4ALL] Translations: could not read what the server holds for " + tag + ": " + ex.Message);
+            }
+            return map;
         }
 
         /// <summary>The server says nothing changed, so only the stamp moves. Rewritten

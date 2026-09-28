@@ -25,11 +25,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Newtonsoft.Json.Linq;
 using TrueforceForAll.Plugin.Localization;
 
@@ -63,6 +65,24 @@ namespace TrueforceForAll.Plugin
         private readonly StackPanel _nameRow;
         private readonly TextBlock _status;
         private readonly TextBlock _problemLink;
+        /// <summary>Keys committed since the last flush. A set, so editing one row five
+        /// times sends it once.</summary>
+        private readonly HashSet<string> _pending = new HashSet<string>(StringComparer.Ordinal);
+        /// <summary>Keys the server refused this session, so a row it will not take is not
+        /// offered again every few seconds. Cleared when the row is edited, because the
+        /// edit may be the fix.</summary>
+        private readonly HashSet<string> _refused = new HashSet<string>(StringComparer.Ordinal);
+        private DispatcherTimer _publishTimer;
+        private bool _publishing;
+        /// <summary>When the queue may be offered again. The server's caps are counted
+        /// per hour, so a refusal means waiting, not retrying every five seconds: a
+        /// translator who fills a language in one sitting would otherwise spend the rest
+        /// of the hour being turned down at the same rate they were typing.</summary>
+        private DateTime _retryAfter = DateTime.MinValue;
+        /// <summary>Said once per window, not once per row: with no account nothing can be
+        /// attributed, so nothing is sent.</summary>
+        private bool _saidSignedOut;
+
         /// <summary>Whether the list is showing only the rows with something wrong.
         /// Reached by clicking the count rather than by a checkbox that sits there
         /// being unticked: the condition is rare and the count is already read.</summary>
@@ -415,7 +435,17 @@ namespace TrueforceForAll.Plugin
                 if (e.EditAction != DataGridEditAction.Commit) return;
                 var box = e.EditingElement as TextBox;
                 var row = e.Row?.Item as Row;
-                if (box != null && row != null) row.Text = box.Text;
+                if (box != null && row != null)
+                {
+                    row.Text = box.Text;
+                    // The edit may be the fix for whatever the server refused.
+                    _refused.Remove(row.Key);
+                    // Null rather than the cache: one row, and re-reading the file per
+                    // keystroke would be the wrong trade. A row that matches what the
+                    // server already has is answered already_approved, which costs one
+                    // row of a batch and nothing else.
+                    if (IsMine(row, null)) _pending.Add(row.Key);
+                }
                 Dispatcher.BeginInvoke(new Action(() => Save(quiet: true)));
             };
             Grid.SetRow(_grid, 2);
@@ -445,7 +475,6 @@ namespace TrueforceForAll.Plugin
                 Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 10, 0, 0),
             };
-            buttons.Children.Add(MakeButton(Loc.T("Translate_Send"), (s, e) => Send()));
             var close = MakeButton(Loc.T("Settings_Close"), (s, e) => Close());
             close.IsCancel = true;
             buttons.Children.Add(close);
@@ -458,10 +487,58 @@ namespace TrueforceForAll.Plugin
             {
                 try { _grid.CommitEdit(DataGridEditingUnit.Row, true); } catch { }
                 Save(quiet: true);
+                try { _publishTimer?.Stop(); } catch { }
+                // One last flush, not awaited: the window is closing and the queue is a
+                // file either way, so what does not make it goes up next time.
+                if (_community != null) _ = FlushAsync();
             };
 
             LoadRows();
             ApplyFilter();
+
+            // Publishing runs on a timer rather than per keystroke: a translator moving
+            // down a column commits a row a second, and one request per row would spend
+            // the hourly cap on traffic instead of translations.
+            if (_community != null)
+            {
+                _publishTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                _publishTimer.Tick += (s, e) => { _ = FlushAsync(); };
+                _publishTimer.Start();
+                // Anything typed before this window last closed, or typed offline, or
+                // written straight into the file by hand. The cache says what the server
+                // has; everything else is unsent.
+                QueueEverythingUnsent();
+            }
+        }
+
+        /// <summary>Every row this translator wrote that the server does not have, which
+        /// is how work done offline or in an earlier session reaches it without anyone
+        /// pressing anything.
+        ///
+        /// Wrote, not holds: a row that still says what the build ships is not theirs to
+        /// publish, and on a language the plugin already translates that is almost every
+        /// row. Sending those would claim the shipped translation as their work and spend
+        /// ten hours of the server's hourly cap saying nothing new.</summary>
+        private void QueueEverythingUnsent()
+        {
+            var published = _community.Published(_tag);
+            foreach (var row in _rows)
+                if (IsMine(row, published)) _pending.Add(row.Key);
+            if (_pending.Count > 0) UpdateStatus(_grid.Items.Count);
+        }
+
+        /// <summary>Whether this row is something this translator wrote and the server has
+        /// not got: not empty, not what the build already says, not what the server already
+        /// holds.</summary>
+        private bool IsMine(Row row, Dictionary<string, string> published)
+        {
+            if (row == null || string.IsNullOrWhiteSpace(row.Text)) return false;
+            if (string.Equals(row.Text, _store.ResolveShipped(_tag, row.Key), StringComparison.Ordinal))
+                return false;
+            string there;
+            if (published != null && published.TryGetValue(row.Key, out there)
+                && string.Equals(there, row.Text, StringComparison.Ordinal)) return false;
+            return true;
         }
 
         private static Style WrapStyle()
@@ -807,111 +884,89 @@ namespace TrueforceForAll.Plugin
                 _status.Text = Loc.F("Translate_SaveFailed_Fmt", ex.Message);
             }
         }
-
-        private void OpenFolder()
+        /// <summary>Send whatever is queued, in one batch of at most fifty. Runs every
+        /// five seconds and does nothing when there is nothing to do, so a translator
+        /// reading rather than typing makes no requests.
+        ///
+        /// A row the window already knows is wrong is held back rather than sent and
+        /// refused: a mismatched placeholder would cost the whole string at runtime, and
+        /// text too wide for its control would be cut off, and neither is a typo the
+        /// server should have to explain.</summary>
+        private async Task FlushAsync()
         {
-            try
+            if (_publishing || _community == null || _pending.Count == 0) return;
+            if (DateTime.UtcNow < _retryAfter) return;
+            var byKey = new Dictionary<string, Row>(StringComparer.Ordinal);
+            foreach (var r in _rows) byKey[r.Key] = r;
+
+            var batch = new List<KeyValuePair<string, string>>();
+            var taking = new List<string>();
+            foreach (string key in _pending)
             {
-                string path = FilePath();
-                if (path != null && File.Exists(path))
-                    Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + path + "\"") { UseShellExecute = true });
-                else if (!string.IsNullOrEmpty(_root))
-                    Process.Start(new ProcessStartInfo(_root) { UseShellExecute = true });
+                Row row;
+                if (!byKey.TryGetValue(key, out row)) { taking.Add(key); continue; }
+                if (_refused.Contains(key)) { taking.Add(key); continue; }
+                if (string.IsNullOrWhiteSpace(row.Text) || row.Warning.Length > 0) continue;
+                batch.Add(new KeyValuePair<string, string>(key, row.Text));
+                taking.Add(key);
+                if (batch.Count >= LocCommunity.SendChunk) break;
             }
-            catch (Exception ex)
+            if (batch.Count == 0)
             {
-                _log("[TF4ALL] Translate: opening the languages folder failed: " + ex.Message);
-            }
-        }
-
-        /// <summary>Phase 2's hand-over: save, show the translator where the file
-        /// is and what to do with it. Phase 3b replaces this with a submit to the
-        /// community service, at which point this text becomes the fallback for
-        /// someone who would rather not sign in.</summary>
-        private void Send()
-        {
-            Save(quiet: true);
-            if (_community != null) { SendToServer(); return; }
-            SendByHand();
-        }
-
-        /// <summary>Submit what this translator wrote. Every row they have filled in
-        /// goes, not only the ones changed this session: the server keeps one live row
-        /// per key and English, so re-sending the same text is a no-op it answers with
-        /// already_approved, and a translator who has been working offline for a week
-        /// should not have to remember which rows were new.</summary>
-        private async void SendToServer()
-        {
-            var rows = new List<KeyValuePair<string, string>>();
-            foreach (var r in _rows)
-                if (!string.IsNullOrWhiteSpace(r.Text) && r.Warning.Length == 0)
-                    rows.Add(new KeyValuePair<string, string>(r.Key, r.Text));
-            if (rows.Count == 0)
-            {
-                _status.Text = Loc.T("Translate_SendNothing");
+                foreach (string key in taking) _pending.Remove(key);
                 return;
             }
-            int problems = _rows.Count(r => r.Warning.Length > 0);
-            if (problems > 0)
-            {
-                // Sending a row the window already knows is wrong wastes a refusal the
-                // translator would then have to read back from the server.
-                bool carryOn = TrueforceDialog.Show(this,
-                    Loc.T("Translate_SendTitle"),
-                    Loc.N("Translate_SendSkipsProblems", problems, problems),
-                    DialogKind.Info,
-                    Loc.T("Settings_Continue"), Loc.T("Common_Cancel"), goldOk: true) == true;
-                if (!carryOn) return;
-            }
-            _status.Text = Loc.F("Translate_Sending_Fmt", rows.Count);
-            LocCommunity.SendResult result;
+
+            _publishing = true;
             try
             {
-                result = await _community.SendAsync(_tag, rows);
+                LocCommunity.SendResult result;
+                try { result = await _community.SendAsync(_tag, batch); }
+                catch (Exception ex)
+                {
+                    // Keep the queue and wait a little: a machine that is offline stays
+                    // offline for longer than five seconds.
+                    _status.Text = Loc.F("Translate_PublishFailed_Fmt", ex.Message);
+                    _retryAfter = DateTime.UtcNow.AddMinutes(1);
+                    return;
+                }
+                if (!result.Ok)
+                {
+                    bool signedOut = result.Refusal != null
+                        && result.Refusal.IndexOf("Sign in", StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (signedOut)
+                    {
+                        // Once, and then quietly: the rows stay queued, and signing in
+                        // later sends them. Checked again in a minute rather than in five
+                        // seconds, since signing in takes longer than that.
+                        if (!_saidSignedOut) { _saidSignedOut = true; _status.Text = result.Refusal; }
+                        _retryAfter = DateTime.UtcNow.AddMinutes(1);
+                        return;
+                    }
+                    // A cap or a closed language: the sentence says which, and the rows
+                    // wait rather than being lost. Ten minutes, because every refusal at
+                    // this level is counted per hour and asking again sooner cannot
+                    // succeed.
+                    _status.Text = result.Refusal ?? Loc.F("Translate_PublishFailed_Fmt", "");
+                    _retryAfter = DateTime.UtcNow.AddMinutes(10);
+                    return;
+                }
+                foreach (string key in taking) _pending.Remove(key);
+                foreach (string e in result.Errors)
+                {
+                    _log("[TF4ALL] Translate: " + e);
+                    int colon = e.IndexOf(':');
+                    if (colon > 0) _refused.Add(e.Substring(0, colon));
+                }
+                string text = Loc.F("Translate_Published_Fmt", result.Accepted);
+                if (result.Errors.Count > 0)
+                    text += " " + Loc.N("Translate_PublishRefused", result.Errors.Count, result.Errors.Count);
+                if (_pending.Count > 0)
+                    text += " " + Loc.F("Translate_PublishQueued_Fmt", _pending.Count);
+                _status.Text = text;
             }
-            catch (Exception ex)
-            {
-                _status.Text = Loc.F("Translate_SendFailed_Fmt", ex.Message);
-                return;
-            }
-            if (!result.Ok)
-            {
-                // The server's own sentence, verbatim: it was written to be read.
-                _status.Text = result.Refusal ?? Loc.F("Translate_SendFailed_Fmt", "");
-                if (result.Refusal != null && result.Refusal.IndexOf("Sign in", StringComparison.OrdinalIgnoreCase) >= 0)
-                    SendByHand();
-                return;
-            }
-            string text = Loc.F("Translate_Sent_Fmt", result.Accepted);
-            if (result.Errors.Count > 0)
-            {
-                text += " " + Loc.N("Translate_SentRefused", result.Errors.Count, result.Errors.Count);
-                foreach (string e in result.Errors) _log("[TF4ALL] Translate: " + e);
-            }
-            _status.Text = text;
+            finally { _publishing = false; }
         }
 
-        /// <summary>No account, or no backend: the file plus a prefilled issue, which
-        /// is how a translation reached the project before the service existed.</summary>
-        private void SendByHand()
-        {
-            string path = FilePath();
-            bool go = TrueforceDialog.Show(this,
-                Loc.T("Translate_SendTitle"),
-                Loc.F("Translate_SendBody_Fmt", path ?? _tag + ".json"),
-                DialogKind.Info,
-                Loc.T("Translate_SendOpenIssue"), Loc.T("Common_Cancel"), goldOk: true) == true;
-            if (!go) return;
-            OpenFolder();
-            try
-            {
-                Process.Start(new ProcessStartInfo("https://github.com/Mhytee/Trueforce-For-All/issues/new")
-                { UseShellExecute = true });
-            }
-            catch (Exception ex)
-            {
-                _log("[TF4ALL] Translate: opening the issue page failed: " + ex.Message);
-            }
-        }
     }
 }

@@ -254,6 +254,34 @@ namespace TrueforceForAll.Plugin.Localization
             return EnglishText(key);
         }
 
+        /// <summary>What this key reads as from the build alone: the shipped file, else
+        /// the embedded one, else the English. Neither the community layer nor the user's
+        /// own file is consulted.
+        ///
+        /// This is what separates a translation someone wrote from the one that came with
+        /// the plugin. Only the difference is theirs to publish: without this test, opening
+        /// the window on a language the build already ships would offer every one of its
+        /// rows to the server as this person's work.</summary>
+        public string ResolveShipped(string tag, string key)
+        {
+            if (key == null) return null;
+            string t = NormalizeTag(tag) ?? EnglishTag;
+            var built = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (!IsEnglish(t))
+            {
+                List<string> chain = Chain(t);
+                for (int i = chain.Count - 1; i >= 0; i--)
+                {
+                    if (IsEnglish(chain[i])) continue;
+                    Overlay(built, ReadEmbeddedLayer(chain[i]));
+                    Overlay(built, ReadDiskLayer(ShippedPath(chain[i])));
+                }
+            }
+            string value;
+            if (built.TryGetValue(key, out value)) return value;
+            return EnglishText(key);
+        }
+
         /// <summary>The English this build displays for a key, or null when the key
         /// is not one of ours. The fetch hashes this to decide whether a row was
         /// written for the same English.</summary>
