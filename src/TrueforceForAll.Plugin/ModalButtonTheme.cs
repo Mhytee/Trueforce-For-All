@@ -29,6 +29,15 @@ namespace TrueforceForAll.Plugin
         private static readonly Brush DestructiveBg     = Frozen(0x8B, 0x2E, 0x2E);
         private static readonly Brush DestructiveFg     = Frozen(0xFF, 0xE0, 0xE0);
         private static readonly Brush DestructiveBorder = Frozen(0xA5, 0x3B, 0x3B);
+        // Constructive = puts something in place that the user is missing
+        // (install, repair, reconnect). Green reads as "go" where gold reads as
+        // "the main action": both are affirmative, but a user staring at a
+        // warning banner is being asked to fix something, not to confirm a
+        // preference. Kept at the same weight as Destructive so the two sit
+        // opposite each other rather than one shouting over the other.
+        private static readonly Brush ConstructiveBg     = Frozen(0x2E, 0x7D, 0x46);
+        private static readonly Brush ConstructiveFg     = Frozen(0xE6, 0xF7, 0xEA);
+        private static readonly Brush ConstructiveBorder = Frozen(0x3B, 0x9A, 0x57);
 
         private static Brush Frozen(byte r, byte g, byte b)
         {
@@ -77,6 +86,12 @@ namespace TrueforceForAll.Plugin
         /// Delete, Uninstall). Reach for this only where the action takes
         /// something away: red everywhere makes red mean nothing.</summary>
         public static void Destructive(Button btn) => Apply(btn, DestructiveBg, DestructiveFg, DestructiveBorder);
+
+        /// <summary>Style a button that installs or repairs something the user
+        /// is currently missing (Install, Reinstall, Reconnect). The green
+        /// counterpart to Destructive: use it where the action gives something
+        /// back rather than takes it away.</summary>
+        public static void Constructive(Button btn) => Apply(btn, ConstructiveBg, ConstructiveFg, ConstructiveBorder);
 
         private static void Apply(Button btn, Brush bg, Brush fg, Brush border)
         {

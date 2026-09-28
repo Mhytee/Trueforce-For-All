@@ -19313,7 +19313,8 @@ namespace TrueforceForAll.Plugin
             if (TrueforceDialog.Show(null, "Trueforce For All",
                     "Run the bundled USBPcap installer? This needs admin (UAC prompt) and reinstalls the USB capture driver. "
                         + "You will need to restart the computer afterwards: the driver only attaches to your USB ports while Windows starts.",
-                    DialogKind.Confirm, okLabel: "Run installer", cancelLabel: "Cancel") != true)
+                    DialogKind.Confirm, okLabel: "Run installer", cancelLabel: "Cancel",
+                    greenOk: true) != true)
                 return;
             _plugin.ReinstallUsbPcapAsync();
         }
@@ -19335,7 +19336,11 @@ namespace TrueforceForAll.Plugin
                         + "driver's registration.\n\n"
                         + "Afterwards: restart the computer, press Reinstall here, then restart once more. FFB "
                         + "pass-through stays off until you finish both steps.",
-                    DialogKind.Confirm, okLabel: "Remove USBPcap", cancelLabel: "Cancel") != true)
+                    // Destructive, not Confirm: this takes a working component
+                    // away and leaves pass-through off until the user finishes
+                    // two restarts, so the affirmative reads red and Cancel is
+                    // what Enter does.
+                    DialogKind.Destructive, okLabel: "Remove USBPcap", cancelLabel: "Cancel") != true)
                 return;
             _plugin.UninstallUsbPcapAsync();
         }

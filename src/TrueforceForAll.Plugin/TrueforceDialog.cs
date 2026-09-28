@@ -73,6 +73,11 @@ namespace TrueforceForAll.Plugin
             // instead of the flat gray. Off by default so other callers are
             // unaffected; ignored for Destructive (that stays red).
             bool goldOk = false,
+            // Opt-in: paint the affirmative button green, for an action that
+            // installs or repairs something the user is missing rather than
+            // confirming a preference. Ignored for Destructive (that stays
+            // red); takes precedence over goldOk if both are passed.
+            bool greenOk = false,
             // Opt-in: render the cancel button small, gray, and flat (a text
             // button) so the affirmative reads as the obvious path. For
             // offers where declining costs the user something and accepting
@@ -83,7 +88,7 @@ namespace TrueforceForAll.Plugin
             // for instance) instead of describing where to find it.
             UIElement extraContent = null)
         {
-            var dlg = new TrueforceDialog(title, body, kind, okLabel, cancelLabel, goldOk, quietCancel,
+            var dlg = new TrueforceDialog(title, body, kind, okLabel, cancelLabel, goldOk, greenOk, quietCancel,
                                           extraContent);
             owner = UsableOwner(owner);
             if (owner != null)
@@ -303,7 +308,7 @@ namespace TrueforceForAll.Plugin
         }
 
         private TrueforceDialog(string title, string body, DialogKind kind,
-            string okLabel, string cancelLabel, bool goldOk = false, bool quietCancel = false,
+            string okLabel, string cancelLabel, bool goldOk = false, bool greenOk = false, bool quietCancel = false,
             UIElement extraContent = null)
         {
             var btnRow = BuildChrome(title, body, kind);
@@ -359,6 +364,15 @@ namespace TrueforceForAll.Plugin
                     cancel.BorderThickness = new Thickness(0);
                     cancel.VerticalAlignment = VerticalAlignment.Center;
                 }
+                else
+                {
+                    // Otherwise it gets the shared flat theme. Setting the
+                    // brushes alone was never enough: WPF's default button
+                    // template draws system chrome over them, which is why
+                    // these read as unstyled Windows buttons next to a themed
+                    // panel. Same reason ModalButtonTheme exists at all.
+                    ModalButtonTheme.Secondary(cancel);
+                }
                 cancel.Click += (s, e) => { DialogResult = false; Close(); };
                 btnRow.Children.Add(cancel);
             }
@@ -380,7 +394,9 @@ namespace TrueforceForAll.Plugin
             // copy in this file, which is how a Remove button in a panel and the
             // Remove button in its own confirm ended up able to disagree.
             if (isDestructive) ModalButtonTheme.Destructive(ok);
+            else if (greenOk)  ModalButtonTheme.Constructive(ok);
             else if (goldOk)   ModalButtonTheme.Primary(ok);
+            else               ModalButtonTheme.Secondary(ok);
             ok.Click += (s, e) => { DialogResult = true; Close(); };
             btnRow.Children.Add(ok);
         }
