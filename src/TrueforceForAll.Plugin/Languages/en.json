@@ -2385,7 +2385,7 @@
   "Settings_Slot_Fmt": "Slot {0} ({1}):",
   "Settings_SlowsHowFastForce": "Slows how fast the force can change. Nothing is made weaker: a sharp hit still reaches full strength, it just arrives over a few more milliseconds.",
   "Settings_SoHitLevelsOff_Fmt": "So: a hit levels off about {0}% above the running average. On a smooth road, where the floor holds that average at {1}%, that means nothing gets past about {2}% of full strength. A hit above the floor also takes at least 16 ms to swing from nothing to full force.",
-  "Settings_StampPresetsVeAlready_Fmt": "Stamp \\\"{0}\\\" on the presets you've already saved? This updates presets that don't have an author yet (your own work) and leaves community-pack presets alone.",
+  "Settings_StampPresetsVeAlready_Fmt": "Stamp \"{0}\" on the presets you've already saved? This updates presets that don't have an author yet (your own work) and leaves community-pack presets alone.",
   "Settings_StillLearningWhatCar": "Still learning what this car pushes. Keep driving; this lights up when the reading has held steady.",
   "Settings_StopStreamOnPause": "Hand the wheel back to the game while paused",
   "Settings_StopStreamOnPause_Tip": "Off by default. Turn it on and, when the game pauses (menu, fast travel, race start), the plugin steps fully out of the way, so the wheel uses the game's own force feedback and auto-center. Leave it off and the plugin keeps hold of the wheel while paused. It only bites where the game's own force feedback is what the wheel would fall back to, so it does nothing while the plugin is building or carrying the whole steering force.",
