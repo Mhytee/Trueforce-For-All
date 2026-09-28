@@ -42734,9 +42734,11 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     System.Windows.MessageBox.Show(
-                        "USBPcap has been removed.\n\n"
-                        + "RESTART THE COMPUTER now, then come back here and press Reinstall, "
-                        + "and restart once more after that.\n\n"
+                        "USBPcap has been removed. Force feedback pass-through is off until you "
+                        + "put it back, so do not stop here.\n\n"
+                        + "1. RESTART THE COMPUTER now.\n"
+                        + "2. Come back to this panel and press Reinstall.\n"
+                        + "3. Restart the computer once more.\n\n"
                         + "Both restarts are needed: Windows only builds and tears down the capture "
                         + "driver's attachment to your USB ports at boot.",
                         "USBPcap removed",
