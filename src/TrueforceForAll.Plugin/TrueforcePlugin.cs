@@ -912,7 +912,7 @@ namespace TrueforceForAll.Plugin
         // question about the FILE, which is all Browse can repair; for "can we
         // capture at all", ask IsUsbPcapDriverReady.
         public bool IsUsbPcapAvailable =>
-            UsbPcapFfbTap.LocateUsbPcapCmd(Settings?.UsbPcapCmdPathOverride) != null;
+            UsbPcapFfbTap.LocateUsbPcapCmd(EffectiveUsbPcapCmdPath) != null;
 
         // True when the CLI is on disk AND USBPcap's capture driver is attached
         // to the USB stack. Both halves are needed before pass-through can work
@@ -1015,6 +1015,44 @@ namespace TrueforceForAll.Plugin
                 // there.)
                 return ReadUsbPcapUninstallString(Microsoft.Win32.RegistryView.Registry64)
                     ?? ReadUsbPcapUninstallString(Microsoft.Win32.RegistryView.Registry32);
+            }
+        }
+
+        /// <summary>The USBPcapCMD.exe path to hand the tap: the user's own
+        /// override when they set one, otherwise the copy sitting next to
+        /// whatever USBPcap told Windows its uninstaller was.
+        ///
+        /// We probe the two Program Files locations by name, which covers the
+        /// installer's default. Someone who installs USBPcap themselves and
+        /// picks a different folder would otherwise have to find the Browse
+        /// button before anything worked, and a user who has just been told to
+        /// uninstall and reinstall USBPcap is exactly the person likely to do
+        /// that. The uninstaller's own directory IS the install directory, so
+        /// it costs one registry read to find them anyway.
+        ///
+        /// Pure fallback: consulted only when the named paths miss, never
+        /// persisted, so it cannot turn into a stale pin.</summary>
+        private string EffectiveUsbPcapCmdPath
+        {
+            get
+            {
+                var userOverride = Settings?.UsbPcapCmdPathOverride;
+                if (!string.IsNullOrWhiteSpace(userOverride) && System.IO.File.Exists(userOverride))
+                    return userOverride;
+
+                // Let the named paths win before we go looking in the registry.
+                if (UsbPcapFfbTap.LocateUsbPcapCmd(null) != null) return userOverride;
+
+                try
+                {
+                    string uninstaller = UsbPcapUninstallerPath;
+                    if (uninstaller == null) return userOverride;
+                    string dir = System.IO.Path.GetDirectoryName(uninstaller);
+                    if (string.IsNullOrEmpty(dir)) return userOverride;
+                    string candidate = System.IO.Path.Combine(dir, "USBPcapCMD.exe");
+                    return System.IO.File.Exists(candidate) ? candidate : userOverride;
+                }
+                catch { return userOverride; }
             }
         }
 
@@ -5745,7 +5783,7 @@ namespace TrueforceForAll.Plugin
                 // can go stale for hot-plugged wheels, leaving auto-discovery
                 // unable to find a wheel that HID enumeration sees fine.
                 var (ifaceOverride, devOverride) = ResolveUsbPcapOverride();
-                _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, Settings?.UsbPcapCmdPathOverride)
+                _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, EffectiveUsbPcapCmdPath)
                 {
                     Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
                     HostElevated = IsRunningElevated,
@@ -42789,7 +42827,7 @@ namespace TrueforceForAll.Plugin
             _steeringReader = null;
 
             var (ifaceOverride, devOverride) = ResolveUsbPcapOverride();
-            _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, Settings?.UsbPcapCmdPathOverride)
+            _ffbTap = new UsbPcapFfbTap(ifaceOverride, devOverride, EffectiveUsbPcapCmdPath)
             {
                 Logger = msg => SimHub.Logging.Current.Info($"[TF4ALL] {msg}"),
                 HostElevated = IsRunningElevated,

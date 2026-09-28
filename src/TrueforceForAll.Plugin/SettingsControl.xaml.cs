@@ -2263,14 +2263,24 @@ namespace TrueforceForAll.Plugin
                     if (UsbPcapReinstallButton.Visibility != wantReinstall) UsbPcapReinstallButton.Visibility = wantReinstall;
                 }
 
-                // Uninstall is narrower than Reinstall on purpose: it only
-                // helps the machine where USBPcap IS installed (so the setup
-                // would abort) yet the driver never attached. On a healthy
-                // machine it stays hidden, so nobody removes a working capture
-                // driver out of curiosity.
+                // Uninstall is much narrower than Reinstall on purpose. It is
+                // the only destructive action in this panel, so it appears for
+                // exactly the machine it repairs: USBPcap installed (its setup
+                // would abort, which is why Reinstall cannot help), the driver
+                // not attached, and the class filter registration genuinely
+                // gone.
+                //
+                // Requiring NotRegistered, rather than just "driver isn't
+                // attached", is what keeps it away from a machine that has
+                // only just installed USBPcap and not restarted yet: there the
+                // registration is already written and the driver attaches on
+                // the next boot, so offering to tear it all down again would
+                // send someone round a loop they were one restart from
+                // leaving.
                 if (UsbPcapUninstallButton != null)
                 {
                     var wantUninstall = !_plugin.IsUsbPcapDriverReady
+                                     && _plugin.UsbPcapFilterState == TrueforceForAll.Core.UsbPcapFilterState.NotRegistered
                                      && _plugin.UsbPcapUninstallerPath != null
                         ? System.Windows.Visibility.Visible
                         : System.Windows.Visibility.Collapsed;
