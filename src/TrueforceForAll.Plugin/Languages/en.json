@@ -2886,7 +2886,6 @@
   "Translate_LanguageName_Tip": "What this language calls itself, as the picker should list it: Español, Deutsch, Português.",
   "Translate_NeedsFix": "Needs a fix",
   "Translate_NoLanguagesFolder": "This install has no languages folder, so there is nowhere to save. Restart SimHub and open this window again.",
-  "Translate_OpenFolder": "Open the folder",
   "Translate_PlaceholdersDoNotMatch_Fmt": "The English uses {0}. Keep every one of them, or this row falls back to English.",
   "Translate_PluralOne": "used when there is 1",
   "Translate_PluralOther": "used when there are 2 or more",

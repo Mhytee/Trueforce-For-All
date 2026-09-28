@@ -300,12 +300,6 @@ namespace TrueforceForAll.Plugin
             _search.TextChanged += (s, e) => ApplyFilter();
             bar.Children.Add(_search);
 
-            // A link rather than a button: it is the way to the file, which a
-            // translator wants once, not a thing they do while working.
-            var folder = LinkText(Loc.T("Translate_OpenFolder"), MutedFg, (s, e) => OpenFolder());
-            folder.Margin = new Thickness(16, 0, 0, 0);
-            bar.Children.Add(folder);
-
             // The name is set once. It shows while it is unset, which is when it
             // matters, and afterwards it lives in the title with the heading offering
             // to bring this row back.
@@ -837,8 +831,8 @@ namespace TrueforceForAll.Plugin
                 Loc.F("Translate_SendBody_Fmt", path ?? _tag + ".json"),
                 DialogKind.Info,
                 Loc.T("Translate_SendOpenIssue"), Loc.T("Common_Cancel"), goldOk: true) == true;
-            OpenFolder();
             if (!go) return;
+            OpenFolder();
             try
             {
                 Process.Start(new ProcessStartInfo("https://github.com/Mhytee/Trueforce-For-All/issues/new")

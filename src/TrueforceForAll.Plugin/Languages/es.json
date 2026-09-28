@@ -2886,7 +2886,6 @@
   "Translate_LanguageName_Tip": "Cómo se llama este idioma a sí mismo, tal como debería aparecer en la lista: Español, Deutsch, Português.",
   "Translate_NeedsFix": "Necesita un arreglo",
   "Translate_NoLanguagesFolder": "Esta instalación no tiene carpeta de idiomas, así que no hay dónde guardar. Reinicia SimHub y vuelve a abrir esta ventana.",
-  "Translate_OpenFolder": "Abrir la carpeta",
   "Translate_PlaceholdersDoNotMatch_Fmt": "El inglés usa {0}. Consérvalos todos, o esta fila volverá al inglés.",
   "Translate_PluralOne": "se usa cuando hay 1",
   "Translate_PluralOther": "se usa cuando hay 2 o más",
