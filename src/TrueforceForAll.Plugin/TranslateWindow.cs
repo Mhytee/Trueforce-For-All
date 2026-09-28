@@ -28,6 +28,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using Newtonsoft.Json.Linq;
 using TrueforceForAll.Plugin.Localization;
@@ -55,11 +56,44 @@ namespace TrueforceForAll.Plugin
         private readonly DataGrid _grid;
         private readonly TextBox _search;
         private readonly TextBox _name;
-        private readonly CheckBox _untranslatedOnly;
-        private readonly CheckBox _showKeys;
-        private readonly CheckBox _problemsOnly;
+        private readonly StackPanel _nameRow;
         private readonly TextBlock _status;
-        private readonly DataGridTextColumn _keyColumn;
+        private readonly TextBlock _problemLink;
+        /// <summary>Whether the list is showing only the rows with something wrong.
+        /// Reached by clicking the count rather than by a checkbox that sits there
+        /// being unticked: the condition is rare and the count is already read.</summary>
+        private bool _onlyProblems;
+
+        /// <summary>One tab or window's worth of strings, named by the part of the
+        /// key before its first underscore. It is the group heading, and it carries its
+        /// own progress so a translator can finish an area and see it finished. The
+        /// label is the prefix with its words separated, not a translated name: it
+        /// names where the strings live, and inventing 50 localized area names to say
+        /// so would be more copy than the strings themselves.</summary>
+        internal sealed class AreaGroup : INotifyPropertyChanged
+        {
+            public string Prefix { get; set; }
+            public string Label { get; set; }
+            public int Rank { get; set; }
+            public int Total { get; set; }
+
+            private int _done;
+            public int Done
+            {
+                get => _done;
+                set
+                {
+                    if (_done == value) return;
+                    _done = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Done)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Header)));
+                }
+            }
+
+            public string Header => Loc.F("Translate_GroupProgress_Fmt", Label, Done, Total);
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
 
         /// <summary>One English string and the translation being written for it.
         /// The row is the unit a translator sees, so it also carries whether its
@@ -70,6 +104,10 @@ namespace TrueforceForAll.Plugin
             private string _text;
             public string Key { get; set; }
             public string English { get; set; }
+
+            /// <summary>Which heading this row sits under. Set once when the rows are
+            /// built; the row reports into it as it is filled in.</summary>
+            public AreaGroup Area { get; set; }
 
             /// <summary>Pixels this string has when the panel draws it in a control
             /// with a fixed width, or 0 when nothing constrains it. From LocFitBudget,
@@ -109,7 +147,10 @@ namespace TrueforceForAll.Plugin
                 get => _text;
                 set
                 {
+                    bool was = !string.IsNullOrWhiteSpace(_text);
                     _text = value;
+                    bool now = !string.IsNullOrWhiteSpace(_text);
+                    if (Area != null && was != now) Area.Done += now ? 1 : -1;
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Text)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Warning)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Note)));
@@ -222,11 +263,20 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             var head = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
-            head.Children.Add(new TextBlock
+            var title = new TextBlock
             {
                 Text = heading,
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
-            });
+                Cursor = Cursors.Hand,
+                ToolTip = Loc.T("Translate_RenameLanguage_Tip"),
+            };
+            title.MouseLeftButtonUp += (s, e) =>
+            {
+                _nameRow.Visibility = Visibility.Visible;
+                _name.Focus();
+                _name.SelectAll();
+            };
+            head.Children.Add(title);
             head.Children.Add(new TextBlock
             {
                 Text = Loc.T("Translate_Intro"),
@@ -250,42 +300,24 @@ namespace TrueforceForAll.Plugin
             _search.TextChanged += (s, e) => ApplyFilter();
             bar.Children.Add(_search);
 
-            _untranslatedOnly = new CheckBox
-            {
-                Content = Loc.T("Translate_UntranslatedOnly"), Foreground = TextFg, FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0),
-            };
-            _untranslatedOnly.Checked += (s, e) => ApplyFilter();
-            _untranslatedOnly.Unchecked += (s, e) => ApplyFilter();
-            bar.Children.Add(_untranslatedOnly);
+            // A link rather than a button: it is the way to the file, which a
+            // translator wants once, not a thing they do while working.
+            var folder = LinkText(Loc.T("Translate_OpenFolder"), MutedFg, (s, e) => OpenFolder());
+            folder.Margin = new Thickness(16, 0, 0, 0);
+            bar.Children.Add(folder);
 
-            // Off by default: a key column turns a sentence into a name, and a
-            // translator has no use for it until they are reporting one.
-            _showKeys = new CheckBox
+            // The name is set once. It shows while it is unset, which is when it
+            // matters, and afterwards it lives in the title with the heading offering
+            // to bring this row back.
+            _nameRow = new StackPanel
             {
-                Content = Loc.T("Translate_ShowKeys"), Foreground = TextFg, FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0),
-                IsChecked = false,
+                Orientation = Orientation.Horizontal, Margin = new Thickness(18, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
             };
-            _showKeys.Checked += (s, e) => UpdateKeyColumn();
-            _showKeys.Unchecked += (s, e) => UpdateKeyColumn();
-            bar.Children.Add(_showKeys);
-
-            // The placeholder problems, on their own. A translator can clear them
-            // before sending instead of finding out from a fallback later.
-            _problemsOnly = new CheckBox
-            {
-                Content = Loc.T("Translate_NeedsFix"), Foreground = TextFg, FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0),
-            };
-            _problemsOnly.Checked += (s, e) => ApplyFilter();
-            _problemsOnly.Unchecked += (s, e) => ApplyFilter();
-            bar.Children.Add(_problemsOnly);
-
-            bar.Children.Add(new TextBlock
+            _nameRow.Children.Add(new TextBlock
             {
                 Text = Loc.T("Translate_LanguageName"), Foreground = MutedFg, FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
             });
             _name = new TextBox
             {
@@ -294,7 +326,10 @@ namespace TrueforceForAll.Plugin
                 Padding = new Thickness(5, 3, 5, 3), FontSize = 12,
                 ToolTip = Loc.T("Translate_LanguageName_Tip"),
             };
-            bar.Children.Add(_name);
+            _nameRow.Children.Add(_name);
+            bool named = !(string.IsNullOrWhiteSpace(languageName) || languageName == tag);
+            if (named) _nameRow.Visibility = Visibility.Collapsed;
+            bar.Children.Add(_nameRow);
             Grid.SetRow(bar, 1);
             root.Children.Add(bar);
 
@@ -316,15 +351,6 @@ namespace TrueforceForAll.Plugin
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 SelectionMode = DataGridSelectionMode.Single,
             };
-            _keyColumn = new DataGridTextColumn
-            {
-                Header = Loc.T("Translate_ColumnKey"),
-                Binding = new Binding(nameof(Row.Key)),
-                IsReadOnly = true,
-                Width = new DataGridLength(200),
-                Visibility = Visibility.Collapsed,
-            };
-            _grid.Columns.Add(_keyColumn);
             _grid.Columns.Add(new DataGridTextColumn
             {
                 Header = Loc.T("Translate_ColumnEnglish"),
@@ -351,6 +377,37 @@ namespace TrueforceForAll.Plugin
                 Width = new DataGridLength(190),
                 ElementStyle = NoteStyle(),
             });
+            // Grouped, and still virtualized: without this WPF builds all 2,956 rows
+            // the moment a group description is added.
+            VirtualizingPanel.SetIsVirtualizingWhenGrouping(_grid, true);
+            var groupStyle = new GroupStyle();
+            var groupHeading = new FrameworkElementFactory(typeof(TextBlock));
+            groupHeading.SetBinding(TextBlock.TextProperty, new Binding("Name.Header"));
+            groupHeading.SetValue(TextBlock.ForegroundProperty, HeaderFg);
+            groupHeading.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
+            groupHeading.SetValue(TextBlock.FontSizeProperty, 12.0);
+            groupHeading.SetValue(TextBlock.MarginProperty, new Thickness(2, 10, 0, 4));
+            groupStyle.HeaderTemplate = new DataTemplate { VisualTree = groupHeading };
+            _grid.GroupStyle.Add(groupStyle);
+
+            // Copying the English into a row is a row action, so it lives on the row.
+            var menu = new ContextMenu();
+            var copyItem = new MenuItem { Header = Loc.T("Translate_CopyEnglish") };
+            copyItem.Click += (s, e) => CopyEnglish();
+            menu.Items.Add(copyItem);
+            _grid.ContextMenu = menu;
+            // WPF does not select on right-click, so without this the menu would copy
+            // the English into whichever row happened to be selected before.
+            _grid.PreviewMouseRightButtonDown += (s, e) =>
+            {
+                var hit = e.OriginalSource as DependencyObject;
+                while (hit != null && !(hit is DataGridRow)) hit = VisualTreeHelper.GetParent(hit);
+                var hitRow = hit as DataGridRow;
+                if (hitRow != null) _grid.SelectedItem = hitRow.Item;
+            };
+            InputBindings.Add(new KeyBinding(new DelegateCommand(CopyEnglish), Key.D, ModifierKeys.Control));
+            InputBindings.Add(new KeyBinding(new DelegateCommand(() => Save(quiet: false)), Key.S, ModifierKeys.Control));
+
             // A committed cell is a finished row: write the file and reload, which
             // is what makes the panel behind this window change as you work.
             _grid.CellEditEnding += (s, e) =>
@@ -364,23 +421,31 @@ namespace TrueforceForAll.Plugin
             Grid.SetRow(_grid, 2);
             root.Children.Add(_grid);
 
+            var statusRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0),
+            };
             _status = new TextBlock
             {
                 Text = "", Foreground = MutedFg, FontSize = 12, TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 8, 0, 0),
             };
-            Grid.SetRow(_status, 3);
-            root.Children.Add(_status);
+            statusRow.Children.Add(_status);
+            _problemLink = LinkText("", WarnFg, (s, e) =>
+            {
+                _onlyProblems = !_onlyProblems;
+                ApplyFilter();
+            });
+            _problemLink.Margin = new Thickness(8, 0, 0, 0);
+            statusRow.Children.Add(_problemLink);
+            Grid.SetRow(statusRow, 3);
+            root.Children.Add(statusRow);
 
             var buttons = new StackPanel
             {
                 Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 10, 0, 0),
             };
-            buttons.Children.Add(MakeButton(Loc.T("Translate_CopyEnglish"), (s, e) => CopyEnglish()));
             buttons.Children.Add(MakeButton(Loc.T("Translate_Send"), (s, e) => Send()));
-            buttons.Children.Add(MakeButton(Loc.T("Translate_OpenFolder"), (s, e) => OpenFolder()));
-            buttons.Children.Add(MakeButton(Loc.T("Translate_Save"), (s, e) => Save(quiet: false)));
             var close = MakeButton(Loc.T("Settings_Close"), (s, e) => Close());
             close.IsCancel = true;
             buttons.Children.Add(close);
@@ -451,6 +516,31 @@ namespace TrueforceForAll.Plugin
             return st;
         }
 
+        /// <summary>Text that behaves like a link. Lighter than a button for the
+        /// things a translator does once, or once they notice something.</summary>
+        private static TextBlock LinkText(string text, Brush color, MouseButtonEventHandler click)
+        {
+            var t = new TextBlock
+            {
+                Text = text, Foreground = color, FontSize = 12, Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextDecorations = TextDecorations.Underline,
+            };
+            t.MouseLeftButtonUp += click;
+            return t;
+        }
+
+        /// <summary>A KeyBinding needs an ICommand, and the window's actions are
+        /// methods. One adapter is cheaper than a command per action.</summary>
+        private sealed class DelegateCommand : ICommand
+        {
+            private readonly Action _run;
+            public DelegateCommand(Action run) { _run = run; }
+            public bool CanExecute(object parameter) => true;
+            public void Execute(object parameter) { _run(); }
+            public event EventHandler CanExecuteChanged { add { } remove { } }
+        }
+
         private Button MakeButton(string text, RoutedEventHandler click)
         {
             var b = new Button
@@ -471,18 +561,99 @@ namespace TrueforceForAll.Plugin
             _rows.Clear();
             if (_store == null) return;
             var existing = ReadExisting();
+            var areas = new Dictionary<string, AreaGroup>(StringComparer.Ordinal);
+            var built = new List<Row>();
             foreach (string key in _store.EnglishKeys)
             {
                 string english;
                 if (!_store.TryGetEnglish(key, out english)) continue;
                 string mine;
                 existing.TryGetValue(key, out mine);
-                _rows.Add(new Row
+                var row = new Row
                 {
-                    Key = key, English = english, Text = mine ?? "",
+                    Key = key, English = english,
                     Room = LocFitBudget.Room(key),
-                });
+                    Area = AreaFor(areas, key),
+                };
+                row.Area.Total++;
+                // Area before Text on purpose: the Text setter is what keeps Done, so
+                // assigning it now counts this row exactly once.
+                row.Text = mine ?? "";
+                built.Add(row);
             }
+            // Ordered once, here, rather than by the view: a row that jumps the moment
+            // it is filled in loses the translator their place. Untranslated first
+            // inside each area, so the work is what you land on.
+            built.Sort((a, b) =>
+            {
+                int byArea = a.Area.Rank.CompareTo(b.Area.Rank);
+                if (byArea != 0) return byArea;
+                int byLabel = string.CompareOrdinal(a.Area.Label, b.Area.Label);
+                if (byLabel != 0) return byLabel;
+                bool ae = string.IsNullOrWhiteSpace(a.Text), be = string.IsNullOrWhiteSpace(b.Text);
+                if (ae != be) return ae ? -1 : 1;
+                return string.CompareOrdinal(a.Key, b.Key);
+            });
+            _rows.AddRange(built);
+        }
+
+        /// <summary>The areas in the order a translator meets them in the panel, so the
+        /// first heading is the one they see first. Anything not named here follows,
+        /// alphabetically, which is where the dialogs and the one-off windows land.</summary>
+        private static readonly string[] AreaOrder =
+        {
+            "Header", "Effects", "TelemetryFfb", "Lightsync", "Presets", "PresetManager",
+            "Settings", "Account", "Support", "SupportPrompt", "Welcome", "Trailer",
+            "Common", "Guides", "GuideBrowser", "Translate", "LangPicker", "Plugin",
+        };
+
+        /// <summary>Words that are acronyms rather than words, so the split reads FFB
+        /// and not Ffb.</summary>
+        private static readonly Dictionary<string, string> AreaWords =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "Ffb", "FFB" }, { "Oled", "OLED" }, { "Eq", "EQ" }, { "Rpm", "RPM" },
+                { "Usb", "USB" }, { "Motd", "MOTD" }, { "Id8", "ID8" }, { "Abs", "ABS" },
+                { "Lang", "Language" },
+            };
+
+        private static AreaGroup AreaFor(Dictionary<string, AreaGroup> areas, string key)
+        {
+            int cut = key.IndexOf('_');
+            string prefix = cut > 0 ? key.Substring(0, cut) : key;
+            AreaGroup area;
+            if (areas.TryGetValue(prefix, out area)) return area;
+            int rank = Array.IndexOf(AreaOrder, prefix);
+            area = new AreaGroup
+            {
+                Prefix = prefix,
+                Label = AreaLabel(prefix),
+                Rank = rank >= 0 ? rank : AreaOrder.Length,
+            };
+            areas[prefix] = area;
+            return area;
+        }
+
+        /// <summary>"TelemetryFfb" to "Telemetry FFB": the prefix with its words apart,
+        /// which is as much of a name as a namespace can give.</summary>
+        private static string AreaLabel(string prefix)
+        {
+            if (string.IsNullOrEmpty(prefix)) return prefix;
+            var words = new List<string>();
+            var word = new StringBuilder();
+            foreach (char c in prefix)
+            {
+                if (char.IsUpper(c) && word.Length > 0) { words.Add(word.ToString()); word.Clear(); }
+                word.Append(c);
+            }
+            if (word.Length > 0) words.Add(word.ToString());
+            for (int i = 0; i < words.Count; i++)
+            {
+                string fixedUp;
+                if (AreaWords.TryGetValue(words[i], out fixedUp)) words[i] = fixedUp;
+                else if (i > 0) words[i] = words[i].ToLowerInvariant();
+            }
+            return string.Join(" ", words);
         }
 
         private static readonly Typeface FitFace = new Typeface("Segoe UI");
@@ -533,23 +704,22 @@ namespace TrueforceForAll.Plugin
             Save(quiet: true);
         }
 
-        private void UpdateKeyColumn()
-            => _keyColumn.Visibility = _showKeys.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-
         private void ApplyFilter()
         {
             string needle = (_search.Text ?? "").Trim();
-            bool onlyEmpty = _untranslatedOnly.IsChecked == true;
             IEnumerable<Row> view = _rows;
-            if (onlyEmpty) view = view.Where(r => string.IsNullOrWhiteSpace(r.Text));
-            if (_problemsOnly.IsChecked == true) view = view.Where(r => r.Warning.Length > 0);
+            if (_onlyProblems) view = view.Where(r => r.Warning.Length > 0);
             if (needle.Length > 0)
                 view = view.Where(r =>
                     (r.English ?? "").IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0
                     || (r.Text ?? "").IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0
                     || (r.Key ?? "").IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0);
             var list = view.ToList();
-            _grid.ItemsSource = list;
+            // Grouped by the area the rows already carry. No sort descriptions: the
+            // list arrives in the order LoadRows chose and keeps it.
+            var grouped = new ListCollectionView(list);
+            grouped.GroupDescriptions.Add(new PropertyGroupDescription(nameof(Row.Area)));
+            _grid.ItemsSource = grouped;
             UpdateStatus(list.Count);
         }
 
@@ -562,6 +732,20 @@ namespace TrueforceForAll.Plugin
             if (holes > 0) text += " " + Loc.N("Translate_RowsNeedPlaceholder", holes, holes);
             if (wide > 0) text += " " + Loc.N("Translate_RowsTooWide", wide, wide);
             _status.Text = text;
+            if (_onlyProblems)
+            {
+                _problemLink.Text = Loc.T("Translate_ShowAll");
+                _problemLink.Visibility = Visibility.Visible;
+            }
+            else if (holes + wide > 0)
+            {
+                _problemLink.Text = Loc.T("Translate_NeedsFix");
+                _problemLink.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                _problemLink.Visibility = Visibility.Collapsed;
+            }
         }
 
         /// <summary>Write the root override and reload the store, so the panel

@@ -1,4 +1,4 @@
-﻿// Inline manager for the user's preset library, hosted on the Presets tab.
+// Inline manager for the user's preset library, hosted on the Presets tab.
 // Three segments: game presets (Settings.Presets), car presets
 // (TrueforceCars/*.tfcar.json), and custom engines (Settings.CustomEngines).
 // Usable without a game or car loaded so users can prune / rename / export /
@@ -2905,7 +2905,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
                     : Loc.T("PresetManager_CarPromoteBuiltin");
             }
 
-            CarCheckedLabel.Text = checkedCount > 0 ? Loc.F("PresetManager_Checked_Fmt", checkedCount) : Loc.T("PresetManager_Text");
+            CarCheckedLabel.Text = checkedCount > 0 ? Loc.F("PresetManager_Checked_Fmt", checkedCount) : string.Empty;
             CarDeleteBtn.Content = carCheckedDeletable > 0 ? Loc.F("PresetManager_DeleteCount_Fmt", carCheckedDeletable) : Loc.T("Common_Delete");
             if (!_bulkCheckInFlight)
                 UpdateSelectAllHeader(CarSelectAllCheck, GetVisible<CarRow>(_carRows));
@@ -2944,7 +2944,7 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             }
             CustomDeleteBtn.IsEnabled = checkedCount > 0 || any;
 
-            CustomCheckedLabel.Text = checkedCount > 0 ? Loc.F("PresetManager_Checked_Fmt", checkedCount) : Loc.T("PresetManager_Text");
+            CustomCheckedLabel.Text = checkedCount > 0 ? Loc.F("PresetManager_Checked_Fmt", checkedCount) : string.Empty;
             CustomDeleteBtn.Content = checkedCount > 0 ? Loc.F("PresetManager_DeleteCount_Fmt", checkedCount) : Loc.T("Common_Delete");
             if (!_bulkCheckInFlight)
                 UpdateSelectAllHeader(CustomSelectAllCheck, GetVisible<CustomRow>(_customRows));
