@@ -213,6 +213,13 @@ namespace TrueforceForAll.Plugin
         public ushort HidWheelVid => _hidWheelVid;
         public ushort HidWheelPid => _hidWheelPid;
 
+        /// <summary>A supported wheel has been identified over HID at some
+        /// point this session. Not the same as "connected right now": it stays
+        /// true across a replug, which is what the USBPcap banner wants, since
+        /// telling someone their capture driver is missing is only useful once
+        /// we know they own a wheel it would serve.</summary>
+        public bool HasDetectedWheel => _hidWheelVid != 0 || _hidWheelPid != 0;
+
         // Background GitHub-releases check. Kicked off async in Init; the
         // settings panel polls IsUpdateAvailable in its timer tick to decide
         // whether to surface the update banner. Network failures are silent.
