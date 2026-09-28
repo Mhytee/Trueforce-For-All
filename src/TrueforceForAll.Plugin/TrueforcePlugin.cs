@@ -5663,6 +5663,12 @@ namespace TrueforceForAll.Plugin
                         return;
                     }
 
+                    // Last look before we drop the wheel off the bus. The
+                    // measurement itself spans a few seconds, and a game that
+                    // started inside it would otherwise have the wheel cycled
+                    // out from under a driver.
+                    if (tap.GameFfbExpected) return;
+
                     _blindCycleAttempts++;
                     SimHub.Logging.Current.Warn(
                         $"[TF4ALL] FFB capture is blind: streamed {sentDelta} packets to the wheel but the capture " +
