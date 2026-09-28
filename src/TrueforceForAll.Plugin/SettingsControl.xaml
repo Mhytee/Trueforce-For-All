@@ -1309,6 +1309,46 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- USBPcap missing. Without it the plugin cannot read the
+                         game's force feedback at all, yet synthesized effects
+                         keep playing, so nothing obviously breaks and the user
+                         has no reason to suspect why their game feels wrong.
+                         Until now the only sign was a status line inside a
+                         collapsed Diagnostics expander.
+
+                         It matters more since the Uninstall button exists,
+                         because that button deliberately produces this state
+                         and someone who stops halfway would be left with no
+                         pass-through and nothing telling them so.
+
+                         Deliberately a prompt and not an automatic install:
+                         this installs a kernel driver and raises UAC, and
+                         after an uninstall the machine MUST restart before the
+                         install will take, so installing on our own initiative
+                         at startup would walk the user straight back into the
+                         dead end the uninstall was meant to break. -->
+                    <Border x:Name="UsbPcapMissingBanner" Visibility="Collapsed"
+                            Background="#FF8F00" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="⚠" FontSize="14" Foreground="#222"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" x:Name="UsbPcapMissingBannerText" Foreground="#222"
+                                       FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Text="USBPcap is not installed, so the plugin cannot read your game's force feedback. Its own effects still play, but the steering force from the game is missing. Installing takes a moment and needs a restart afterwards."/>
+                            <Button Grid.Column="2" x:Name="UsbPcapMissingBannerButton"
+                                    Content="Install USBPcap…"
+                                    Width="150" Height="28" Margin="10,0,0,0"
+                                    Click="UsbPcapReinstall_Click"
+                                    Background="#222" Foreground="#FFC107"
+                                    BorderBrush="#222" BorderThickness="1"/>
+                        </Grid>
+                    </Border>
+
                     <!-- FFB-tap divergence banner. HID found the wheel (so
                          Trueforce effects play) but USBPcap couldn't find it
                          on the bus, so the game's native force feedback gets

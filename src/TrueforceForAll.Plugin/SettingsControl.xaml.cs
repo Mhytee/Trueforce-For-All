@@ -3051,6 +3051,17 @@ namespace TrueforceForAll.Plugin
             bool wantAdmin = _plugin != null && !_plugin.IsRunningElevated;
             bool wantFfb   = _plugin?.ShouldShowFfbTapPickerBanner ?? false;
 
+            // USBPcap missing outright. Only worth saying to someone who has a
+            // wheel for it to matter to, and only for the genuinely-absent
+            // case: an installed-but-not-loading USBPcap is a different problem
+            // with a different repair, and Diagnostics carries that one.
+            // TAPBANNER forces it on so the wording can be reviewed on a
+            // healthy machine; session only, so it cannot be left switched on.
+            bool wantUsbPcapMissing = _forceUsbPcapBannerPreview
+                || (_plugin != null
+                    && !_plugin.IsUsbPcapAvailable
+                    && _plugin.HasDetectedWheel);
+
             string notice = _plugin?.UnverifiedWheelNotice;
             bool wantUnverified = !string.IsNullOrEmpty(notice);
             if (wantUnverified && UnverifiedWheelText != null && UnverifiedWheelText.Text != notice)
@@ -3067,13 +3078,25 @@ namespace TrueforceForAll.Plugin
                 if (DefaultDroppedText.Text != txt) DefaultDroppedText.Text = txt;
             }
 
+            // Order is priority: the strip shows the first wanted one and
+            // folds the rest behind "+N more". Admin and G HUB come first
+            // because they block everything; a missing USBPcap outranks the
+            // tap picker, since with no capture driver there is nothing for
+            // the picker to pick from.
             CoalesceCardIssues(
-                new UIElement[] { AdminWarningBox, GHubWarningBox, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner, DefaultDroppedBanner },
-                new bool[]      { wantAdmin,       wantGHub,       wantFfb,            wantQuiet,                wantUnverified,        wantDropped });
+                new UIElement[] { AdminWarningBox, GHubWarningBox, UsbPcapMissingBanner, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner, DefaultDroppedBanner },
+                new bool[]      { wantAdmin,       wantGHub,       wantUsbPcapMissing,   wantFfb,            wantQuiet,                wantUnverified,        wantDropped });
         }
 
         // The diagnostic string last rendered into the amber box (see above).
         private string _lastQuietDiag;
+
+        // TAPBANNER: force the "USBPcap is not installed" banner on so its
+        // wording and placement can be reviewed without uninstalling USBPcap
+        // from a working machine. Session only and deliberately not persisted,
+        // so a forgotten preview cannot follow anyone into a real session and
+        // claim their capture driver is missing when it is not.
+        private bool _forceUsbPcapBannerPreview;
 
         private void DefaultDroppedDismiss_Click(object sender, RoutedEventArgs e)
         {
