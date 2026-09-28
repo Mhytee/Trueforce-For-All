@@ -68,6 +68,11 @@ namespace TrueforceForAll.Plugin
             /// knows a language by its English name can still find it.</summary>
             public string English { get; set; }
             public string Progress { get; set; }
+
+            /// <summary>What this PC's files define, as a percentage. Kept so the
+            /// server's answer can be merged in without rebuilding every row from
+            /// scratch.</summary>
+            public double Local { get; set; }
             // Sort key, not shown: languages with work in them first, then the
             // reader's own Windows language, then everything else by its own name.
             public int Rank { get; set; }
@@ -75,10 +80,18 @@ namespace TrueforceForAll.Plugin
         }
 
         private readonly List<Row> _rows = new List<Row>();
+        /// <summary>The service client, or null when there is none. Only used to ask
+        /// what each language already has.</summary>
+        private readonly LocCommunity _community;
+        /// <summary>Tag to percentage, as the server reports it. Empty until the one
+        /// call answers, and empty forever with no backend or no consent.</summary>
+        private Dictionary<string, double> _sent =
+            new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         private readonly DataGrid _grid;
         private readonly TextBox _search;
 
-        internal LanguageChooserWindow(LocStore store, string windowsLang)
+        internal LanguageChooserWindow(LocStore store, string windowsLang,
+                                       LocCommunity community = null)
         {
             Title = Loc.T("LangPicker_Title");
             Width = 620;
@@ -171,8 +184,13 @@ namespace TrueforceForAll.Plugin
             Grid.SetRow(buttons, 3);
             root.Children.Add(buttons);
 
+            _community = community;
             Build(store, windowsLang);
             ApplyFilter();
+            // Then ask what each language already has and say so. One call, made because
+            // a person opened this window; the rows are already correct without it, just
+            // smaller for a language this PC has never fetched.
+            LoadSentPercentagesAsync();
         }
 
         private void AddColumn(string header, string path, DataGridLength width)
@@ -245,12 +263,14 @@ namespace TrueforceForAll.Plugin
                 _rows.Add(MakeRow(store, tag, native, english, known, windowsLang));
             }
 
-            _rows.Sort((a, b) =>
-            {
-                if (a.Rank != b.Rank) return a.Rank.CompareTo(b.Rank);
-                if (a.Done != b.Done) return b.Done.CompareTo(a.Done);
-                return string.Compare(a.Native, b.Native, StringComparison.OrdinalIgnoreCase);
-            });
+            _rows.Sort(CompareRows);
+        }
+
+        private static int CompareRows(Row a, Row b)
+        {
+            if (a.Rank != b.Rank) return a.Rank.CompareTo(b.Rank);
+            if (a.Done != b.Done) return b.Done.CompareTo(a.Done);
+            return string.Compare(a.Native, b.Native, StringComparison.OrdinalIgnoreCase);
         }
 
         private Row MakeRow(LocStore store, string tag, string native, string english,
@@ -272,20 +292,54 @@ namespace TrueforceForAll.Plugin
                     var s = store.Describe(tag);
                     int defined = s.DefinedCount;
                     int all = defined + s.Missing.Count;
-                    if (all > 0)
-                    {
-                        row.Done = defined;
-                        row.Progress = Loc.F("LangPicker_Progress_Fmt",
-                            (int)Math.Round(100.0 * defined / all), defined, all);
-                        row.Rank = 0;
-                    }
+                    if (all > 0) row.Local = 100.0 * defined / all;
                 }
                 catch { }
             }
+            ApplyPercent(row);
             if (row.Rank == 2 && !string.IsNullOrEmpty(windowsLang)
                 && string.Equals(tag, windowsLang, StringComparison.OrdinalIgnoreCase))
                 row.Rank = 1;
             return row;
+        }
+
+        /// <summary>One percentage, from whichever side has more of the language. The
+        /// local figure wins when it is higher, which is the case that matters most: a
+        /// translator with rows written and not yet sent must not see their own work read
+        /// as whatever the server happens to hold. A row with nothing anywhere says so in
+        /// words instead of showing a zero.</summary>
+        private void ApplyPercent(Row row)
+        {
+            double sent;
+            if (!_sent.TryGetValue(row.Tag ?? "", out sent)) sent = 0;
+            double percent = Math.Max(row.Local, sent);
+            if (percent <= 0)
+            {
+                row.Progress = Loc.T("LangPicker_NotStarted");
+                if (row.Rank == 0) row.Rank = 2;
+                row.Done = 0;
+                return;
+            }
+            row.Progress = Loc.F("LangPicker_Progress_Fmt", (int)Math.Round(percent));
+            row.Done = (int)Math.Round(percent);
+            row.Rank = 0;
+        }
+
+        /// <summary>Ask the server what every language has, then say so. One call, when a
+        /// person opens this window, and the rows are rebuilt if it changes anything.
+        /// Failure is silent by design: the numbers the rows already carry are true, just
+        /// smaller.</summary>
+        private async void LoadSentPercentagesAsync()
+        {
+            if (_community == null) return;
+            Dictionary<string, double> sent;
+            try { sent = await _community.GetProgressAsync(); }
+            catch { return; }
+            if (sent == null || sent.Count == 0) return;
+            _sent = sent;
+            foreach (var row in _rows) ApplyPercent(row);
+            _rows.Sort(CompareRows);
+            ApplyFilter();
         }
 
         /// <summary>The search box matches a language's own name, its English name

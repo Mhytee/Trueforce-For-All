@@ -88,6 +88,68 @@ namespace TrueforceForAll.Plugin.Localization
         /// window asked. Forced runs ignore the 24-hour stamp.</summary>
         public void RequestNow() { try { _ = RunAsync(true); } catch { } }
 
+        private const string ProgressRpc = "/rest/v1/rpc/translation_progress";
+        private static readonly TimeSpan ProgressTtl = TimeSpan.FromMinutes(10);
+        private Dictionary<string, double> _progress;
+        private DateTime _progressAt;
+
+        /// <summary>How much of each language exists on the server, as a percentage of
+        /// the English it holds. Empty when there is no backend, no consent, or the call
+        /// fails, in which case a caller shows what it can see locally.
+        ///
+        /// Not gated on the active language being a translation, unlike the fetch: the
+        /// one caller is the language chooser, and an English install is exactly where
+        /// someone opens it to start a language. It is still a request only when a person
+        /// opens that window, never in the background.</summary>
+        public async Task<Dictionary<string, double>> GetProgressAsync()
+        {
+            var cached = _progress;
+            if (cached != null && DateTime.UtcNow - _progressAt < ProgressTtl) return cached;
+            var empty = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            var s = _settings();
+            if (s == null || !s.CommunityEnabled || !s.UseCommunityTranslations) return empty;
+            string url = (s.CommunityBackendUrl ?? "").Trim();
+            string anonKey = (s.CommunityBackendAnonKey ?? "").Trim();
+            if (url.Length == 0 || anonKey.Length == 0) return empty;
+            if (!ChannelValidation.IsTrustedSupabaseUrl(url)) return empty;
+            try
+            {
+                string json;
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                using (var req = new HttpRequestMessage(HttpMethod.Post, url.TrimEnd('/') + ProgressRpc))
+                {
+                    req.Headers.Add("apikey", anonKey);
+                    req.Headers.Add("Authorization", "Bearer " + anonKey);
+                    req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+                    using (var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseContentRead, cts.Token)
+                                                 .ConfigureAwait(false))
+                    {
+                        if (!resp.IsSuccessStatusCode) return empty;
+                        json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    }
+                }
+                var map = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                foreach (var row in JArray.Parse(json))
+                {
+                    string tag = row?["tag"]?.ToString();
+                    if (string.IsNullOrEmpty(tag)) continue;
+                    double percent;
+                    if (double.TryParse(row?["percent"]?.ToString(),
+                                        System.Globalization.NumberStyles.Float,
+                                        System.Globalization.CultureInfo.InvariantCulture, out percent))
+                        map[tag] = percent;
+                }
+                _progress = map;
+                _progressAt = DateTime.UtcNow;
+                return map;
+            }
+            catch (Exception ex)
+            {
+                _log("[TF4ALL] Translations: progress is unavailable, showing what is on disk: " + ex.Message);
+                return empty;
+            }
+        }
+
         private bool Ready(out string url, out string anonKey)
         {
             url = ""; anonKey = "";

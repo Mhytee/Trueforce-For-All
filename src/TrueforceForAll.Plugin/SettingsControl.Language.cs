@@ -198,7 +198,7 @@ namespace TrueforceForAll.Plugin
         private void StartNewLanguage()
         {
             var store = Loc.Instance;
-            var dlg = new LanguageChooserWindow(store, UsageLanguage.UiLang());
+            var dlg = new LanguageChooserWindow(store, UsageLanguage.UiLang(), _plugin?.Translations);
             dlg.Owner = Window.GetWindow(this);
             bool ok = dlg.ShowDialog() == true;
             RebuildLanguageSection();                 // put the selection back
