@@ -5113,6 +5113,21 @@
                         <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
                                    Text="{loc:T Settings_FfbPassthroughForceComesBackAs}"/>
 
+                        <!-- On by default, and it rescues a real failure: a capture
+                             that came up with no filter on the wheel sees none of the
+                             game's force feedback, and cycling the wheel's USB port is
+                             the only thing that re-attaches it. It lives here rather
+                             than in Diagnostics because it is the same kind of choice
+                             as the two above: when the plugin is allowed to let go of
+                             the wheel. This is the one that drops it off the USB bus
+                             entirely, so anyone it bothers needs a way to say no
+                             without hand-editing the settings file (issue #45). -->
+                        <CheckBox x:Name="AutoReEnumerateCheck" Content="Reconnect the wheel automatically if force feedback capture starts up blind"
+                                  Margin="0,4,0,2" Checked="AutoReEnumerate_Changed" Unchecked="AutoReEnumerate_Changed"
+                                  ToolTip="On by default. If the capture starts without a filter on your wheel it can see none of the game's force feedback, and the only fix is to switch the wheel's USB port off and on again, which the wheel feels as a power cycle. Turn this off if you would rather the plugin never did that; FFB pass-through may then stay dead until you replug the wheel yourself."/>
+                        <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4"
+                                   Text="Only ever happens when you are not driving, and at most twice per session. If your wheel switches itself off and on shortly after you turn it on, turn this off."/>
+
                         <!-- Driver testing mode. Hidden by default (Collapsed); revealed
                              only after the DRIVER access code is entered, and kept revealed
                              across restarts via Settings.DriverTestingUnlocked (mirrors the
@@ -5212,7 +5227,6 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:T Settings_DiagnosticsWheel}" Style="{StaticResource LabelText}"/>
                         <TextBlock Grid.Row="0" Grid.Column="1" x:Name="WheelText" Text="{loc:T Settings_Wheel}"/>
@@ -5288,32 +5302,18 @@
                                   Checked="LogUsbBytes_Changed" Unchecked="LogUsbBytes_Changed"
                                   ToolTip="{loc:T Settings_LogUsbBytes_Tip}"/>
 
-                        <!-- On by default, and it rescues a real failure: a
-                             capture that came up with no filter on the wheel
-                             sees none of the game's FFB, and cycling the port
-                             is the only thing that re-attaches it. It is also
-                             the one piece of the plugin that deliberately drops
-                             the wheel off the USB bus, so anyone it bothers
-                             needs a way to say no without editing JSON. -->
-                        <CheckBox Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
-                                  x:Name="AutoReEnumerateCheck"
-                                  Margin="0,8,0,0"
-                                  Content="Re-enumerate the wheel automatically when FFB capture comes up blind"
-                                  Checked="AutoReEnumerate_Changed" Unchecked="AutoReEnumerate_Changed"
-                                  ToolTip="On by default. If the FFB capture starts without a filter on your wheel it can see none of the game's force feedback, and the only fix is to cycle the wheel's USB port, which switches the wheel off and back on once. Turn this off if you would rather the plugin never did that; FFB pass-through may then stay dead until you replug the wheel yourself."/>
-
                         <!-- Self-test: one click that aggregates every health
                              signal into a pass/fail checklist and fires a
                              short buzz so the user can confirm the wheel
                              physically responds. Non-destructive, reads live
                              state; doesn't reopen a healthy device. -->
-                        <Button Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
+                        <Button Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
                                 x:Name="SelfTestButton"
                                 Content="{loc:T Settings_SelfTest}"
                                 HorizontalAlignment="Left" Margin="0,14,0,0"
                                 Padding="10,3" Click="SelfTest_Click"
                                 ToolTip="{loc:T Settings_SelfTest_Tip}"/>
-                        <TextBlock Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2"
+                        <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
                                    x:Name="SelfTestResultText"
                                    Visibility="Collapsed"
                                    Margin="0,8,0,0" TextWrapping="Wrap"
