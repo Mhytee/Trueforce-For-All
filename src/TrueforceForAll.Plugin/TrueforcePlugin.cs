@@ -1,4 +1,4 @@
-﻿// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
+// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
 //
 // Lifecycle:
 //   Init: load settings → discover wheel → open + init + start stream →
@@ -191,6 +191,12 @@ namespace TrueforceForAll.Plugin
         // Reloads the language table when a file in the TrueforceForAll-Languages
         // folder changes (docs/localization-plan.md). Disposed in End.
         private LocWatcher _locWatcher;
+        private LocCommunity _locCommunity;
+
+        /// <summary>The translation service client, for the Translate window's Send
+        /// and for the access code that forces a fetch. Null when the language
+        /// runtime did not start.</summary>
+        internal LocCommunity Translations => _locCommunity;
         // Reads the wheel's physical steering off its HID controller interface,
         // so the stationary spring has a position to work with even when the
         // game reports none (Forza pause / pre-race countdown). See
@@ -4321,6 +4327,41 @@ namespace TrueforceForAll.Plugin
                 LocSeed.Run(pluginAssembly, languagesRoot, warn);
                 LocDiagnostics.StartupReport(msg => SimHub.Logging.Current.Info(msg), warn);
                 _locWatcher = new LocWatcher(languagesRoot, warn);
+                // The community layer, and the fetch that fills it. Its own timer:
+                // hanging this off the usage-ping timer would stop translations
+                // reaching anyone who turned usage statistics off, and would couple a
+                // community read to the one timer PRIVACY.md describes as tied to
+                // nothing. Started after the store, because it reads ActiveTag.
+                if (Loc.Instance != null)
+                {
+                    Loc.Instance.UseCommunityLayer = Settings?.UseCommunityTranslations ?? true;
+                    _locCommunity = new LocCommunity(
+                        Loc.Instance,
+                        () => Settings,
+                        // _auth is built later in the start sequence, so this reads it
+                        // when a send happens rather than when the fetch is created.
+                        async () => _auth != null ? await _auth.GetAccessTokenAsync() : null,
+                        action =>
+                        {
+                            var app = System.Windows.Application.Current;
+                            if (app?.Dispatcher != null) app.Dispatcher.BeginInvoke(action);
+                            else action();
+                        },
+                        typeof(TrueforcePlugin).Assembly.GetName().Version?.ToString(),
+                        msg => SimHub.Logging.Current.Info(msg));
+                    _locCommunity.Start();
+                    // A language picked later is a reason to look again: the new tag
+                    // may have rows this install has never fetched.
+                    Loc.Instance.LanguageChanged += (s, e) =>
+                    {
+                        try
+                        {
+                            Loc.Instance.UseCommunityLayer = Settings?.UseCommunityTranslations ?? true;
+                            _locCommunity?.RequestNow();
+                        }
+                        catch { }
+                    };
+                }
             }
             catch (Exception ex)
             {
@@ -7125,6 +7166,8 @@ namespace TrueforceForAll.Plugin
             // the table into a dead instance.
             try { _locWatcher?.Dispose(); } catch { }
             _locWatcher = null;
+            try { _locCommunity?.Dispose(); } catch { }
+            _locCommunity = null;
 
             // Flush a pending dash redline share (see DashScheduleRedlineShare)
             // so quitting inside the quiet window doesn't drop it, then stop

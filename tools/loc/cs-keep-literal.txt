@@ -75,3 +75,9 @@ value:Trebuchet
 # as the window title and as its heading. xaml-keep-literal.txt keeps the same
 # value literal on the markup side; a brand is not copy to translate.
 value:Trueforce For All
+
+# The language-file writer. Its literals are JSON punctuation and the "_meta"
+# member name, spelled into a StringBuilder that becomes a file on disk. Nothing in
+# it reaches a label, and the shape is the contract with Write-LocJson, so a key
+# here would be a key in the file format itself.
+file:src/TrueforceForAll.Plugin/Localization/LocFile.cs

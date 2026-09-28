@@ -1,4 +1,4 @@
-﻿// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
+// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
 //
 // A backup must reproduce a user's setup on a SECOND PC. The live settings blob
 // mixes three kinds of field:
@@ -71,6 +71,9 @@ namespace TrueforceForAll.Plugin
             // preferences above. An empty value on the other machine means
             // "follow SimHub", which is what a fresh install does anyway.
             "UiLanguage",
+            // Whether community translations apply. Travels for the same reason as
+            // the language itself: it is about the person reading the panel.
+            "UseCommunityTranslations",
             // iRacing reshape strength. Travels: it is normalized against the
             // sim's own max force, so it carries no wheel-specific meaning.
             "IRacingForceGain", "IRacingUse360Hz",

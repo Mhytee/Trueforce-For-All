@@ -41,6 +41,11 @@ namespace TrueforceForAll.Plugin.Localization
         /// reference copies LocSeed writes.</summary>
         public const string ShippedFolder = "shipped";
 
+        /// <summary>The subfolder holding what the community translated: one flat
+        /// language file per tag, fetched and rewritten wholesale by LocCommunity.
+        /// Not the user's own file, which sits in the root and wins over it.</summary>
+        public const string CommunityFolder = "community";
+
         // U+27E6 and U+27E7: mathematical white square brackets, chosen because
         // no UI string uses them, so a marked fallback cannot be mistaken for
         // real text.
@@ -59,6 +64,7 @@ namespace TrueforceForAll.Plugin.Localization
         private HashSet<string> _embeddedEnglishKeys = new HashSet<string>(StringComparer.Ordinal);
         private bool _activeIsEnglish = true;
         private bool _markFallbacks;
+        private bool _useCommunityLayer = true;
 
         // One Warn per key per session, whatever the language does later.
         private readonly HashSet<string> _warnedMissing = new HashSet<string>(StringComparer.Ordinal);
@@ -111,6 +117,20 @@ namespace TrueforceForAll.Plugin.Localization
 
         /// <summary>The folder the disk layers live in, or null.</summary>
         public string LanguagesRoot => _languagesRoot;
+
+        /// <summary>Whether the community layer is read. False skips it and deletes
+        /// nothing, so turning the setting off is instant and turning it back on
+        /// costs no fetch. The caller reloads after changing it.</summary>
+        public bool UseCommunityLayer
+        {
+            get => _useCommunityLayer;
+            set => _useCommunityLayer = value;
+        }
+
+        /// <summary>The folder the community cache lives in, or null with no
+        /// languages root. LocCommunity owns what goes in it.</summary>
+        public string CommunityRoot =>
+            _languagesRoot == null ? null : Path.Combine(_languagesRoot, CommunityFolder);
 
         /// <summary>Keys English defines (embedded "en" plus a root en.json).</summary>
         public int EnglishKeyCount => _english.Count;
@@ -209,6 +229,41 @@ namespace TrueforceForAll.Plugin.Localization
 
         /// <summary>True and the English text when English defines the key.
         /// No fallback marking, no Warn: this is for reports, not display.</summary>
+        /// <summary>What this key would read as with the community layer taken
+        /// away: the user's own file, else shipped, else embedded, else the English.
+        /// A fetched row equal to this is a row that changes nothing, so the fetch
+        /// drops it and the cache file stays a set of differences.</summary>
+        public string ResolveBelowCommunity(string tag, string key)
+        {
+            if (key == null) return null;
+            string t = NormalizeTag(tag) ?? EnglishTag;
+            var built = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (!IsEnglish(t))
+            {
+                List<string> chain = Chain(t);
+                for (int i = chain.Count - 1; i >= 0; i--)
+                {
+                    if (IsEnglish(chain[i])) continue;
+                    Overlay(built, ReadEmbeddedLayer(chain[i]));
+                    Overlay(built, ReadDiskLayer(ShippedPath(chain[i])));
+                    Overlay(built, ReadDiskLayer(RootPath(chain[i])));
+                }
+            }
+            string value;
+            if (built.TryGetValue(key, out value)) return value;
+            return EnglishText(key);
+        }
+
+        /// <summary>The English this build displays for a key, or null when the key
+        /// is not one of ours. The fetch hashes this to decide whether a row was
+        /// written for the same English.</summary>
+        public string EnglishText(string key)
+        {
+            if (key == null) return null;
+            string text;
+            return _english.TryGetValue(key, out text) ? text : null;
+        }
+
         public bool TryGetEnglish(string key, out string text)
             => _english.TryGetValue(key ?? string.Empty, out text);
 
@@ -336,8 +391,12 @@ namespace TrueforceForAll.Plugin.Localization
             s.RootOverrides = SortedKeys(rootLayer);
             var rootUnknown = new List<string>();
 
+            var communityLayer = _useCommunityLayer ? ReadDiskLayer(CommunityPath(t)) : null;
+            s.CommunityCount = communityLayer == null ? 0 : communityLayer.Count;
+
             var layers = new List<string>();
             if (rootLayer != null) layers.Add("root");
+            if (communityLayer != null) layers.Add(CommunityFolder);
             if (_languagesRoot != null && File.Exists(ShippedPath(t))) layers.Add(ShippedFolder);
             if (SafeReadEmbedded(t) != null) layers.Add("embedded");
             s.Layers = layers.Count == 0 ? "none" : string.Join("+", layers.ToArray());
@@ -488,6 +547,11 @@ namespace TrueforceForAll.Plugin.Localization
             public IReadOnlyList<string> RootUnknown { get; internal set; }
             /// <summary>"root+shipped+embedded" for the layers present, or "none".</summary>
             public string Layers { get; internal set; }
+
+            /// <summary>How many keys the community layer defines for this tag.
+            /// RootOverrides keeps its own meaning, the user's own file, which is
+            /// what the divergence marks read.</summary>
+            public int CommunityCount { get; internal set; }
         }
 
         // Layers.
@@ -496,6 +560,7 @@ namespace TrueforceForAll.Plugin.Localization
         {
             Overlay(into, ReadEmbeddedLayer(tag));
             Overlay(into, ReadDiskLayer(ShippedPath(tag)));
+            if (_useCommunityLayer) Overlay(into, ReadDiskLayer(CommunityPath(tag)));
             Overlay(into, ReadDiskLayer(RootPath(tag)));
         }
 
@@ -535,12 +600,19 @@ namespace TrueforceForAll.Plugin.Localization
         {
             if (SafeReadEmbedded(tag) != null) return true;
             if (_languagesRoot == null) return false;
-            return File.Exists(RootPath(tag)) || File.Exists(ShippedPath(tag));
+            // The community path belongs here, not only in the overlay: this is what
+            // decides which chain member becomes active, and Load overlays members
+            // only from the active index outward. Without it a fetched
+            // community\es-MX.json would be written and never read.
+            return File.Exists(RootPath(tag)) || File.Exists(ShippedPath(tag))
+                || (_useCommunityLayer && File.Exists(CommunityPath(tag)));
         }
 
         private string RootPath(string tag) => _languagesRoot == null ? null : Path.Combine(_languagesRoot, tag + ".json");
 
         private string ShippedPath(string tag) => _languagesRoot == null ? null : Path.Combine(_languagesRoot, ShippedFolder, tag + ".json");
+
+        public string CommunityPath(string tag) => _languagesRoot == null ? null : Path.Combine(_languagesRoot, CommunityFolder, tag + ".json");
 
         private string SafeReadEmbedded(string tag)
         {
@@ -604,6 +676,11 @@ namespace TrueforceForAll.Plugin.Localization
         }
 
         private static bool IsEnglish(string tag) => string.Equals(tag, EnglishTag, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>The same test, for callers outside this class: the fetch asks
+        /// it before making a request, because an English install must not notice
+        /// the translation service exists.</summary>
+        public static bool IsEnglishTag(string tag) => IsEnglish(tag);
 
         private static IReadOnlyList<string> SortedKeys(Dictionary<string, string> layer)
         {

@@ -87,8 +87,53 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>What the panel is showing and how complete it is. A reader who
         /// sees a mix of their language and English deserves to know why.</summary>
+        /// <summary>The community-translation switch: its state, and whether it is
+        /// shown at all. An English panel hides it, because with "en" active the fetch
+        /// makes no request, writes no file and adds no layer, so the row would offer
+        /// a choice that changes nothing.</summary>
+        private void SyncCommunityTranslationsRow()
+        {
+            var store = Loc.Instance;
+            if (UseCommunityTranslationsCheck == null) return;
+            bool english = store == null || store.ActiveTag == LocStore.EnglishTag;
+            UseCommunityTranslationsCheck.Visibility = english ? Visibility.Collapsed : Visibility.Visible;
+            var s = _plugin?.Settings;
+            if (s == null) return;
+            _suppressEvents = true;
+            try
+            {
+                UseCommunityTranslationsCheck.IsChecked = s.UseCommunityTranslations;
+                // Community features off means no network read at all, so the row is
+                // there but cannot be acted on.
+                UseCommunityTranslationsCheck.IsEnabled = s.CommunityEnabled;
+            }
+            finally { _suppressEvents = false; }
+        }
+
+        private void UseCommunityTranslations_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents) return;
+            var s = _plugin?.Settings;
+            var store = Loc.Instance;
+            if (s == null) return;
+            s.UseCommunityTranslations = UseCommunityTranslationsCheck.IsChecked == true;
+            try { _plugin.PersistSettings(); } catch { }
+            if (store != null)
+            {
+                // The layer is read or skipped from now on. Nothing is deleted either
+                // way, so turning it back on costs no fetch.
+                store.UseCommunityLayer = s.UseCommunityTranslations;
+                store.Reload();
+            }
+            if (s.UseCommunityTranslations) _plugin.Translations?.RequestNow();
+            UpdateLanguageNote();
+        }
+
         private void UpdateLanguageNote()
         {
+            // Here rather than at each call site: the section rebuild, a language
+            // change and the checkbox's own handler all pass through this.
+            SyncCommunityTranslationsRow();
             var store = Loc.Instance;
             if (UiLanguageNote == null || store == null) return;
             if (store.ActiveTag == LocStore.EnglishTag)
@@ -215,7 +260,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var win = new TranslateWindow(store, tag, languageName,
-                    msg => SimHub.Logging.Current.Warn(msg));
+                    msg => SimHub.Logging.Current.Warn(msg), _plugin?.Translations);
                 win.Owner = Window.GetWindow(this);
                 win.ShowDialog();
                 // The window writes the root override and reloads as it goes, so

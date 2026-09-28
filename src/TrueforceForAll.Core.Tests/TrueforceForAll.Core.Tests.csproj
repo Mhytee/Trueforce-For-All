@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Unit tests for the pure logic in TrueforceForAll.Core (telemetry
        parsing, synthesis math). Deliberately NOT added to TrueforceForAll.sln
@@ -107,6 +107,18 @@
          is asserted as a key, not as one language's wording. -->
     <Compile Include="..\TrueforceForAll.Plugin\Localization\Loc.cs">
       <Link>Linked\Loc.cs</Link>
+    </Compile>
+    <!-- The two pure halves of the translation service's client side. LocFile holds
+         the hash that names an English, which is the contract a mixed-version fleet
+         rests on, and the file shape the tools also write. LocPlaceholderRules is the
+         gate every fetched row passes before it can reach a label. Both are file and
+         string code with no WPF and no HTTP, so they compile here and the rules are
+         asserted rather than trusted. -->
+    <Compile Include="..\TrueforceForAll.Plugin\Localization\LocFile.cs">
+      <Link>Linked\LocFile.cs</Link>
+    </Compile>
+    <Compile Include="..\TrueforceForAll.Plugin\Localization\LocPlaceholderRules.cs">
+      <Link>Linked\LocPlaceholderRules.cs</Link>
     </Compile>
   </ItemGroup>
 

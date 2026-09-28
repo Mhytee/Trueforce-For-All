@@ -657,8 +657,8 @@ namespace TrueforceForAll.Plugin
                                 // keying pass turned it into a lookup, which made this row
                                 // skip on every non-English install: Loc.T returned the
                                 // translated word and no such field exists.
-                                string text = (t?["body"]?.ToString() ?? "").Trim();
-                                if (text.Length == 0) continue;
+                                string motdBody = (t?["body"]?.ToString() ?? "").Trim();
+                                if (motdBody.Length == 0) continue;
                                 // Defense in depth: the DB already enforces https-only,
                                 // but never hand a non-https link to the launcher.
                                 string link = t?["link_url"]?.ToString();
@@ -671,7 +671,7 @@ namespace TrueforceForAll.Plugin
                                     Kind       = t?["kind"]?.ToString(),
                                     Importance = t?["importance"]?.ToString(),
                                     Category   = t?["category"]?.ToString(),
-                                    Body       = text,
+                                    Body       = motdBody,
                                     LinkUrl    = link,
                                     LinkLabel  = t?["link_label"]?.ToString(),
                                     Recurrence      = t?["recurrence"]?.ToString(),

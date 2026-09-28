@@ -1,4 +1,4 @@
-﻿// Persisted plugin settings. SimHub serializes this to JSON via
+// Persisted plugin settings. SimHub serializes this to JSON via
 // PluginManager.GetCommonSettings / SaveCommonSettings.
 //
 // The same shape is also written/read by the Export / Import buttons in the
@@ -758,6 +758,17 @@ namespace TrueforceForAll.Plugin
         // machine does. A tag with no language file resolves through its parent
         // and then English, so a stale tag cannot leave the panel blank.
         public string UiLanguage { get; set; } = "";
+
+        // Apply the fixes other translators have sent for the active language.
+        // Default on, which is an exception to the default-off baseline granted on
+        // one condition: an English install must not notice. It does not, and the
+        // gate is what guarantees that rather than this default's wording. With "en"
+        // active the fetch makes no request, writes no file and adds no layer, so on
+        // an English install this setting is inert and its row is hidden. Community
+        // features off switches it off too, since it is a network read.
+        // The user's own file in the languages folder always wins over what this
+        // brings down, so turning it on cannot overwrite anyone's wording.
+        public bool UseCommunityTranslations { get; set; } = true;
 
         // Show the per-gear redline editor in the Car facts panel. Default off:
         // community data showed nobody shares per-gear values, so the editor is

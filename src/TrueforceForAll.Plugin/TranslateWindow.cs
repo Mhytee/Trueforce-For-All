@@ -49,6 +49,10 @@ namespace TrueforceForAll.Plugin
         private static readonly Regex Placeholder = new Regex(@"\{(\d+)(?::[^{}]*)?\}");
 
         private readonly LocStore _store;
+        /// <summary>The service client, or null when the runtime did not start or the
+        /// window was opened without one. Send falls back to the folder and an issue
+        /// when this is null, which is also what happens signed out.</summary>
+        private readonly LocCommunity _community;
         private readonly string _tag;
         private readonly string _root;
         private readonly Action<string> _log;
@@ -234,9 +238,11 @@ namespace TrueforceForAll.Plugin
             public event PropertyChangedEventHandler PropertyChanged;
         }
 
-        internal TranslateWindow(LocStore store, string tag, string languageName, Action<string> log)
+        internal TranslateWindow(LocStore store, string tag, string languageName, Action<string> log,
+                                 LocCommunity community = null)
         {
             _store = store;
+            _community = community;
             _tag = tag;
             _root = store?.LanguagesRoot;
             _log = log ?? (m => { });
@@ -825,6 +831,70 @@ namespace TrueforceForAll.Plugin
         private void Send()
         {
             Save(quiet: true);
+            if (_community != null) { SendToServer(); return; }
+            SendByHand();
+        }
+
+        /// <summary>Submit what this translator wrote. Every row they have filled in
+        /// goes, not only the ones changed this session: the server keeps one live row
+        /// per key and English, so re-sending the same text is a no-op it answers with
+        /// already_approved, and a translator who has been working offline for a week
+        /// should not have to remember which rows were new.</summary>
+        private async void SendToServer()
+        {
+            var rows = new List<KeyValuePair<string, string>>();
+            foreach (var r in _rows)
+                if (!string.IsNullOrWhiteSpace(r.Text) && r.Warning.Length == 0)
+                    rows.Add(new KeyValuePair<string, string>(r.Key, r.Text));
+            if (rows.Count == 0)
+            {
+                _status.Text = Loc.T("Translate_SendNothing");
+                return;
+            }
+            int problems = _rows.Count(r => r.Warning.Length > 0);
+            if (problems > 0)
+            {
+                // Sending a row the window already knows is wrong wastes a refusal the
+                // translator would then have to read back from the server.
+                bool carryOn = TrueforceDialog.Show(this,
+                    Loc.T("Translate_SendTitle"),
+                    Loc.N("Translate_SendSkipsProblems", problems, problems),
+                    DialogKind.Info,
+                    Loc.T("Settings_Continue"), Loc.T("Common_Cancel"), goldOk: true) == true;
+                if (!carryOn) return;
+            }
+            _status.Text = Loc.F("Translate_Sending_Fmt", rows.Count);
+            LocCommunity.SendResult result;
+            try
+            {
+                result = await _community.SendAsync(_tag, rows);
+            }
+            catch (Exception ex)
+            {
+                _status.Text = Loc.F("Translate_SendFailed_Fmt", ex.Message);
+                return;
+            }
+            if (!result.Ok)
+            {
+                // The server's own sentence, verbatim: it was written to be read.
+                _status.Text = result.Refusal ?? Loc.F("Translate_SendFailed_Fmt", "");
+                if (result.Refusal != null && result.Refusal.IndexOf("Sign in", StringComparison.OrdinalIgnoreCase) >= 0)
+                    SendByHand();
+                return;
+            }
+            string text = Loc.F("Translate_Sent_Fmt", result.Accepted);
+            if (result.Errors.Count > 0)
+            {
+                text += " " + Loc.N("Translate_SentRefused", result.Errors.Count, result.Errors.Count);
+                foreach (string e in result.Errors) _log("[TF4ALL] Translate: " + e);
+            }
+            _status.Text = text;
+        }
+
+        /// <summary>No account, or no backend: the file plus a prefilled issue, which
+        /// is how a translation reached the project before the service existed.</summary>
+        private void SendByHand()
+        {
             string path = FilePath();
             bool go = TrueforceDialog.Show(this,
                 Loc.T("Translate_SendTitle"),

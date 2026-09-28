@@ -969,7 +969,7 @@ namespace TrueforceForAll.Core.Tests
             // still pass because both read the weakened files. Changing any of
             // these counts means editing this test in the same commit, which is
             // what puts it in front of a reviewer.
-            // Five files, and each one has to be named here as well as in the
+            // Six files, and each one has to be named here as well as in the
             // allowlist: an exemption hides every label in a file, so it is the one
             // thing in this system that can make the count look finished without
             // routing anything. The two developer-tooling files are the plan's own
@@ -981,14 +981,20 @@ namespace TrueforceForAll.Core.Tests
                 "src/TrueforceForAll.Plugin/SettingsControl.DevCodes.cs",
                 "src/TrueforceForAll.Plugin/TestCodesWindow.cs",
                 "src/TrueforceForAll.Plugin/Localization/LocDiagnostics.cs",
+                // The language-file writer: JSON punctuation and the "_meta"
+                // member spelled into a StringBuilder that becomes a language
+                // file. That shape is the contract with Write-LocJson, so a key
+                // there would be a key in the file format, not in anything read.
+                "src/TrueforceForAll.Plugin/Localization/LocFile.cs",
                 "src/TrueforceForAll.Plugin/ArcadeLeaderboardService.cs",
                 "src/TrueforceForAll.Plugin/FfbTrace.cs",
             };
             if (allow.Files.Count != expectedFiles.Length
                 || expectedFiles.Any(f => !allow.Files.Contains(f)))
-                failures.Add("cs-keep-literal.txt: the whole-file exemptions must be exactly the five listed in "
-                    + "LocCsLiteralBudget, two developer-tooling files and three builders that write a log line, "
-                    + "a report or a CSV; another one hides a file's labels with no warning");
+                failures.Add("cs-keep-literal.txt: the whole-file exemptions must be exactly the six listed in "
+                    + "LocCsLiteralBudget, two developer-tooling files, three builders that write a log line, "
+                    + "a report or a CSV, and the language-file writer; another one hides a file's labels "
+                    + "with no warning");
             // prop went from 7 to 34 when the sweep learned about display text that
             // never touches a control directly: a sentence assigned to a local or a
             // controller field and only shown later. textmember and recordprop grew
