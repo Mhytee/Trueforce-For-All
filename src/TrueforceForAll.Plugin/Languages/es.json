@@ -206,7 +206,6 @@
   "CommunitySection_PickWhatImport": "Elige qué importar",
   "CommunitySection_PresetDoesnTContain": "El preset no contiene ninguna sección que se pueda importar.",
   "CommunitySection_SectionsPresetContainsUncheck": "Las secciones que contiene el preset. Desmarca todo aquello para lo que prefieras conservar tus valores actuales.",
-  "Community_Body": "contenido",
   "Controls_ControlsTabHostAutoForce": "Fuerza automática",
   "Controls_ControlsTabHostAutoForce_Tip": "Ejecuta la calibración de fuerza automática del juego actual en una sola pulsación: o adopta el nivel de fuerza que ha aprendido, o lo borra para que el auto se vuelva a calibrar. La línea del registro dice cuál de las dos.",
   "Controls_ControlsTabHostBindWheelOrButton": "Asigna controles del volante o de la caja de botones para ajustar cosas mientras conduces, sin abrir este panel. Haz clic en un campo de abajo y pulsa el botón que quieras usar. La ganancia general se queda entre 0 y 2.",

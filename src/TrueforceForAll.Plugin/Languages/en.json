@@ -206,7 +206,6 @@
   "CommunitySection_PickWhatImport": "Pick what to import",
   "CommunitySection_PresetDoesnTContain": "The preset doesn't contain any importable sections.",
   "CommunitySection_SectionsPresetContainsUncheck": "Sections the preset contains. Uncheck anything you'd rather keep your current values for.",
-  "Community_Body": "body",
   "Controls_ControlsTabHostAutoForce": "Auto force",
   "Controls_ControlsTabHostAutoForce_Tip": "Runs the current game's auto force calibration in one press: it either adopts the force level it has learned or clears it so the car calibrates again. The log line says which.",
   "Controls_ControlsTabHostBindWheelOrButton": "Bind wheel or button-box controls to adjust things while you drive, without opening this panel. Click a field below, then press the button you want to use. Master gain stays between 0 and 2.",

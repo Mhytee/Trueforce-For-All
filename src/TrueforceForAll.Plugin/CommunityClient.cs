@@ -653,7 +653,11 @@ namespace TrueforceForAll.Plugin
                             var arr = JArray.Parse(body);
                             foreach (var t in arr)
                             {
-                                string text = (t?[Loc.T("Community_Body")]?.ToString() ?? "").Trim();
+                                // "body" is the column name in the motd table, not text anyone reads. The
+                                // keying pass turned it into a lookup, which made this row
+                                // skip on every non-English install: Loc.T returned the
+                                // translated word and no such field exists.
+                                string text = (t?["body"]?.ToString() ?? "").Trim();
                                 if (text.Length == 0) continue;
                                 // Defense in depth: the DB already enforces https-only,
                                 // but never hand a non-https link to the launcher.
