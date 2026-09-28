@@ -15,8 +15,11 @@ Effects tab and reaches about 2,000 when the conversion finishes, so
 measure the tree rather than trusting a number in this file. Source line
 numbers are hints; grep for the named symbol.
 
-Migrations 0135 and 0136 are free (135 files, 0134 is the highest prefix,
-0122 is unused). No new Edge Function: the Discord nudge reuses
+Migrations 0136 and 0137 carry this, APPLIED 2026-09-27: 0135 went to
+telemetry_first_version while this was on paper, so the schema landed as
+`0136_translations.sql` and the RPC contract as `0137_translation_rpcs.sql`,
+which is one file more than this doc's plan and the same objects. The privacy
+hooks this doc calls 0136 are therefore 0138, and are NOT built yet. No new Edge Function: the Discord nudge reuses
 `report-notify` with a new payload kind and its own channel secret.
 
 ---
@@ -71,7 +74,7 @@ is not joinable to an account.
 
 ---
 
-## 2. Schema (migration 0135)
+## 2. Schema (migration 0136, applied)
 
 Six objects: five new tables and one column on `profiles`. Header in the
 house style of 0134, no `begin`/`commit`:
@@ -450,7 +453,7 @@ counter is the revalidation token the plugin sends back.
 
 ---
 
-## 3. The RPC contract
+## 3. The RPC contract (migration 0137, applied)
 
 All `security definer`, `set search_path = public, extensions, pg_temp`,
 identity from `auth.uid()` and never from the body. Each is created with
@@ -1594,7 +1597,8 @@ Never `migration repair`, `db push`, `db pull` or `db reset`.
    `search_path` afterwards, so a wrong qualification fails the
    `create table` outright, and the hash vectors cannot catch it because
    they never get to run.
-2. Apply `0135_translations.sql`, then `0136_translations_privacy_hooks.sql`.
+2. Apply `0136_translations.sql`, then `0137_translation_rpcs.sql`, then
+   `0138_translations_privacy_hooks.sql` when it exists.
 3. Existence. Five rows, all `t`, for the tables; one row for the
    column; both triggers; both partial uniques and the three query
    indexes.
