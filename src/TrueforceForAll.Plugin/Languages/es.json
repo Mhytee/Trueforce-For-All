@@ -1926,7 +1926,7 @@
   "Settings_DashPhoneSettings_Tip": "Muestra un código QR y un enlace que abren TF4ALL Dash en tu móvil.",
   "Settings_DataRemoval_Fmt": "Borrado de datos en: {0}",
   "Settings_Days_Fmt": "{0} días",
-  "Settings_DeleteAccountPresetsStay_Fmt": "¿Borrar la cuenta de {0}?\n\nTus presets se quedan (quien los descargó los conserva), pero tu nombre se quita de ellos y tu cuenta desaparece para siempre. Tu historial de votos y de aportaciones de datos de autos se anonimiza, y tu copia de seguridad en la nube se borra.",
+  "Settings_DeleteAccountPresetsStay_Fmt": "¿Borrar la cuenta de {0}?\n\nTus presets y tus traducciones se quedan (quien los descargó los conserva), pero tu nombre se quita de ellos y tu cuenta desaparece para siempre. Tu historial de votos y de aportaciones de datos de autos se anonimiza, y tu copia de seguridad en la nube se borra.",
   "Settings_DeleteFailedServerMight": "No se ha podido borrar. Puede que no se llegue al servidor; vuelve a intentarlo.",
   "Settings_Device": "Este dispositivo",
   "Settings_DiagnosticsActiveSources": "Fuentes activas:",

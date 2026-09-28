@@ -1926,7 +1926,7 @@
   "Settings_DashPhoneSettings_Tip": "Shows a QR code and link that open TF4ALL Dash on your phone.",
   "Settings_DataRemoval_Fmt": "Data removal in: {0}",
   "Settings_Days_Fmt": "{0} days",
-  "Settings_DeleteAccountPresetsStay_Fmt": "Delete the account for {0}?\n\nYour presets stay (people who downloaded them keep them), but your name comes off them and your account is gone for good. Your vote and car-fact contribution history is anonymized, and your cloud backup is deleted.",
+  "Settings_DeleteAccountPresetsStay_Fmt": "Delete the account for {0}?\n\nYour presets and translations stay (people who downloaded them keep them), but your name comes off them and your account is gone for good. Your vote and car-fact contribution history is anonymized, and your cloud backup is deleted.",
   "Settings_DeleteFailedServerMight": "Delete failed. The server might be unreachable; try again.",
   "Settings_Device": "This device",
   "Settings_DiagnosticsActiveSources": "Active sources:",
