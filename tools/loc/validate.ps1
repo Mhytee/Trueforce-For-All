@@ -205,6 +205,26 @@ foreach ($culture in @($langs.Keys | Sort-Object)) {
     Write-Host ('{0}.json: {1} missing (falls back to English), {2} unknown, {3} placeholder mismatch, {4} whitespace mismatch' -f $culture, $missing, $unknown, $bad, $space)
 }
 
+# ---- 5b. an escape captured verbatim instead of the character it stands for
+# A C# literal keyed by hand can arrive with its own escape still in the text, so
+# the dialog shows \n or \" where it should show a blank line or a quote. Paths
+# keep their backslashes, so only the sequences C# would have escaped are refused.
+$escapes = 0
+foreach ($culture in @($langs.Keys | Sort-Object)) {
+    $d = $langs[$culture]
+    foreach ($k in $d.Keys) {
+        if ($k -eq '_meta') { continue }
+        $v = [string]$d[$k]
+        foreach ($seq in @('\n', '\t', '\"', '\\')) {
+            if ($v.Contains($seq)) {
+                $escapes++
+                $fails.Add("$culture.json: '$k' holds the literal text $seq; use the character itself")
+                break
+            }
+        }
+    }
+}
+Write-Host ('Languages: {0} value(s) hold a literal escape sequence' -f $escapes)
 # ---- 6. no literals left in the converted scopes of converted XAML files
 # Under -Root the rehearsal's own list wins when it has one.
 $convertedListPath = Join-Path $Root 'tools\loc\converted-files.txt'
