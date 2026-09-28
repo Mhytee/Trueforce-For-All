@@ -3007,6 +3007,17 @@ namespace TrueforceForAll.Plugin
             bool wantAdmin = _plugin != null && !_plugin.IsRunningElevated;
             bool wantFfb   = _plugin?.ShouldShowFfbTapPickerBanner ?? false;
 
+            // USBPcap missing outright. Only worth saying to someone who has a
+            // wheel for it to matter to, and only for the genuinely-absent
+            // case: an installed-but-not-loading USBPcap is a different problem
+            // with a different repair, and Diagnostics carries that one.
+            // TAPBANNER forces it on so the wording can be reviewed on a
+            // healthy machine; session only, so it cannot be left switched on.
+            bool wantUsbPcapMissing = _forceUsbPcapBannerPreview
+                || (_plugin != null
+                    && !_plugin.IsUsbPcapAvailable
+                    && _plugin.HasDetectedWheel);
+
             string notice = _plugin?.UnverifiedWheelNotice;
             bool wantUnverified = !string.IsNullOrEmpty(notice);
             if (wantUnverified && UnverifiedWheelText != null && UnverifiedWheelText.Text != notice)
@@ -3023,13 +3034,25 @@ namespace TrueforceForAll.Plugin
                 if (DefaultDroppedText.Text != txt) DefaultDroppedText.Text = txt;
             }
 
+            // Order is priority: the strip shows the first wanted one and
+            // folds the rest behind "+N more". Admin and G HUB come first
+            // because they block everything; a missing USBPcap outranks the
+            // tap picker, since with no capture driver there is nothing for
+            // the picker to pick from.
             CoalesceCardIssues(
-                new UIElement[] { AdminWarningBox, GHubWarningBox, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner, DefaultDroppedBanner },
-                new bool[]      { wantAdmin,       wantGHub,       wantFfb,            wantQuiet,                wantUnverified,        wantDropped });
+                new UIElement[] { AdminWarningBox, GHubWarningBox, UsbPcapMissingBanner, FfbTapPickerBanner, WheelQuietDiagnosticBox, UnverifiedWheelBanner, DefaultDroppedBanner },
+                new bool[]      { wantAdmin,       wantGHub,       wantUsbPcapMissing,   wantFfb,            wantQuiet,                wantUnverified,        wantDropped });
         }
 
         // The diagnostic string last rendered into the amber box (see above).
         private string _lastQuietDiag;
+
+        // TAPBANNER: force the "USBPcap is not installed" banner on so its
+        // wording and placement can be reviewed without uninstalling USBPcap
+        // from a working machine. Session only and deliberately not persisted,
+        // so a forgotten preview cannot follow anyone into a real session and
+        // claim their capture driver is missing when it is not.
+        private bool _forceUsbPcapBannerPreview;
 
         private void DefaultDroppedDismiss_Click(object sender, RoutedEventArgs e)
         {
@@ -13775,6 +13798,7 @@ namespace TrueforceForAll.Plugin
             "LIGHTSYNC      Hide the LIGHTSYNC & OLED tab and move the wheel lights + screen controls back onto the Telemetry FFB tab (nothing is duplicated). Type again to bring the tab back. On by default. Persists. Toggle.\n" +
             "CYCLEHINT      Re-arm the LIGHTSYNC intro modal and force the cycle-binding hint on screen even though the pattern cycle action is already bound. For testing them, since anyone working on them has it bound. Session only. Toggle.\n" +
             "MANUALPIN      Reveal the Diagnostics 'Pick device manually...' control (hidden by default; auto-discovery + self-heal handle almost every case). Persists. Toggle.\n" +
+            "TAPBANNER      Preview the 'USBPcap is not installed' banner on a machine where USBPcap is fine, so its wording and placement can be read before shipping. Installs nothing, removes nothing, changes no setting. Session only. Toggle.\n" +
             "F8SWEEP        Experimental: sweep the rev lights via the legacy F8 12 command on the wheel's gamepad collection (off the HID++ FFB pipe). Writes at forza-wheel-leds' ~60 Hz rate by default (worst-case FFB test): drive a sim and check the LEDs sweep AND the FFB stays solid. Toggle. 'F8SWEEP FAST' = resend every 16 ms; 'F8SWEEP SLOW' = paced write-on-change (our footprint, for comparison); 'F8SWEEP <ms>' = custom resend interval (0-1000).\n" +
             "F8ANY          G923 PS/PC only: run the legacy F8 rev lights in ANY game, including ones driving their own force feedback, so you can answer this by playing and revving rather than watching a test sweep. The question is whether the lights come on AND the game's force stays solid; if the force cuts, that is the answer, not a fault. Persists. Toggle.\n" +
             "TRACE          Toggle the high-rate FFB signal-chain trace (game force vs plugin output vs steering, full provider rate); second TRACE dumps the CSV under Documents\\TrueforceForAll.\n" +
@@ -15299,6 +15323,21 @@ namespace TrueforceForAll.Plugin
                     AccessCodeStatus.Text = on
                         ? "Manual device picker revealed (Diagnostics + the contextual banner). Persists. Type MANUALPIN again to hide it."
                         : "Manual device picker hidden (persists).";
+                return;
+            }
+
+            // Preview the "USBPcap is not installed" banner on a machine where
+            // USBPcap is installed and working. Session only: the point is to
+            // read the wording before shipping it, not to change anything.
+            if (code.Equals("TAPBANNER", StringComparison.OrdinalIgnoreCase))
+            {
+                _forceUsbPcapBannerPreview = !_forceUsbPcapBannerPreview;
+                AccessCodeBox.Text = string.Empty;
+                RefreshCardIssues();
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = _forceUsbPcapBannerPreview
+                        ? "USBPcap-missing banner forced on for preview. Nothing is installed or removed. Type TAPBANNER again, or restart SimHub, to clear it."
+                        : "USBPcap-missing banner back to normal.";
                 return;
             }
 
