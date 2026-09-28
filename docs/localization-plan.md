@@ -521,6 +521,66 @@ in the XAML. So:
   the roughly 230 keys that contain a glossary-divisive term, and the
   parent-culture fallback covers the rest; nobody hand-edits 2,000 keys.
 
+### The Spanish glossary (owner, 2026-09-27)
+
+Two decisions first, because both touch every string.
+
+**Address the reader as `tu`.** "Tienes cambios sin guardar", not "Tiene". The
+English copy is warm and direct and sim-racing communities are informal, so the
+formal register would read like a bank. This is one choice for the whole file: a
+mixed register is the most obvious sign of a machine pass.
+
+**The words Spanish sim racers already use stay in English.** `preset`, `FFB` and
+`force feedback` are what the audience says and searches for; `preajuste` and
+`retroalimentacion de fuerza` are correct and read like nobody wrote them.
+
+The table is ordered by how often the word appears in `en.json`, which is how much
+each row is worth. The first six rows are the regional decisions from 2026-09-24,
+kept here so one table answers everything.
+
+| English | Spanish | Appears in | Why |
+| --- | --- | --- | --- |
+| car | auto | 358 | Neither `coche` (Spain) nor `carro` (much of Latin America) |
+| game | juego | 334 | |
+| wheel | volante | 322 | The steering wheel. A wheelbase is `la base` |
+| preset | preset | 300 | Kept. Masculine: `el preset`, `los presets` |
+| engine | motor | 115 | |
+| FFB | FFB | 112 | Kept, universal |
+| force feedback | force feedback | 80 | Kept |
+| effect | efecto | 80 | |
+| telemetry | telemetria | 74 | |
+| backup | copia de seguridad | 70 | Understood both sides; `respaldo` is Latin American |
+| tab | pestana | 66 | |
+| Trueforce, LIGHTSYNC, TF4ALL, SimHub | unchanged | 193 keys | Product names are never translated |
+| settings | ajustes | 59 | Shorter than `configuracion` and current in both regions |
+| gain | ganancia | 51 | |
+| gear | marcha | 40 | Not `cambio` or `velocidad` |
+| sign in | iniciar sesion | 35 | |
+| spring | resorte | 30 | Not `muelle` |
+| rev lights | luces de RPM | 28 | One term throughout, as in English |
+| friction | friccion | 27 | |
+| stream | flujo | 27 | The haptic stream the wheel receives |
+| damper | amortiguador | 21 | |
+| curb | piano | 17 | Sim-racing jargon on both sides |
+| tire | neumatico | 12 | `llanta` is the rim in Spain |
+| torque | par | 7 | Units stay Nm |
+| slip | deslizamiento | 5 | |
+| haptic | haptico | 3 | |
+| PC | PC | | Not `ordenador` or `computadora` |
+
+**What must not be translated at all.** 228 keys quote text the reader has to find
+somewhere else, and translating it makes the instruction impossible to follow: five
+name a menu path in another program (`Settings > Controls > Force Feedback` in Le
+Mans Ultimate), twenty name a file or a setting inside one (`app.ini`,
+`loadTrueForceAPI`, `FFBPlugin.ini`, `PowerMode`), thirty-three name another
+application's own control (`Data Out`, `Use LEDs`, `Take over force feedback`,
+`G HUB`, `Content Manager`), and 193 carry a product name. A translator may
+translate the sentence around them and never the quoted text itself.
+
+Accented characters are the file's own, not an approximation: `Espanol` is written
+with the n-tilde, and every accent belongs. The table above is written without them
+only because this document stays ASCII like the rest of `docs/`.
+
 ## Out of scope for the first pass
 
 - OLED wheel-screen text. `WheelOledChannel.WriteField` maps every
