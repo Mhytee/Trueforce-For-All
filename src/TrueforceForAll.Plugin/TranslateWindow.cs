@@ -79,9 +79,6 @@ namespace TrueforceForAll.Plugin
         /// translator who fills a language in one sitting would otherwise spend the rest
         /// of the hour being turned down at the same rate they were typing.</summary>
         private DateTime _retryAfter = DateTime.MinValue;
-        /// <summary>Said once per window, not once per row: with no account nothing can be
-        /// attributed, so nothing is sent.</summary>
-        private bool _saidSignedOut;
 
         /// <summary>Whether the list is showing only the rows with something wrong.
         /// Reached by clicking the count rather than by a checkbox that sits there
@@ -932,21 +929,10 @@ namespace TrueforceForAll.Plugin
                 }
                 if (!result.Ok)
                 {
-                    bool signedOut = result.Refusal != null
-                        && result.Refusal.IndexOf("Sign in", StringComparison.OrdinalIgnoreCase) >= 0;
-                    if (signedOut)
-                    {
-                        // Once, and then quietly: the rows stay queued, and signing in
-                        // later sends them. Checked again in a minute rather than in five
-                        // seconds, since signing in takes longer than that.
-                        if (!_saidSignedOut) { _saidSignedOut = true; _status.Text = result.Refusal; }
-                        _retryAfter = DateTime.UtcNow.AddMinutes(1);
-                        return;
-                    }
-                    // A cap or a closed language: the sentence says which, and the rows
-                    // wait rather than being lost. Ten minutes, because every refusal at
-                    // this level is counted per hour and asking again sooner cannot
-                    // succeed.
+                    // A cap, or a language closed for edits: the sentence says which, and
+                    // the rows wait rather than being lost. Ten minutes, because every
+                    // refusal at this level is counted per hour and asking again sooner
+                    // cannot succeed.
                     _status.Text = result.Refusal ?? Loc.F("Translate_PublishFailed_Fmt", "");
                     _retryAfter = DateTime.UtcNow.AddMinutes(10);
                     return;

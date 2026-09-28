@@ -51,6 +51,10 @@ namespace TrueforceForAll.Plugin.Localization
         private readonly LocStore _store;
         private readonly Func<TrueforceSettings> _settings;
         private readonly Func<Task<string>> _accessToken;
+        /// <summary>The install's own contributor id, minted and persisted by the plugin.
+        /// Used when there is no account, which is most of the time: translating needs no
+        /// sign-in, and an account only adds a name to the credits.</summary>
+        private readonly Func<string> _anonId;
         private readonly Action<string> _log;
         private readonly Action<Action> _onUi;
         private readonly string _pluginVersion;
@@ -60,12 +64,13 @@ namespace TrueforceForAll.Plugin.Localization
         private bool _disposed;
 
         public LocCommunity(LocStore store, Func<TrueforceSettings> settings,
-                            Func<Task<string>> accessToken, Action<Action> onUi,
-                            string pluginVersion, Action<string> log)
+                            Func<Task<string>> accessToken, Func<string> anonId,
+                            Action<Action> onUi, string pluginVersion, Action<string> log)
         {
             _store = store;
             _settings = settings;
             _accessToken = accessToken ?? (() => Task.FromResult<string>(null));
+            _anonId = anonId ?? (() => null);
             _onUi = onUi ?? (a => a());
             _pluginVersion = pluginVersion;
             _log = log ?? (m => { });
@@ -461,13 +466,19 @@ namespace TrueforceForAll.Plugin.Localization
             string url, anonKey;
             if (!Ready(out url, out anonKey))
             {
-                result.Refusal = "Community features are off, or this is the English panel.";
+                result.Refusal = Loc.T("Translate_PublishOff");
                 return result;
             }
+            // An account is optional. With one, the row carries the person's id and
+            // their name can appear in the credits; without one, it carries the install's
+            // own id and the credits say (anonymous). Either way the text is the same
+            // contribution, and refusing it for want of an account would lose the fix
+            // from the person most likely to have noticed it.
             string token = await _accessToken().ConfigureAwait(false);
-            if (string.IsNullOrEmpty(token))
+            string anonId = (_anonId() ?? "").Trim();
+            if (string.IsNullOrEmpty(token) && anonId.Length == 0)
             {
-                result.Refusal = "Sign in to send translations.";
+                result.Refusal = Loc.T("Translate_PublishNoId");
                 return result;
             }
             if (rows == null || rows.Count == 0) { result.Ok = true; return result; }
@@ -494,13 +505,21 @@ namespace TrueforceForAll.Plugin.Localization
                     ["p_source"] = "plugin",
                     ["p_plugin_version"] = _pluginVersion,
                 };
+                // Sent whether or not there is a token: the server takes the account when
+                // the request carries one and falls back to this, and a row already
+                // attributed to an account ignores it.
+                if (anonId.Length > 0) body["p_anon_id"] = anonId;
                 try
                 {
                     using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
                     using (var req = new HttpRequestMessage(HttpMethod.Post, url.TrimEnd('/') + SubmitRpc))
                     {
                         req.Headers.Add("apikey", anonKey);
-                        req.Headers.Add("Authorization", "Bearer " + token);
+                        // The user's token when there is one, so the row is theirs; the
+                        // anon key otherwise, which is what makes a signed-out send reach
+                        // the function at all.
+                        req.Headers.Add("Authorization",
+                            "Bearer " + (string.IsNullOrEmpty(token) ? anonKey : token));
                         req.Content = new StringContent(body.ToString(Newtonsoft.Json.Formatting.None),
                                                         Encoding.UTF8, "application/json");
                         using (var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseContentRead, cts.Token)
@@ -511,7 +530,11 @@ namespace TrueforceForAll.Plugin.Localization
                             {
                                 // A P0001 raise arrives as a PostgREST error object whose
                                 // message is the sentence the server wrote to be shown.
-                                result.Refusal = MessageFrom(text) ?? ("The server refused the send (" + (int)resp.StatusCode + ").");
+                                // The server's own sentence when it wrote one. Those are English, whatever the
+                                // panel is in: they come from a P0001 raise and there is no
+                                // table of them on this side to translate.
+                                result.Refusal = MessageFrom(text)
+                                    ?? Loc.F("Translate_PublishRefusedCode_Fmt", (int)resp.StatusCode);
                                 return result;
                             }
                             var answer = JObject.Parse(text);
@@ -530,7 +553,7 @@ namespace TrueforceForAll.Plugin.Localization
                 }
                 catch (Exception ex)
                 {
-                    result.Refusal = "The send did not reach the server: " + ex.Message;
+                    result.Refusal = Loc.F("Translate_PublishNoReach_Fmt", ex.Message);
                     return result;
                 }
             }

@@ -26,6 +26,28 @@ hooks this doc calls 0136 are therefore 0138, and are NOT built yet. No new Edge
 
 ## 1. What the service is, and the trust model
 
+**Decision, 2026-09-28: translating needs no account (migration 0139).** The
+person who notices a bad Spanish label is not the person who wanted an
+account, and an account was never what protected this: email OTP with
+`create_user = true` makes one cost a disposable address, which is why three
+of section 6's caps already key on something else. A submission now follows
+`submit_car_fact`: the account wins when the request carries a token, else a
+client-minted id arrives as `p_anon_id` and is stored in a new `anon_id`
+column as `'anon:<id>'`, and the hashed address is the backstop because a
+self-chosen id costs nothing. `submitter_blocked` matches all three forms. The
+plugin sends the `CarFactsAnonId` it already mints and already carries in a
+backup, so one person stays one contributor across their machines. What an
+account still buys is a name in the credits; an anonymous row collapses into
+`(anonymous)`.
+
+Two consequences to hold onto. The anon key ships inside the plugin, so the
+barrier to writing live text is now reading a DLL rather than registering an
+address, and with no review gate the defence is entirely the caps, the blocked
+table, the English hash and the length and character checks. And
+`translations_one_pending_per_submitter` does not cover `anon_id`, which is
+moot while `review_policy` is `'open'` and nothing is ever pending, but would
+need an index before a gate is ever switched on.
+
 **Decision, 2026-09-28: one surface, not two. The web page is dropped.**
 Everyone who would translate this plugin runs it, and the in-plugin window
 is the better tool anyway: it shows each string in the real control while
@@ -497,6 +519,9 @@ Checks before the row loop, so a batch cannot straddle a cap:
 
 ```sql
 if v_uid is null then
+    -- 0139: gone. A caller with no token and no client id gets
+    -- 'This copy of the plugin cannot send translations. Update it, or sign in.',
+    -- which is reachable only from a client too old to send either.
     raise exception 'Sign in to send translations.' using errcode = 'P0001';
 end if;
 if coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then
@@ -898,14 +923,14 @@ set for both surfaces.
 
 | Cap | Value | Keyed on | Checked |
 |---|---|---|---|
-| Rows per hour | 300 | account, on `submitted_at` | pre-loop |
+| Rows per hour | 300 | account or client id, on `submitted_at` | pre-loop |
 | Rows per call | 50 | the call | pre-loop |
 | Pending rows | 3,000 | account and language | pre-loop |
 | Text length | 2,000 characters | row | per row, and the check |
 | Length vs English | `greatest(64, 4 * len(english))` | row | per row |
 | Rows per hour | 600 | `source_ip_hash` | pre-loop |
 | Pending rows | 20,000 | language, globally | pre-loop |
-| New account wait | 10 minutes | `auth.users.created_at` | pre-loop |
+| New account wait | 10 minutes | `auth.users.created_at`, signed in only | pre-loop |
 | Reads | unlimited | | |
 
 "Pre-loop" means before the row loop, so a batch cannot straddle a cap.

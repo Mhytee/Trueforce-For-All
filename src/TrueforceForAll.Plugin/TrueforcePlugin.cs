@@ -4341,6 +4341,10 @@ namespace TrueforceForAll.Plugin
                         // _auth is built later in the start sequence, so this reads it
                         // when a send happens rather than when the fetch is created.
                         async () => _auth != null ? await _auth.GetAccessTokenAsync() : null,
+                        // The same id the car-fact path uses: one person, one contributor,
+                        // across their machines. Minted on first use, which is here for
+                        // anyone who translates before they ever save a car fact.
+                        () => { try { EnsureCarFactsAnonId(); } catch { } return Settings?.CarFactsAnonId; },
                         action =>
                         {
                             var app = System.Windows.Application.Current;
