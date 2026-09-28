@@ -18226,7 +18226,8 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             if (TrueforceDialog.Show(null, "Trueforce For All",
                     Loc.T("Settings_RunBundledUSBPcapInstaller"),
-                    DialogKind.Confirm, okLabel: Loc.T("Settings_RunInstaller"), cancelLabel: Loc.T("Common_Cancel")) != true)
+                    DialogKind.Confirm, okLabel: Loc.T("Settings_RunInstaller"), cancelLabel: Loc.T("Common_Cancel"),
+                    greenOk: true) != true)
                 return;
             _plugin.ReinstallUsbPcapAsync();
         }
@@ -18248,7 +18249,11 @@ namespace TrueforceForAll.Plugin
                         + "driver's registration.\n\n"
                         + "Afterwards: restart the computer, press Reinstall here, then restart once more. FFB "
                         + "pass-through stays off until you finish both steps.",
-                    DialogKind.Confirm, okLabel: "Remove USBPcap", cancelLabel: "Cancel") != true)
+                    // Destructive, not Confirm: this takes a working component
+                    // away and leaves pass-through off until the user finishes
+                    // two restarts, so the affirmative reads red and Cancel is
+                    // what Enter does.
+                    DialogKind.Destructive, okLabel: "Remove USBPcap", cancelLabel: "Cancel") != true)
                 return;
             _plugin.UninstallUsbPcapAsync();
         }
