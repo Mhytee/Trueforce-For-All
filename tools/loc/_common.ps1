@@ -1077,3 +1077,75 @@ function Get-LocArgCountAfter([string]$Text, [int]$Pos) {
     }
     return $count
 }
+
+# ---- fixed-width fit, shared by validate.ps1 and fit-budget.ps1
+# A control with a fixed Width cannot grow, and text in one does not wrap, so a longer
+# language clips instead of reflowing. MinWidth is not a constraint: the layout pass
+# turned Width into MinWidth wherever a control could grow, so what this finds is the
+# set of genuinely tight spots. 13 is the size the settings panel draws at.
+$LocFitFontSize = 13.0
+$script:LocFitTypeface = $null
+
+function Get-LocTextWidth([string]$Text, [double]$FontSize) {
+    # Device-independent pixels, the same unit a XAML Width is written in. Characters
+    # would not do: "Iiii" and "MMMM" are both four.
+    if ([string]::IsNullOrEmpty($Text)) { return 0.0 }
+    if ($null -eq $script:LocFitTypeface) {
+        Add-Type -AssemblyName PresentationCore, WindowsBase
+        $script:LocFitTypeface = New-Object System.Windows.Media.Typeface('Segoe UI')
+    }
+    $ft = New-Object System.Windows.Media.FormattedText(
+        $Text, [System.Globalization.CultureInfo]::GetCultureInfo('en-US'),
+        [System.Windows.FlowDirection]::LeftToRight, $script:LocFitTypeface,
+        $FontSize, [System.Windows.Media.Brushes]::Black, 1.0)
+    return [math]::Round($ft.Width, 1)
+}
+
+function Get-LocFitChrome([string]$Element) {
+    # What the element spends on things that are not the text: border, padding, and a
+    # checkbox's own box. Deliberately modest, so a flagged row is a real problem
+    # rather than a guess about the theme.
+    if ($Element -match 'CheckBox|RadioButton') { return 26 }
+    if ($Element -match 'ComboBox') { return 30 }
+    if ($Element -match 'DataGrid.*Column') { return 20 }
+    if ($Element -match 'Button') { return 20 }
+    if ($Element -match 'TextBlock|Label|Run') { return 2 }
+    return 12
+}
+
+function Get-LocFitSites([string]$Plugin, [string]$Root) {
+    # One row per localized string drawn in a width it cannot grow out of: the key,
+    # the room left for text, and where to go and look.
+    $sites = New-Object System.Collections.Generic.List[object]
+    $files = @(Get-ChildItem -Path $Plugin -Recurse -Filter *.xaml |
+               Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } |
+               Sort-Object FullName)
+    foreach ($f in $files) {
+        $file = Read-LocTextFile $f.FullName
+        $doc = Get-LocXamlDoc $file.Text
+        foreach ($el in $doc.Descendants()) {
+            $limit = 0.0
+            foreach ($w in @('Width', 'MaxWidth')) {
+                $a = $el.Attribute([System.Xml.Linq.XName]::Get($w))
+                if ($null -ne $a -and $a.Value -match '^\s*\d+(\.\d+)?\s*$') { $limit = [double]$a.Value; break }
+            }
+            if ($limit -le 0) { continue }
+            $wrap = $el.Attribute([System.Xml.Linq.XName]::Get('TextWrapping'))
+            if ($null -ne $wrap -and $wrap.Value -ne 'NoWrap') { continue }
+            foreach ($attr in @('Content', 'Text', 'Header')) {
+                $a = $el.Attribute([System.Xml.Linq.XName]::Get($attr))
+                if ($null -eq $a) { continue }
+                $m = [regex]::Match($a.Value, '\{loc:T\s+([A-Za-z0-9_.]+)')
+                if (-not $m.Success) { continue }
+                $type = Get-LocElementTypeName $el
+                $sites.Add([pscustomobject]@{
+                    Key = $m.Groups[1].Value
+                    Room = [math]::Round($limit - (Get-LocFitChrome $type), 1)
+                    Element = $type
+                    Where = ((Get-LocRelativePath $f.FullName $Root) + ':' + (Get-LocLine $el))
+                })
+            }
+        }
+    }
+    return $sites
+}

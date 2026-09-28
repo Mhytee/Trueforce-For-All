@@ -230,83 +230,49 @@ foreach ($culture in @($langs.Keys | Sort-Object)) {
 Write-Host ('Languages: {0} value(s) hold a literal escape sequence' -f $escapes)
 # ---- 5c. localized text that cannot fit the control it sits in
 # Validate-only, unlike the checks above: it measures with WPF's own text engine, which
-# the net8 test suite cannot load. A control with a fixed Width cannot grow and its
-# text does not wrap, so a longer language clips instead of reflowing. MinWidth is not
-# a constraint, which is why the layout pass turned a fixed Width into MinWidth
-# wherever the control could grow: what is left here is the set of genuinely tight
-# spots, and this is what keeps a future translation out of them.
+# the net8 test suite cannot load. The scan is Get-LocFitSites in _common.ps1, shared
+# with fit-budget.ps1, so this check and the table the Translate window warns from can
+# only disagree by being out of date, which the staleness check below catches.
 #
-# 13px is what the panel draws at. The chrome allowance is an estimate of border,
-# padding and a checkbox's own box, so a few pixels over is a note and only a real
-# overshoot is a failure.
-$fitFont = 13.0
+# The chrome allowance is an estimate of border, padding and a checkbox's own box, so a
+# few pixels over is a note and only a real overshoot fails the run.
 $fitSlack = 4.0
 $fitChecked = 0
 $fitBad = 0
-$fitWpf = $true
+$fitSites = @()
 try {
-    Add-Type -AssemblyName PresentationCore, WindowsBase
+    $fitSites = @(Get-LocFitSites $plugin $Root)
+    $null = Get-LocTextWidth 'x' $LocFitFontSize
 } catch {
-    $fitWpf = $false
-    $notes.Add('WPF is not available here, so the fixed-width fit check was skipped.')
+    $fitSites = @()
+    $notes.Add('The fixed-width fit check was skipped: ' + $_.Exception.Message)
 }
-if ($fitWpf) {
-    $fitFace = New-Object System.Windows.Media.Typeface('Segoe UI')
-    $fitCulture = [System.Globalization.CultureInfo]::GetCultureInfo('en-US')
-    $fitElement = [regex]'<([A-Za-z_][\w.:]*)((?:\s+[\w.:]+\s*=\s*"[^"]*")*)\s*/?>'
-    $fitAttr = [regex]'([\w.:]+)\s*=\s*"([^"]*)"'
-    $fitSites = New-Object System.Collections.Generic.List[object]
-    foreach ($x in (Get-LocSourceFiles $plugin '*.xaml')) {
-        $text = [System.IO.File]::ReadAllText($x.FullName)
-        foreach ($m in $fitElement.Matches($text)) {
-            $a = @{}
-            foreach ($am in $fitAttr.Matches($m.Groups[2].Value)) { $a[$am.Groups[1].Value] = $am.Groups[2].Value }
-            $limit = 0.0
-            foreach ($w in @('Width', 'MaxWidth')) {
-                if ($a.ContainsKey($w) -and $a[$w] -match '^\s*\d+(\.\d+)?\s*$') { $limit = [double]$a[$w]; break }
-            }
-            if ($limit -le 0) { continue }
-            if ($a.ContainsKey('TextWrapping') -and $a['TextWrapping'] -ne 'NoWrap') { continue }
-            foreach ($attr in @('Content', 'Text', 'Header')) {
-                if (-not $a.ContainsKey($attr)) { continue }
-                $km = [regex]::Match($a[$attr], '\{loc:T\s+([A-Za-z0-9_.]+)')
-                if (-not $km.Success) { continue }
-                $el = $m.Groups[1].Value
-                $chrome = 12
-                if ($el -match 'CheckBox|RadioButton') { $chrome = 26 }
-                elseif ($el -match 'ComboBox') { $chrome = 30 }
-                elseif ($el -match 'DataGrid.*Column') { $chrome = 20 }
-                elseif ($el -match 'Button') { $chrome = 20 }
-                elseif ($el -match 'TextBlock|Label|Run') { $chrome = 2 }
-                $fitSites.Add([pscustomobject]@{
-                    Key = $km.Groups[1].Value
-                    Room = $limit - $chrome
-                    Where = ((Get-LocRelativePath $x.FullName $Root) + ':' +
-                             ([regex]::Matches($text.Substring(0, $m.Index), "`n").Count + 1))
-                })
-            }
-        }
-    }
-    foreach ($culture in @($langs.Keys | Sort-Object)) {
-        $d = $langs[$culture]
-        foreach ($site in $fitSites) {
-            if (-not $d.Contains($site.Key)) { continue }
-            $s = [string]$d[$site.Key]
-            if ($s -eq '') { continue }
-            $fitChecked++
-            $ft = New-Object System.Windows.Media.FormattedText(
-                $s, $fitCulture, [System.Windows.FlowDirection]::LeftToRight,
-                $fitFace, $fitFont, [System.Windows.Media.Brushes]::Black, 1.0)
-            $over = [math]::Round($ft.Width - $site.Room, 1)
-            if ($over -le 0) { continue }
-            $msg = ("{0}.json: '{1}' needs about {2}px more than the {3}px it has at {4} (`"{5}`")" -f `
-                    $culture, $site.Key, $over, $site.Room, $site.Where, $s)
-            if ($over -gt $fitSlack) { $fitBad++; $fails.Add($msg) } else { $notes.Add($msg) }
-        }
+foreach ($culture in @($langs.Keys | Sort-Object)) {
+    $d = $langs[$culture]
+    foreach ($site in $fitSites) {
+        if (-not $d.Contains($site.Key)) { continue }
+        $s = [string]$d[$site.Key]
+        if ($s -eq '') { continue }
+        $fitChecked++
+        $over = [math]::Round((Get-LocTextWidth $s $LocFitFontSize) - $site.Room, 1)
+        if ($over -le 0) { continue }
+        $msg = ("{0}.json: '{1}' needs about {2}px more than the {3}px it has at {4} (`"{5}`")" -f `
+                $culture, $site.Key, $over, $site.Room, $site.Where, $s)
+        if ($over -gt $fitSlack) { $fitBad++; $fails.Add($msg) } else { $notes.Add($msg) }
     }
 }
 Write-Host ('Fixed-width fit: {0} string(s) measured in {1} tight spot(s), {2} too wide' -f `
     $fitChecked, $fitSites.Count, $fitBad)
+
+# The Translate window warns a translator from LocFitBudget.cs, so a stale table leaves
+# it quiet about a control that has since become tight. Skipped under -Root, where the
+# generator would regenerate from the real repo rather than the copy being checked.
+$fitBudgetScript = Join-Path $LocToolsDir 'fit-budget.ps1'
+if ($Root -eq $LocRepoRoot -and $fitSites.Count -gt 0 -and (Test-Path -LiteralPath $fitBudgetScript)) {
+    $fitOut = & powershell -NoProfile -ExecutionPolicy Bypass -File $fitBudgetScript -Check 2>&1
+    if ($LASTEXITCODE -ne 0) { $fails.Add(('LocFitBudget.cs: ' + (($fitOut | Out-String).Trim() -replace "`r?`n", ' '))) }
+    else { Write-Host ('  ' + (($fitOut | Out-String).Trim())) }
+}
 
 # ---- 6. no literals left in the converted scopes of converted XAML files
 # Under -Root the rehearsal's own list wins when it has one.

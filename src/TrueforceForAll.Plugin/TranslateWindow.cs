@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -70,6 +71,39 @@ namespace TrueforceForAll.Plugin
             public string Key { get; set; }
             public string English { get; set; }
 
+            /// <summary>Pixels this string has when the panel draws it in a control
+            /// with a fixed width, or 0 when nothing constrains it. From LocFitBudget,
+            /// generated off the XAML, because the window cannot see the layout a
+            /// string ends up in.</summary>
+            public double Room { get; set; }
+
+            /// <summary>How far past its control the translation reaches, in pixels,
+            /// or 0 when it fits or nothing constrains it.</summary>
+            private double Overflow
+            {
+                get
+                {
+                    if (Room <= 0 || string.IsNullOrEmpty(_text)) return 0;
+                    double w = MeasureWidth(_text);
+                    return w > Room ? w - Room : 0;
+                }
+            }
+
+            /// <summary>Roughly how many characters fit, worked out from this row's own
+            /// English rather than an alphabet-wide average: the string in hand is the
+            /// better guide, and a translator can act on characters where pixels mean
+            /// nothing.</summary>
+            private int FitChars
+            {
+                get
+                {
+                    if (Room <= 0 || string.IsNullOrEmpty(English)) return 0;
+                    double w = MeasureWidth(English);
+                    if (w <= 0) return 0;
+                    return Math.Max(1, (int)(Room / (w / English.Length)));
+                }
+            }
+
             public string Text
             {
                 get => _text;
@@ -111,7 +145,9 @@ namespace TrueforceForAll.Plugin
                 get
                 {
                     string w = Warning;
-                    return w.Length > 0 ? w : PluralForm;
+                    if (w.Length > 0) return w;
+                    if (Room > 0) return Loc.F("Translate_TightFit_Fmt", FitChars);
+                    return PluralForm;
                 }
             }
 
@@ -119,21 +155,32 @@ namespace TrueforceForAll.Plugin
             /// what lets one column carry both without reading as an error.</summary>
             public Brush NoteBrush => Warning.Length > 0 ? WarnFg : MutedFg;
 
-            /// <summary>Empty unless the translation drops or invents a
-            /// placeholder, in which case string.Format would throw at runtime and
-            /// the store would fall back to English for this key.</summary>
+            /// <summary>What is wrong with this row, worst first: a dropped or
+            /// invented placeholder, which would make string.Format throw and cost the
+            /// whole string, then text that reaches past the control it is drawn in,
+            /// which costs the end of the label.</summary>
             public string Warning
             {
                 get
                 {
                     if (string.IsNullOrEmpty(_text)) return "";
-                    var mine = Numbers(_text);
-                    var theirs = Numbers(English);
-                    if (mine.SetEquals(theirs)) return "";
-                    return Loc.F("Translate_PlaceholdersDoNotMatch_Fmt",
-                        string.Join(", ", theirs.OrderBy(n => n).Select(n => "{" + n + "}")));
+                    if (HasPlaceholderProblem)
+                        return Loc.F("Translate_PlaceholdersDoNotMatch_Fmt",
+                            string.Join(", ", Numbers(English).OrderBy(n => n).Select(n => "{" + n + "}")));
+                    double over = Overflow;
+                    if (over > 0) return Loc.F("Translate_TooWide_Fmt", (int)Math.Ceiling(over));
+                    return "";
                 }
             }
+
+            /// <summary>Whether the translation drops or invents a placeholder. Apart
+            /// from Warning so the status line can count the two problems separately:
+            /// one costs the whole string, the other costs the end of a label.</summary>
+            public bool HasPlaceholderProblem
+                => !string.IsNullOrEmpty(_text) && !Numbers(_text).SetEquals(Numbers(English));
+
+            /// <summary>Whether the translation reaches past its control.</summary>
+            public bool IsTooWide => !HasPlaceholderProblem && Overflow > 0;
 
             private static HashSet<int> Numbers(string s)
             {
@@ -430,8 +477,26 @@ namespace TrueforceForAll.Plugin
                 if (!_store.TryGetEnglish(key, out english)) continue;
                 string mine;
                 existing.TryGetValue(key, out mine);
-                _rows.Add(new Row { Key = key, English = english, Text = mine ?? "" });
+                _rows.Add(new Row
+                {
+                    Key = key, English = english, Text = mine ?? "",
+                    Room = LocFitBudget.Room(key),
+                });
             }
+        }
+
+        private static readonly Typeface FitFace = new Typeface("Segoe UI");
+
+        /// <summary>Width in device-independent pixels at the size the settings panel
+        /// draws at, which is the unit LocFitBudget's numbers are in. Characters would
+        /// not do: "Iiii" and "MMMM" are both four.</summary>
+        private static double MeasureWidth(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            var ft = new FormattedText(text, CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight, FitFace, LocFitBudget.FontSize,
+                Brushes.Black, 1.0);
+            return ft.Width;
         }
 
         private Dictionary<string, string> ReadExisting()
@@ -491,9 +556,11 @@ namespace TrueforceForAll.Plugin
         private void UpdateStatus(int shown)
         {
             int done = _rows.Count(r => !string.IsNullOrWhiteSpace(r.Text));
-            int warn = _rows.Count(r => !string.IsNullOrEmpty(r.Warning));
+            int holes = _rows.Count(r => r.HasPlaceholderProblem);
+            int wide = _rows.Count(r => r.IsTooWide);
             string text = Loc.F("Translate_Progress_Fmt", done, _rows.Count, _rows.Count - done, shown);
-            if (warn > 0) text += " " + Loc.N("Translate_RowsNeedPlaceholder", warn, warn);
+            if (holes > 0) text += " " + Loc.N("Translate_RowsNeedPlaceholder", holes, holes);
+            if (wide > 0) text += " " + Loc.N("Translate_RowsTooWide", wide, wide);
             _status.Text = text;
         }
 
