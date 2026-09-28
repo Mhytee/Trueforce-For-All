@@ -345,14 +345,20 @@ and es walks log zero clips at SimHub's narrowest pane; a 30-minute
 
 ### Phase 3b: community translation service (designed 2026-09-25)
 
-A translator fixes a string, a reviewer the owner appointed for that
-language approves it, and every install of that language picks it up
-within a day with no release. Two surfaces write the same rows to one
+A translator fixes a string and every install of that language picks it
+up within a day with no release. Two surfaces write the same rows to one
 RPC: the guides-site page and the in-plugin Translate window. The build
-is `docs/localization-translation-service.md`. Decided 2026-09-24:
+is `docs/localization-translation-service.md`. Decided 2026-09-24, with
+the approval decision reversed 2026-09-27:
 
-- **Approval.** Reviewers appointed per language, service key only,
-  owner the first row; `review_policy` ships `'reviewer'`.
+- **Approval: none.** A submitted row serves. `review_policy` ships
+  `'open'` (owner, 2026-09-27). The reviewer machinery stays designed and
+  unbuilt, as the repair path rather than a gate: putting a bad row back
+  is the same operation either way. MAIRA is the evidence that the
+  friction is what costs you languages, not the vandals: 27 languages,
+  no account, a name box for credits, file backups as the undo. Recovery
+  here is the delivery mechanism run again, so a bad string is live for
+  at most one fetch interval after it is noticed and fixed.
 - **Between-release override: yes.** A daily account-free fetch layers
   approved rows between the shipped file and the user's root override,
   killed by `UseCommunityTranslations` under `CommunityEnabled`.

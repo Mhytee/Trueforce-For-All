@@ -28,6 +28,19 @@ guides site is where volume comes from. The in-plugin Translate window is
 the in-context tool: it renders each string in the real control while the
 translator types. Both send the same rows to the same RPC.
 
+**Decision, 2026-09-27: there is no review gate.** A submitted row is what
+installs receive. Everything below that reads "a reviewer approves" is the
+repair path now, not a precondition: the owner uses it to put a bad row
+back, and `status = 'approved'` keeps its meaning of "this is what installs
+receive" rather than "a person blessed this". What that decision leans on,
+and what therefore has to be built rather than deferred: the English hash
+on every row, the history table, the submitter on every row, the rate
+limits in section 6, the banned-character helper in section 2.1 and the
+length caps. Those are the whole of the defence now. The one property the
+gate was carrying that nothing else does is that a language at 100 percent
+is no longer evidence that anyone read it, so the plugin's own progress
+figure says how much exists, never how good it is.
+
 Four properties hold the design together.
 
 **The server holds the English.** `english_strings` is the server's copy
@@ -118,8 +131,11 @@ create table if not exists public.translation_cultures (
     -- false pauses new submissions only. It never affects serving:
     -- approved rows keep reaching every install while edits are shut.
     accepting     boolean not null default true,
-    review_policy text not null default 'reviewer'
-                  check (review_policy in ('reviewer','trusted','agreement')),
+    -- 'open' ships (owner, 2026-09-27): a submitted row serves, and a bad
+    -- one is repaired rather than prevented. The other three stay in the
+    -- check so turning a gate on later is an update, not a migration.
+    review_policy text not null default 'open'
+                  check (review_policy in ('open','reviewer','trusted','agreement')),
     revision      bigint not null default 0,       -- the plugin's ETag
     updated_at    timestamptz not null default now()
 );
@@ -137,9 +153,21 @@ The regex admits every tag the plan names: the six SimHub ships
 which SimHub ships no translation for and which is exactly why Spanish is
 the launch language. It also admits regional children such as `es-MX`,
 and refuses `en`, `ES`, `es_MX`, `qps-ploc` and anything that could reach
-a path. `review_policy` ships and stays `'reviewer'`, so admitting a
-trusted contributor or two-account agreement later is an update rather
-than a migration.
+a path. `review_policy` ships `'open'`, so `submit_translations` writes the
+row at `'approved'` directly and every read path, index and revision bump
+below works unchanged; switching a single language to `'reviewer'` later is
+an update rather than a migration.
+
+Two mechanics follow from `'open'` and have to be built that way.
+**`submit_translations` supersedes as it writes.** The unique index admits one
+approved row per `(culture, key, english_sha256)`, so a second person
+translating a key that already has live text means the RPC sets the existing
+row to `'superseded'` in the same statement as the insert, which is what
+leaves the previous text recoverable and the index satisfied. Under a review
+gate the reviewer's accept did this; now the submit does.
+**The column default stays `'pending'`.** Nothing but the RPC should be able
+to put text in front of users, so an insert that forgets to say `'approved'`
+goes nowhere rather than going live.
 
 ### 2.3 english_strings and its history
 
@@ -526,7 +554,13 @@ Refusal sentences, verbatim:
 `withdraw_translations(p_ids uuid[]) returns jsonb`. Own pending rows
 only, set to `withdrawn`. Same receipt shape.
 
-### 3.2 Review (authenticated, gated on the language)
+### 3.2 Review, which is now the repair path (authenticated, gated on the language)
+
+With `review_policy = 'open'` nothing waits here. This section is what the
+owner reaches for when a row needs putting back: `reject` the bad row, then
+`approve` the superseded one that held the previous text for that key and
+English hash. It is described as a gate below because it was designed as
+one, and the operations are the same either way.
 
 `review_translations(p_ids uuid[], p_action text, p_text text default
 null, p_note text default null) returns jsonb`
