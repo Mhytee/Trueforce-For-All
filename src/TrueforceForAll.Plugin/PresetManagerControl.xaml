@@ -108,7 +108,9 @@
             </Setter>
         </Style>
         <Style x:Key="RowButton" TargetType="Button">
-            <Setter Property="Width" Value="92"/>
+            <!-- MinWidth, not Width, so a longer language grows the button. -->
+            <Setter Property="MinWidth" Value="92"/>
+            <Setter Property="Padding" Value="10,0"/>
             <Setter Property="Height" Value="26"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -117,7 +119,8 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="#5A5A5A" CornerRadius="3" SnapsToDevicePixels="True">
+                        <Border x:Name="Bd" Background="#5A5A5A" CornerRadius="3" SnapsToDevicePixels="True"
+                                Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -145,7 +148,9 @@
              Note: the library Share buttons are deliberately NOT gold; an
              occasional upload shouldn't out-shout setting a default. -->
         <Style x:Key="SharePrimaryButton" TargetType="Button">
-            <Setter Property="Width" Value="100"/>
+            <!-- MinWidth, not Width, so a longer language grows the button. -->
+            <Setter Property="MinWidth" Value="100"/>
+            <Setter Property="Padding" Value="10,0"/>
             <Setter Property="Height" Value="26"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -342,7 +347,7 @@
                             <!-- Order mirrors the Car action bar: apply, edit,
                                  share, destructive last, DEV trailing. Wraps to a
                                  second row instead of clipping on a narrow panel. -->
-                            <Button x:Name="GameSetDefaultBtn" Content="{loc:T PresetManager_GameSetDefault}" Style="{StaticResource SharePrimaryButton}" Width="160" Click="GameSetDefault_Click" IsEnabled="False"
+                            <Button x:Name="GameSetDefaultBtn" Content="{loc:T PresetManager_GameSetDefault}" Style="{StaticResource SharePrimaryButton}" MinWidth="160" Click="GameSetDefault_Click" IsEnabled="False"
                                     ToolTip="{loc:T PresetManager_GameSetDefault_Tip}"/>
                             <Button x:Name="GameEditBtn"       Content="{loc:T Common_Edit}"           Style="{StaticResource RowButton}" Click="GameEdit_Click"       IsEnabled="False"
                                     ToolTip="{loc:T PresetManager_GameEdit_Tip}"/>
@@ -352,7 +357,7 @@
                                     ToolTipService.ShowOnDisabled="True"
                                     ToolTip="{loc:T PresetManager_GameShare_Tip}"/>
                             <Button x:Name="GameDeleteBtn"     Content="{loc:T Common_Delete}"         Style="{StaticResource DangerButton}" Click="GameDelete_Click"     IsEnabled="False"/>
-                            <Button x:Name="GamePromoteBuiltinBtn" Content="{loc:T PresetManager_GamePromoteBuiltin}" Style="{StaticResource RowButton}" Width="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
+                            <Button x:Name="GamePromoteBuiltinBtn" Content="{loc:T PresetManager_GamePromoteBuiltin}" Style="{StaticResource RowButton}" MinWidth="120" Click="GamePromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="{loc:T PresetManager_GamePromoteBuiltin_Tip}"/>
                         </WrapPanel>
                         <!-- Inline result line for rename / duplicate / delete /
@@ -440,7 +445,7 @@
                                  (vs the preset) lives in the Car facts panel's
                                  Name box on the active card, so there's no
                                  second "name" button here. -->
-                            <Button x:Name="CarSetActiveBtn" Content="{loc:T PresetManager_CarSetActive}" Style="{StaticResource SharePrimaryButton}" Width="120" Click="CarSetActive_Click" IsEnabled="False"
+                            <Button x:Name="CarSetActiveBtn" Content="{loc:T PresetManager_CarSetActive}" Style="{StaticResource SharePrimaryButton}" MinWidth="120" Click="CarSetActive_Click" IsEnabled="False"
                                     ToolTip="{loc:T PresetManager_CarSetActive_Tip}"/>
                             <Button x:Name="CarClearDefaultBtn" Content="{loc:T PresetManager_CarClearDefault}" Style="{StaticResource RowButton}" Click="CarClearDefault_Click" IsEnabled="False"
                                     ToolTip="{loc:T PresetManager_CarClearDefault_Tip}"/>
@@ -453,7 +458,7 @@
                                     ToolTipService.ShowOnDisabled="True"
                                     ToolTip="{loc:T PresetManager_CarShare_Tip}"/>
                             <Button x:Name="CarDeleteBtn"    Content="{loc:T Common_Delete}"       Style="{StaticResource DangerButton}" Click="CarDelete_Click"    IsEnabled="False"/>
-                            <Button x:Name="CarPromoteBuiltinBtn" Content="{loc:T PresetManager_CarPromoteBuiltin}" Style="{StaticResource RowButton}" Width="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
+                            <Button x:Name="CarPromoteBuiltinBtn" Content="{loc:T PresetManager_CarPromoteBuiltin}" Style="{StaticResource RowButton}" MinWidth="120" Click="CarPromoteBuiltin_Click" IsEnabled="False" Visibility="Collapsed"
                                     ToolTip="{loc:T PresetManager_CarPromoteBuiltin_Tip}"/>
                         </WrapPanel>
                         <TextBlock x:Name="CarLibStatus" DockPanel.Dock="Left" VerticalAlignment="Center"
@@ -489,7 +494,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="{loc:T PresetManager_CarListDefault_Header}"     Width="60"  MinWidth="60"  Binding="{Binding ActiveLabel}"/>
+                            <DataGridTextColumn Header="{loc:T PresetManager_CarListDefault_Header}"     Width="Auto"  MinWidth="60"  Binding="{Binding ActiveLabel}"/>
                             <DataGridTextColumn Header="{loc:T Common_Game}"        Width="130" MinWidth="70"  Binding="{Binding GameLabel}"/>
                             <DataGridTextColumn Header="{loc:T PresetManager_CarListCarName_Header}"    Width="*"   MinWidth="160" Binding="{Binding CarName}"/>
                             <DataGridTextColumn Header="{loc:T Common_PresetName}" Width="190" MinWidth="130" Binding="{Binding DisplayName}"/>
@@ -580,9 +585,9 @@
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                         <Button x:Name="PacksCreateBtn"      Content="{loc:T PresetManager_PacksCreate}"   Style="{StaticResource RowButton}" Width="120" Click="CreatePack_Click"
                                 ToolTip="{loc:T PresetManager_PacksCreate_Tip}"/>
-                        <Button x:Name="PacksSetDefaultsBtn" Content="{loc:T PresetManager_PacksSetDefaults}"  Style="{StaticResource SharePrimaryButton}" Width="120" Click="PacksSetDefaults_Click" IsEnabled="False"
+                        <Button x:Name="PacksSetDefaultsBtn" Content="{loc:T PresetManager_PacksSetDefaults}"  Style="{StaticResource SharePrimaryButton}" MinWidth="120" Click="PacksSetDefaults_Click" IsEnabled="False"
                                 ToolTip="{loc:T PresetManager_PacksSetDefaults_Tip}"/>
-                        <Button x:Name="PacksRemoveBtn"      Content="{loc:T PresetManager_PacksRemove}"      Style="{StaticResource DangerButton}" Width="100" Click="PacksRemove_Click" IsEnabled="False"
+                        <Button x:Name="PacksRemoveBtn"      Content="{loc:T PresetManager_PacksRemove}"      Style="{StaticResource DangerButton}" MinWidth="100" Click="PacksRemove_Click" IsEnabled="False"
                                 ToolTip="{loc:T PresetManager_PacksRemove_Tip}"/>
                     </StackPanel>
                     <TextBlock x:Name="PacksStatusLabel" VerticalAlignment="Center"
@@ -630,7 +635,7 @@
                          its template ignores Padding, so without this the longer
                          "Enable community features" label clips. 220 fits both labels. -->
                     <Button x:Name="CommunityGateBtn" Style="{StaticResource SharePrimaryButton}"
-                            HorizontalAlignment="Center" Width="220" Height="32"
+                            HorizontalAlignment="Center" MinWidth="220" Height="32"
                             Click="CommunityGate_Click" Content="{loc:T PresetManager_CommunityGate}"/>
                 </StackPanel>
                 <!-- Search row. Typing broadens past the active-car default to
@@ -799,11 +804,11 @@
                     <TextBlock Text="{loc:T PresetManager_DevBarDeveloperBuiltInPreset}" FontWeight="SemiBold" FontSize="12" Foreground="#CFCFCF"/>
                     <TextBlock x:Name="DevFolderPathText" Margin="0,2,0,8" FontSize="11" Foreground="#FFB0B0B0" TextWrapping="Wrap"/>
                     <WrapPanel>
-                        <Button Content="{loc:T PresetManager_DevBarOpenFolder}"          Height="26" Width="110" Margin="0,0,8,8" Click="DevOpenFolder_Click"
+                        <Button Content="{loc:T PresetManager_DevBarOpenFolder}"          Height="26" MinWidth="110" Margin="0,0,8,8" Click="DevOpenFolder_Click"
                                 ToolTip="{loc:T PresetManager_DevBarOpenFolder_Tip}"/>
                         <Button Content="{loc:T PresetManager_DevBarValidate}"             Height="26" Width="90"  Margin="0,0,8,8" Click="DevValidate_Click"
                                 ToolTip="{loc:T PresetManager_DevBarValidate_Tip}"/>
-                        <Button Content="{loc:T PresetManager_DevBarRefreshLibrary}"      Height="26" Width="120" Margin="0,0,8,8" Click="DevRefreshLibrary_Click"
+                        <Button Content="{loc:T PresetManager_DevBarRefreshLibrary}"      Height="26" MinWidth="120" Margin="0,0,8,8" Click="DevRefreshLibrary_Click"
                                 ToolTip="{loc:T PresetManager_DevBarRefreshLibrary_Tip}"/>
                     </WrapPanel>
                     <TextBlock x:Name="DevStatusText" Margin="0,2,0,0" FontSize="11" Foreground="#FFC8C8C8" TextWrapping="Wrap"/>

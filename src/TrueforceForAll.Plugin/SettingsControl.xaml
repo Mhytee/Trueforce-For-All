@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="TrueforceForAll.Plugin.SettingsControl"
+<UserControl x:Class="TrueforceForAll.Plugin.SettingsControl"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:TrueforceForAll.Plugin.Localization"
@@ -98,7 +98,11 @@
              Save = only visible when that section is dirty (toggled from
              code-behind), amber to draw attention to the unsaved state. -->
         <Style x:Key="EffectTestButton" TargetType="Button">
-            <Setter Property="Width" Value="50"/>
+            <!-- MinWidth, not Width: the button sizes to its own label so a
+                 longer language grows the button instead of clipping it, and
+                 50 stays the floor so a row of short labels looks unchanged. -->
+            <Setter Property="MinWidth" Value="50"/>
+            <Setter Property="Padding" Value="10,0"/>
             <Setter Property="Height" Value="22"/>
             <Setter Property="Margin" Value="14,0,0,0"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -107,7 +111,8 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="#3A6BBE" CornerRadius="3" SnapsToDevicePixels="True">
+                        <Border x:Name="Bd" Background="#3A6BBE" CornerRadius="3" SnapsToDevicePixels="True"
+                                Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -788,7 +793,7 @@
                     <TextBlock Grid.Column="1" x:Name="UdpSetupBannerText" Foreground="#222"
                                FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Text=""/>
                     <Button Grid.Column="2" x:Name="UdpSetupBannerButton" Content="{loc:T Header_UdpSetupBannerSetUp}"
-                            Width="90" Height="28" Margin="10,0,0,0"
+                            MinWidth="90" Height="28" Margin="10,0,0,0"
                             Click="UdpSetupBannerButton_Click"
                             Background="#222" Foreground="#FFC107"
                             BorderBrush="#222" BorderThickness="1" Cursor="Hand"
@@ -821,7 +826,7 @@
                                Text="{loc:T Header_ForzaFallbackBanner}"/>
                     <Button Grid.Column="2" x:Name="ForzaFallbackBannerButton" Content="{loc:T Header_ForzaFallbackBannerSetUp}"
                             Style="{StaticResource InfoBannerButton}"
-                            Width="90" Height="28" Margin="10,0,0,0"
+                            MinWidth="90" Height="28" Margin="10,0,0,0"
                             Click="ForzaFallbackBannerButton_Click"
                             ToolTip="{loc:T Header_ForzaFallbackBannerSetUp_Tip}"/>
                 </Grid>
@@ -1332,7 +1337,7 @@
                                  it back on with MANUALPIN. -->
                             <Button Grid.Column="2" x:Name="FfbTapPickerBannerButton"
                                     Content="{loc:T Header_FfbTapPickerBanner}"
-                                    Width="170" Height="28" Margin="10,0,0,0"
+                                    MinWidth="170" Height="28" Margin="10,0,0,0"
                                     Visibility="Collapsed"
                                     Click="UsbPcapPickDevice_Click"
                                     Background="#222" Foreground="#FFC107"
@@ -2553,11 +2558,11 @@
                         <WrapPanel Orientation="Horizontal">
                             <CheckBox x:Name="AirborneDuckEngineCheck"      Content="{loc:T Effects_AirborneDuckEngine}"   Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckAudioCheck"       Content="{loc:T Effects_AirborneDuckAudio}" Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckRoadBumpsCheck"   Content="{loc:T Effects_AirborneDuckRoadBumps}"     Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckTractionCheck"    Content="{loc:T Effects_AirborneDuckTraction}"  Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckRevLimiterCheck"  Content="{loc:T Effects_AirborneDuckRevLimiter}"   Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckGearShiftCheck"   Content="{loc:T Effects_AirborneDuckGearShift}"     Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckAbsCheck"         Content="{loc:T Effects_AirborneDuckAbs}"            Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                            <CheckBox x:Name="AirborneDuckRoadBumpsCheck"   Content="{loc:T Effects_AirborneDuckRoadBumps}"     MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                            <CheckBox x:Name="AirborneDuckTractionCheck"    Content="{loc:T Effects_AirborneDuckTraction}"  MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                            <CheckBox x:Name="AirborneDuckRevLimiterCheck"  Content="{loc:T Effects_AirborneDuckRevLimiter}"   MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                            <CheckBox x:Name="AirborneDuckGearShiftCheck"   Content="{loc:T Effects_AirborneDuckGearShift}"     MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                            <CheckBox x:Name="AirborneDuckAbsCheck"         Content="{loc:T Effects_AirborneDuckAbs}"            MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckPitLimiterCheck"  Content="{loc:T Effects_AirborneDuckPitLimiter}"    Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckDrsCheck"         Content="{loc:T Effects_AirborneDuckDrs}"            Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
                             <CheckBox x:Name="AirborneDuckCollisionCheck"   Content="{loc:T Effects_AirborneDuckCollision}"      Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
@@ -2657,11 +2662,11 @@
                             ToolTip="{loc:T Effects_TrueforceEqCurveHost_Tip}"/>
                     <StackPanel x:Name="TrueforceEqBandRows"/>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button x:Name="TrueforceEqAddBandButton" Content="{loc:T Effects_TrueforceEqAddBand}" Style="{StaticResource EffectTestButton}" Width="80" Margin="0" Click="TrueforceEqAddBand_Click"
+                        <Button x:Name="TrueforceEqAddBandButton" Content="{loc:T Effects_TrueforceEqAddBand}" Style="{StaticResource EffectTestButton}" MinWidth="80" Margin="0" Click="TrueforceEqAddBand_Click"
                                 ToolTip="{loc:T Effects_TrueforceEqAddBand_Tip}"/>
-                        <Button x:Name="TrueforceEqAuditionButton" Content="{loc:T Effects_TrueforceEqAudition}" Style="{StaticResource EffectTestButton}" Width="80" Margin="10,0,0,0" Click="TrueforceEqAudition_Click" IsEnabled="False"
+                        <Button x:Name="TrueforceEqAuditionButton" Content="{loc:T Effects_TrueforceEqAudition}" Style="{StaticResource EffectTestButton}" MinWidth="80" Margin="10,0,0,0" Click="TrueforceEqAudition_Click" IsEnabled="False"
                                 ToolTip="{loc:T Effects_TrueforceEqAudition_Tip}"/>
-                        <Button x:Name="TrueforceEqResetButton" Content="{loc:T Effects_TrueforceEqReset}" Style="{StaticResource EffectTestButton}" Width="100" Margin="10,0,0,0" Click="TrueforceEqReset_Click"
+                        <Button x:Name="TrueforceEqResetButton" Content="{loc:T Effects_TrueforceEqReset}" Style="{StaticResource EffectTestButton}" MinWidth="100" Margin="10,0,0,0" Click="TrueforceEqReset_Click"
                                 ToolTip="{loc:T Effects_TrueforceEqReset_Tip}"/>
                     </StackPanel>
                 </StackPanel>
@@ -2880,7 +2885,7 @@
                            Text="{loc:T TelemetryFfb_ModeBSlipStarvedWarningTelemetryBasedFfbIs}"/>
                 <Button Grid.Column="1" x:Name="ModeBSlipStarvedSetupButton" Content="{loc:T TelemetryFfb_ModeBSlipStarvedSetup}"
                         Style="{StaticResource UpdateCtaButton}"
-                        Width="90" Height="28" Margin="10,0,0,0" VerticalAlignment="Center"
+                        MinWidth="90" Height="28" Margin="10,0,0,0" VerticalAlignment="Center"
                         Click="ForzaFallbackBannerButton_Click"
                         ToolTip="{loc:T TelemetryFfb_ModeBSlipStarvedSetup_Tip}"/>
             </Grid>
@@ -2928,7 +2933,7 @@
                      the four-character "Test" labels every other user of that
                      style carries; the template arranges the label INTO the
                      border, so at 50 this reads "Re-lear". -->
-                <Button Grid.Column="1" x:Name="ModeBRelearnBtn" Content="{loc:T TelemetryFfb_ModeBRelearn}" Margin="8,0,0,0" Width="86"
+                <Button Grid.Column="1" x:Name="ModeBRelearnBtn" Content="{loc:T TelemetryFfb_ModeBRelearn}" Margin="8,0,0,0" MinWidth="86"
                         Style="{StaticResource EffectTestButton}" Click="ModeBRelearnCar_Click"
                         ToolTip="{loc:T TelemetryFfb_ModeBRelearn_Tip}"/>
             </Grid>
@@ -3013,7 +3018,7 @@
                     <!-- Width overrides EffectTestButton's 50, which is sized for
                          its four-character "Test" labels. This one grows a number:
                          "Use 23.8". -->
-                    <Button Grid.Column="5" x:Name="IRacingAutoMaxForceBtn" Content="{loc:T TelemetryFfb_IRacingAutoMaxForce}" Margin="8,0,0,0" Width="88" IsEnabled="False"
+                    <Button Grid.Column="5" x:Name="IRacingAutoMaxForceBtn" Content="{loc:T TelemetryFfb_IRacingAutoMaxForce}" Margin="8,0,0,0" MinWidth="88" IsEnabled="False"
                             Style="{StaticResource EffectTestButton}" Click="IRacingAutoMaxForce_Click"
                             ToolTip="{loc:T TelemetryFfb_IRacingAutoMaxForce_Tip}"/>
                 </Grid>
@@ -4030,9 +4035,9 @@
                                 <Border Visibility="{Binding Visibility, ElementName=FxTestPeriodText}" Width="52" Margin="6,0,0,0" VerticalAlignment="Center" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="FxTestPeriodText" Text="250 ms" FontSize="11"/></Border>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
-                                <Button x:Name="FxTestNativeButton" Content="{loc:T TelemetryFfb_FxTestNative}" Width="100" Height="24" Click="FxTestNative_Click"
+                                <Button x:Name="FxTestNativeButton" Content="{loc:T TelemetryFfb_FxTestNative}" MinWidth="100" Height="24" Click="FxTestNative_Click"
                                         ToolTip="{loc:T TelemetryFfb_FxTestNative_Tip}"/>
-                                <Button x:Name="FxTestEngineButton" Content="{loc:T TelemetryFfb_FxTestEngine}" Width="100" Height="24" Margin="8,0,0,0" Click="FxTestEngine_Click"
+                                <Button x:Name="FxTestEngineButton" Content="{loc:T TelemetryFfb_FxTestEngine}" MinWidth="100" Height="24" Margin="8,0,0,0" Click="FxTestEngine_Click"
                                         ToolTip="{loc:T TelemetryFfb_FxTestEngine_Tip}"/>
                                 <Button x:Name="FxTestStopButton" Content="{loc:T TelemetryFfb_FxTestStop}" Width="70" Height="24" Margin="8,0,0,0" Click="FxTestStop_Click"/>
                                 <Button x:Name="FxTraceButton" Content="{loc:T TelemetryFfb_FxTrace}" Width="100" Height="24" Margin="16,0,0,0" Click="FxTrace_Click"
@@ -4046,7 +4051,7 @@
                                         Margin="8,0,0,0" VerticalAlignment="Center" ValueChanged="FxTuneGain_Changed"
                                         ToolTip="{loc:T TelemetryFfb_FxTuneGain_Tip}"/>
                                 <Border Visibility="{Binding Visibility, ElementName=FxTuneGainText}" Width="44" Margin="6,0,0,0" VerticalAlignment="Center" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="FxTuneGainText" Text="0.25" FontSize="11"/></Border>
-                                <Button x:Name="FxTuneResetKindButton" Content="{loc:T Common_Reset}" Width="60" Height="22" Margin="10,0,0,0"
+                                <Button x:Name="FxTuneResetKindButton" Content="{loc:T Common_Reset}" MinWidth="60" Height="22" Margin="10,0,0,0"
                                         VerticalAlignment="Center" Click="FxTuneResetKind_Click"
                                         ToolTip="{loc:T TelemetryFfb_FxTuneResetKind_Tip}"/>
                                 <CheckBox x:Name="FxTuneInertiaCoastsCheck" Content="{loc:T TelemetryFfb_FxTuneInertiaCoasts}" Margin="14,0,0,0" VerticalAlignment="Center"
@@ -4069,9 +4074,9 @@
                                           ToolTip="{loc:T TelemetryFfb_FxAutoTuneRepeat_Tip}"/>
                                 <Button x:Name="FxAutoTuneButton" Content="{loc:T TelemetryFfb_FxAutoTune}" Width="100" Height="24" Margin="8,0,0,0" Click="FxAutoTune_Click"
                                         ToolTip="{loc:T TelemetryFfb_FxAutoTune_Tip}"/>
-                                <Button x:Name="FxTuneSaveButton" Content="{loc:T TelemetryFfb_FxTuneSave}" Width="100" Height="24" Margin="8,0,0,0" Click="FxTuneSave_Click"
+                                <Button x:Name="FxTuneSaveButton" Content="{loc:T TelemetryFfb_FxTuneSave}" MinWidth="100" Height="24" Margin="8,0,0,0" Click="FxTuneSave_Click"
                                         ToolTip="{loc:T TelemetryFfb_FxTuneSave_Tip}"/>
-                                <Button x:Name="FxTuneResetAllButton" Content="{loc:T TelemetryFfb_FxTuneResetAll}" Width="80" Height="24" Margin="8,0,0,0" Click="FxTuneResetAll_Click"
+                                <Button x:Name="FxTuneResetAllButton" Content="{loc:T TelemetryFfb_FxTuneResetAll}" MinWidth="80" Height="24" Margin="8,0,0,0" Click="FxTuneResetAll_Click"
                                         ToolTip="{loc:T TelemetryFfb_FxTuneResetAll_Tip}"/>
                             </StackPanel>
                         </StackPanel>
@@ -4793,7 +4798,7 @@
                             ToolTip="{loc:T Settings_RemoteDashIdle_Tip}"
                             Checked="RemoteDashIdle_Changed" Unchecked="RemoteDashIdle_Changed"/>
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <TextBlock Text="{loc:T Settings_RemoteDashParkedFor}" VerticalAlignment="Center" Width="94"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashParkedFor}" VerticalAlignment="Center" MinWidth="94"/>
                             <TextBox x:Name="RemoteDashIdleDelayBox" Width="60" TextAlignment="Center"
                             LostFocus="RemoteDashIdleDelay_Commit" KeyDown="RemoteDashIdleDelay_KeyDown"
                             ToolTip="{loc:T Settings_RemoteDashIdleDelay_Tip}"/>
@@ -4803,7 +4808,7 @@
                             SelectionChanged="RemoteDashIdleStyle_Changed"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <TextBlock Text="{loc:T Settings_RemoteDashDriverName}" VerticalAlignment="Center" Width="94"/>
+                            <TextBlock Text="{loc:T Settings_RemoteDashDriverName}" VerticalAlignment="Center" MinWidth="94"/>
                             <TextBox x:Name="RemoteDashIdleNameBox" Width="180"
                             LostFocus="RemoteDashIdleName_Commit" KeyDown="RemoteDashIdleName_KeyDown"/>
                             <TextBlock Text="{loc:T Settings_RemoteDashNumber}" VerticalAlignment="Center" Margin="24,0,0,0"/>
@@ -5325,7 +5330,7 @@
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12"
                                Text="{loc:T Settings_WidgetsOffByDefaultToKeep}"/>
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button x:Name="ResetNoticesButton" Content="{loc:T Settings_ResetNotices}" Width="220" Height="26"
+                        <Button x:Name="ResetNoticesButton" Content="{loc:T Settings_ResetNotices}" MinWidth="220" Height="26"
                                 Click="ResetNotices_Click"
                                 ToolTip="{loc:T Settings_ResetNotices_Tip}"/>
                         <TextBlock x:Name="ResetNoticesStatus" Margin="10,0,0,0" FontSize="11" VerticalAlignment="Center" Opacity="0.85"/>
@@ -5532,7 +5537,7 @@
                     <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
                                Text="{loc:T Settings_BackupBundleYourFullSetup}"/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <Button x:Name="BackupButton" Content="{loc:T Settings_Backup}" Width="140" Height="28" Margin="0,0,8,0" Click="Backup_Click"
+                        <Button x:Name="BackupButton" Content="{loc:T Settings_Backup}" MinWidth="140" Height="28" Margin="0,0,8,0" Click="Backup_Click"
                                 ToolTip="{loc:T Settings_Backup_Tip}"/>
                         <Button x:Name="RestoreButton" Content="{loc:T Settings_Restore}" Width="140" Height="28" Click="Restore_Click"
                                 ToolTip="{loc:T Settings_Restore_Tip}"/>
@@ -5591,13 +5596,13 @@
             <TextBlock Style="{StaticResource HelpText}" Margin="0,18,0,8" FontSize="12"
                 Text="{loc:T Settings_FoundABugWeirdBehavior}"/>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <Button x:Name="ReportIssueButton" Content="{loc:T Settings_ReportIssue}" Width="160" Height="26"
+                <Button x:Name="ReportIssueButton" Content="{loc:T Settings_ReportIssue}" MinWidth="160" Height="26"
                         Click="ReportIssue_Click" Margin="0,0,8,0"
                         ToolTip="{loc:T Settings_ReportIssue_Tip}"/>
-                <Button x:Name="ExportLogsButton" Content="{loc:T Settings_ExportLogs}" Width="120" Height="26"
+                <Button x:Name="ExportLogsButton" Content="{loc:T Settings_ExportLogs}" MinWidth="120" Height="26"
                         Click="ExportLogs_Click" Margin="0,0,8,0"
                         ToolTip="{loc:T Settings_ExportLogs_Tip}"/>
-                <Button x:Name="OpenRepoButton" Content="{loc:T Settings_OpenRepo}" Width="180" Height="26"
+                <Button x:Name="OpenRepoButton" Content="{loc:T Settings_OpenRepo}" MinWidth="180" Height="26"
                         Click="OpenRepo_Click"
                         ToolTip="github.com/Mhytee/Trueforce-For-All"/>
             </StackPanel>
@@ -5655,7 +5660,7 @@
 
             <!-- Username (read-only; identity is your signed-in username OR anonymous). -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <TextBlock Text="{loc:T Account_Username}" Style="{StaticResource LabelText}" VerticalAlignment="Center" Width="100"/>
+                <TextBlock Text="{loc:T Account_Username}" Style="{StaticResource LabelText}" VerticalAlignment="Center" MinWidth="100"/>
                 <TextBlock x:Name="AccountUsernameDisplay" VerticalAlignment="Center" FontSize="13"
                            Foreground="#FFE0E0E0" Text="{loc:T Account_AccountUsernameDisplay}" MinWidth="180"/>
                 <Button x:Name="AccountChangeUsernameBtn" Content="{loc:T Account_AccountChangeUsername}"
@@ -5827,7 +5832,7 @@
                                     Style="{StaticResource EffectsShareButton}"
                                     Click="SharePanelButton_Click" Margin="0,0,8,0" ToolTipService.InitialShowDelay="250"
                                     ToolTip="{loc:T Support_SupportShareDialog_Tip}"/>
-                            <Button x:Name="SupportOpenRepoButton" Content="{loc:T Support_SupportOpenRepo}" Width="160" Height="28"
+                            <Button x:Name="SupportOpenRepoButton" Content="{loc:T Support_SupportOpenRepo}" MinWidth="160" Height="28"
                                     Click="OpenRepo_Click"
                                     ToolTip="github.com/Mhytee/Trueforce-For-All"/>
                         </StackPanel>
