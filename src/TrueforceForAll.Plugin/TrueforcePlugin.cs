@@ -863,6 +863,96 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // Why the capture driver isn't loaded, when it isn't. Reading the USB
+        // class UpperFilters list splits the two causes apart, and they need
+        // different repairs: NotRegistered means Windows never asks for the
+        // driver, so installing over the top is a no-op (USBPcap's own setup
+        // aborts when it sees an existing install) and the registration has to
+        // be rebuilt by uninstalling first; Registered means Windows asks and
+        // something refuses, which is the Secure Boot / BIOS story.
+        //
+        // Read only, and it stays that way: a registered USB class filter whose
+        // driver Windows won't load can stop the USB controllers starting, so
+        // we never write this value. See UsbPcapFilterRegistration.
+        //
+        // HKLM read, no elevation needed. Cached on the same tick budget as the
+        // driver probe because the settings UI polls both.
+        private UsbPcapFilterState _usbPcapFilterState;
+        private int  _usbPcapFilterProbedMs;
+        private bool _usbPcapFilterProbed;
+        public UsbPcapFilterState UsbPcapFilterState
+        {
+            get
+            {
+                int now = Environment.TickCount;
+                if (_usbPcapFilterProbed
+                    && unchecked(now - _usbPcapFilterProbedMs) < UsbPcapDriverProbeTtlMs)
+                    return _usbPcapFilterState;
+
+                var state = UsbPcapFilterState.Unknown;
+                try
+                {
+                    using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                               UsbPcapFilterRegistration.ClassKeyPath))
+                    {
+                        // A missing class key is a machine we don't understand,
+                        // not a verdict. A present key with no value is the
+                        // #44 footprint and IS a verdict.
+                        if (key != null)
+                            state = UsbPcapFilterRegistration.Classify(
+                                key.GetValue(UsbPcapFilterRegistration.ValueName) as string[]);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Debug($"[TF4ALL] UpperFilters read failed: {ex.Message}");
+                }
+
+                _usbPcapFilterState    = state;
+                _usbPcapFilterProbedMs = now;
+                _usbPcapFilterProbed   = true;
+                return _usbPcapFilterState;
+            }
+        }
+
+        /// <summary>Path to USBPcap's own uninstaller, or null when USBPcap
+        /// isn't registered as installed. Read from the Uninstall key rather
+        /// than assumed, and it is the presence of that key that makes
+        /// USBPcap's setup abort, so this doubles as "a reinstall would be a
+        /// no-op until this is run".</summary>
+        public string UsbPcapUninstallerPath
+        {
+            get
+            {
+                // SimHub is a 32-bit process, so a plain HKLM\SOFTWARE read is
+                // redirected into Wow6432Node and would miss the 64-bit
+                // USBPcap entirely. Ask for the 64-bit view first, then the
+                // 32-bit one for a 32-bit USBPcap. (On a 32-bit Windows the
+                // Registry64 request is ignored, which is the right answer
+                // there.)
+                return ReadUsbPcapUninstallString(Microsoft.Win32.RegistryView.Registry64)
+                    ?? ReadUsbPcapUninstallString(Microsoft.Win32.RegistryView.Registry32);
+            }
+        }
+
+        private static string ReadUsbPcapUninstallString(Microsoft.Win32.RegistryView view)
+        {
+            try
+            {
+                using (var hklm = Microsoft.Win32.RegistryKey.OpenBaseKey(
+                           Microsoft.Win32.RegistryHive.LocalMachine, view))
+                using (var key = hklm.OpenSubKey(
+                           @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\USBPcap"))
+                {
+                    var raw = key?.GetValue("UninstallString") as string;
+                    if (string.IsNullOrWhiteSpace(raw)) return null;
+                    string path = raw.Trim().Trim('"');
+                    return System.IO.File.Exists(path) ? path : null;
+                }
+            }
+            catch { return null; }
+        }
+
         // Whether SimHub is running elevated. Cached: elevation can't change
         // without a process restart. USBPcap FFB capture is far more reliable
         // elevated and some setups pass no FFB at all without it (RaceRoom),
@@ -5329,6 +5419,18 @@ namespace TrueforceForAll.Plugin
         private const int BlindProbeInitialDelayMs = 4000; // let the G923 re-attach settle first
         private const int BlindProbeStreamMs = 2000;       // force ep3 active across the measurement
         private const int BlindProbeWindowMs = 1500;       // measure interrupt-out over this window
+        // UsbPcapFfbTap.Start() returns as soon as its reader thread is running:
+        // the thread then scans every USBPcap interface (each with its own
+        // timeout) before it knows which one the wheel is on and spawns
+        // USBPcapCMD. On a machine with several USB controllers that scan
+        // outlasts the delays above, so a probe that measured on the old
+        // schedule read InterruptOutSeen while NO capture process existed yet,
+        // called a healthy wheel blind and power-cycled its port (issue #45).
+        // Wait for the capture to actually be up, then let it warm, and only
+        // judge what it saw once it has been running across the whole window.
+        private const int BlindProbeTapReadyTimeoutMs = 30000; // interface scan can take tens of seconds
+        private const int BlindProbeTapReadyPollMs = 250;
+        private const int BlindProbeTapSettleMs = 1500;    // let the capture pipe warm up once it is up
         private int _blindCycleAttempts;
         private int _blindProbeInFlight;   // 0/1 guard, Interlocked
 
@@ -5359,6 +5461,23 @@ namespace TrueforceForAll.Plugin
                     // Never cycle the wheel out from under an active drive.
                     if (tap.GameFfbExpected) return;
 
+                    // The capture must be up BEFORE the measurement starts,
+                    // otherwise a zero count says nothing about the filter. A
+                    // tap that never comes up within the timeout leaves without
+                    // a verdict and without spending an attempt: the next
+                    // bring-up schedules a fresh probe.
+                    int waitedMs = 0;
+                    while (!tap.IsRunning)
+                    {
+                        if (waitedMs >= BlindProbeTapReadyTimeoutMs) return;
+                        await System.Threading.Tasks.Task.Delay(BlindProbeTapReadyPollMs);
+                        waitedMs += BlindProbeTapReadyPollMs;
+                        if (_shuttingDown || !ReferenceEquals(_device, device) || !ReferenceEquals(_ffbTap, tap)) return;
+                    }
+                    await System.Threading.Tasks.Task.Delay(BlindProbeTapSettleMs);
+                    if (_shuttingDown || !ReferenceEquals(_device, device) || !ReferenceEquals(_ffbTap, tap)) return;
+                    if (tap.GameFfbExpected) return;   // a game may have started while we waited
+
                     // Force the ep3 stream active for the measurement even with
                     // no game running, then compare our successful writes to
                     // what the capture actually saw on the wheel's interrupt
@@ -5368,6 +5487,11 @@ namespace TrueforceForAll.Plugin
                     device.ForceActiveFor(BlindProbeStreamMs);
                     await System.Threading.Tasks.Task.Delay(BlindProbeWindowMs);
                     if (_shuttingDown || !ReferenceEquals(_device, device) || !ReferenceEquals(_ffbTap, tap)) return;
+
+                    // A capture that died mid-window (USBPcapCMD exited, the
+                    // liveness loop restarted it) saw part of the window at
+                    // best, so its count is not evidence of a missing filter.
+                    if (!tap.IsRunning) return;
 
                     long sentDelta = device.PacketsSent - sentBefore;
                     long seenDelta = tap.InterruptOutSeen - seenBefore;
@@ -42559,6 +42683,87 @@ namespace TrueforceForAll.Plugin
             }
             ApplyUsbBytesLoggingSetting();
             SimHub.Logging.Current.Info($"[TF4ALL] USB byte logging {(enabled ? "enabled" : "disabled")}.");
+        }
+
+        // Runs USBPcap's OWN uninstaller, elevated, and asks for a restart.
+        //
+        // Issue #44: USBPcap's setup aborts in .onInit whenever its Uninstall
+        // key exists ("already installed, uninstall first"), so both a manual
+        // rerun and our Reinstall button exit cleanly having done nothing, and
+        // we then told the user to restart for a repair that never happened.
+        // A machine whose filter registration is gone can only be rebuilt by
+        // uninstalling first, which is what this gives the user: a real,
+        // unambiguous uninstall rather than "I ran the installer again".
+        //
+        // Deliberately NOT chained into the reinstall. USBPcap's registration
+        // is torn down and rebuilt by the USB stack at boot, so the install has
+        // to happen on a machine that has already restarted once without the
+        // filter. The user restarts, then uses Reinstall, then restarts again.
+        public void UninstallUsbPcapAsync()
+        {
+            string uninstaller = UsbPcapUninstallerPath;
+            if (uninstaller == null)
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] USBPcap has no uninstaller registered, so there is nothing to remove. "
+                    + "Use Reinstall instead.");
+                return;
+            }
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    // /S is NSIS silent. The uninstaller needs admin to touch
+                    // the class filter registration.
+                    var psi = new ProcessStartInfo(uninstaller, "/S")
+                    {
+                        UseShellExecute = true, // required for the runas verb
+                        Verb = "runas",
+                        CreateNoWindow = true,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                    };
+                    using (var proc = Process.Start(psi))
+                    {
+                        proc?.WaitForExit();
+                    }
+                    SimHub.Logging.Current.Info("[TF4ALL] USBPcap uninstaller finished.");
+                    ShowUsbPcapUninstallNotice();
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    SimHub.Logging.Current.Info("[TF4ALL] USBPcap uninstall cancelled or blocked by UAC.");
+                }
+                catch (Exception ex)
+                {
+                    SimHub.Logging.Current.Error("[TF4ALL] USBPcap uninstall failed", ex);
+                }
+            });
+        }
+
+        /// <summary>Tell the user the uninstall is only step one, and what step
+        /// two is. Called from the uninstaller's worker thread, so it marshals
+        /// to the UI like the reinstall notice does.</summary>
+        private void ShowUsbPcapUninstallNotice()
+        {
+            var app = System.Windows.Application.Current;
+            if (app == null) return;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    System.Windows.MessageBox.Show(
+                        "USBPcap has been removed.\n\n"
+                        + "RESTART THE COMPUTER now, then come back here and press Reinstall, "
+                        + "and restart once more after that.\n\n"
+                        + "Both restarts are needed: Windows only builds and tears down the capture "
+                        + "driver's attachment to your USB ports at boot.",
+                        "USBPcap removed",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information);
+                }
+                catch { }
+            }));
         }
 
         // Launches the bundled USBPcap installer (silent /S, elevated). Called

@@ -5157,6 +5157,7 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="Wheel:" Style="{StaticResource LabelText}"/>
                         <TextBlock Grid.Row="0" Grid.Column="1" x:Name="WheelText" Text="(checking...)"/>
@@ -5179,6 +5180,20 @@
                                     Visibility="Collapsed"
                                     Click="UsbPcapReinstall_Click"
                                     ToolTip="Run the bundled USBPcap installer (requires admin). Use this if USBPcap was uninstalled or the install is broken."/>
+                            <!-- Shown only when USBPcap is installed but its
+                                 capture driver is not attached, and USBPcap's
+                                 own uninstaller is on disk. That combination is
+                                 the one case Reinstall cannot repair: USBPcap's
+                                 setup aborts whenever it finds an existing
+                                 install, so the only way forward is a genuine
+                                 uninstall first (issue #44). Kept hidden on a
+                                 healthy machine so nobody removes a working
+                                 capture driver out of curiosity. -->
+                            <Button x:Name="UsbPcapUninstallButton" Content="Uninstall USBPcap"
+                                    Style="{StaticResource LinkButton}" Margin="10,0,0,0"
+                                    Visibility="Collapsed"
+                                    Click="UsbPcapUninstall_Click"
+                                    ToolTip="Run USBPcap's own uninstaller (requires admin), then restart the computer and press Reinstall. Use this when USBPcap is installed but its capture driver never loads: reinstalling on top of a broken install does nothing, because the installer stops as soon as it sees one."/>
                             <!-- Hidden by default. Auto-discovery + identity-based
                                  self-heal cover the realistic failure modes for
                                  almost every user; a forgotten manual pin (the
@@ -5218,18 +5233,32 @@
                                   Checked="LogUsbBytes_Changed" Unchecked="LogUsbBytes_Changed"
                                   ToolTip="Off by default. When on, captures every USB OUT transfer to your wheel (any endpoint, any transfer type) as a pcap file alongside SimHub's logs. Open in Wireshark with USBPcap. Use only when support asks for it: the file grows several KB/sec during active FFB. Capped at 50 MB; toggle off and on to reset."/>
 
+                        <!-- On by default, and it rescues a real failure: a
+                             capture that came up with no filter on the wheel
+                             sees none of the game's FFB, and cycling the port
+                             is the only thing that re-attaches it. It is also
+                             the one piece of the plugin that deliberately drops
+                             the wheel off the USB bus, so anyone it bothers
+                             needs a way to say no without editing JSON. -->
+                        <CheckBox Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
+                                  x:Name="AutoReEnumerateCheck"
+                                  Margin="0,8,0,0"
+                                  Content="Re-enumerate the wheel automatically when FFB capture comes up blind"
+                                  Checked="AutoReEnumerate_Changed" Unchecked="AutoReEnumerate_Changed"
+                                  ToolTip="On by default. If the FFB capture starts without a filter on your wheel it can see none of the game's force feedback, and the only fix is to cycle the wheel's USB port, which switches the wheel off and back on once. Turn this off if you would rather the plugin never did that; FFB pass-through may then stay dead until you replug the wheel yourself."/>
+
                         <!-- Self-test: one click that aggregates every health
                              signal into a pass/fail checklist and fires a
                              short buzz so the user can confirm the wheel
                              physically responds. Non-destructive, reads live
                              state; doesn't reopen a healthy device. -->
-                        <Button Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
+                        <Button Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
                                 x:Name="SelfTestButton"
                                 Content="Run self-test"
                                 HorizontalAlignment="Left" Margin="0,14,0,0"
                                 Padding="10,3" Click="SelfTest_Click"
                                 ToolTip="Checks USBPcap, the wheel, stream, FFB pass-through and telemetry (and whether G HUB is open, since it can hold the wheel), then sends a short test buzz so you can confirm the wheel responds."/>
-                        <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
+                        <TextBlock Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2"
                                    x:Name="SelfTestResultText"
                                    Visibility="Collapsed"
                                    Margin="0,8,0,0" TextWrapping="Wrap"
