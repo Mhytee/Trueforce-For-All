@@ -588,6 +588,11 @@ namespace TrueforceForAll.Plugin
                 // (review, 2026-09-13). Same as the other three feature expanders.
                 if (LogUsbBytesCheck != null)
                     LogUsbBytesCheck.IsChecked = _plugin.Settings?.LogUsbBytesEnabled ?? false;
+                // Defaults ON, and the null case has to agree with the probe's
+                // own `?? true` or the box would read unchecked while the
+                // behaviour was live.
+                if (AutoReEnumerateCheck != null)
+                    AutoReEnumerateCheck.IsChecked = _plugin.Settings?.AutoReEnumerateOnBlindCapture ?? true;
 
                 // Driver testing mode checkbox: hidden until the DRIVER access
                 // code has been entered (DriverTestingUnlocked persists the
@@ -2256,6 +2261,20 @@ namespace TrueforceForAll.Plugin
                         : System.Windows.Visibility.Visible;
                     if (UsbPcapBrowseButton.Visibility != wantBrowse)       UsbPcapBrowseButton.Visibility    = wantBrowse;
                     if (UsbPcapReinstallButton.Visibility != wantReinstall) UsbPcapReinstallButton.Visibility = wantReinstall;
+                }
+
+                // Uninstall is narrower than Reinstall on purpose: it only
+                // helps the machine where USBPcap IS installed (so the setup
+                // would abort) yet the driver never attached. On a healthy
+                // machine it stays hidden, so nobody removes a working capture
+                // driver out of curiosity.
+                if (UsbPcapUninstallButton != null)
+                {
+                    var wantUninstall = !_plugin.IsUsbPcapDriverReady
+                                     && _plugin.UsbPcapUninstallerPath != null
+                        ? System.Windows.Visibility.Visible
+                        : System.Windows.Visibility.Collapsed;
+                    if (UsbPcapUninstallButton.Visibility != wantUninstall) UsbPcapUninstallButton.Visibility = wantUninstall;
                 }
 
                 // UDP telemetry section: Forza is the only UDP game, so its
@@ -6158,15 +6177,23 @@ namespace TrueforceForAll.Plugin
             bool gameRun   = !string.IsNullOrEmpty(_plugin.ActiveGame);
             bool elevated  = _plugin.IsRunningElevated;
 
-            // Three states, not two. "Installed" used to mean only that the CLI
+            // Four states, not two. "Installed" used to mean only that the CLI
             // was on disk, so a machine whose capture driver never attached was
-            // told everything was fine (issue #44). The driver half gets its own
-            // wording because its fix is different: reinstall, then reboot.
+            // told everything was fine (issue #44). The unloaded-driver case
+            // then splits again on the class filter registration, because the
+            // two halves have different repairs and one of them makes the
+            // obvious repair useless: with the registration gone, Windows never
+            // asks for the driver, and reinstalling over the top does nothing
+            // at all because USBPcap's setup stops the moment it finds an
+            // existing install. Printed as a paste-back line either way, so a
+            // report says which of the two it was instead of "USBPcap broken".
             sb.AppendLine(usbpcap
                 ? Loc.T("Settings_OKUSBPcapInstalled")
                 : !usbpcapExe
                     ? Loc.T("Settings_FAILUSBPcapNotInstalled")
-                    : Loc.T("Settings_FAILUSBPcapInstalledBut"));
+                    : _plugin.UsbPcapFilterState == TrueforceForAll.Core.UsbPcapFilterState.NotRegistered
+                        ? Loc.T("Settings_FAILUSBPcapNotRegistered")
+                        : Loc.T("Settings_FAILUSBPcapInstalledBut"));
             sb.AppendLine(elevated
                 ? Loc.T("Settings_OKSimHubRunningAs")
                 : Loc.T("Settings_FAILSimHubNOTRunning"));
@@ -6960,6 +6987,13 @@ namespace TrueforceForAll.Plugin
                         $"Capture: {_plugin?.CaptureFingerprint ?? "(not confirmed this session)"}\n" +
                         $"Forza UDP: {forzaLine}\n" +
                         $"Manual USBPcap override: {(_plugin?.HasManualUsbPcapDevice ?? false ? $"{_plugin.Settings.ManualUsbPcapInterface} dev {_plugin.Settings.ManualUsbPcapDeviceAddress}" : "(none)")}\n" +
+                        // The two facts that decide which USBPcap repair a
+                        // report needs, so we stop asking people to run
+                        // registry commands by hand (issue #44).
+                        $"USBPcap driver: {(_plugin?.IsUsbPcapDriverReady ?? false ? "attached" : "NOT attached")}, " +
+                            $"filter registration: {_plugin?.UsbPcapFilterState.ToString() ?? "Unknown"}, " +
+                            $"uninstaller: {(_plugin?.UsbPcapUninstallerPath != null ? "present" : "absent")}\n" +
+                        $"Auto re-enumerate on blind capture: {(_plugin?.Settings?.AutoReEnumerateOnBlindCapture ?? true ? "on" : "off")}\n" +
                         $"USB byte logging: {(_plugin?.Settings?.LogUsbBytesEnabled ?? false ? "enabled" : "disabled")}\n" +
                         $"Full settings: see Trueforce-settings.json in this zip\n" +
                         $"SimHub root: {simHubRoot}\n";
@@ -7021,6 +7055,16 @@ namespace TrueforceForAll.Plugin
         {
             if (_suppressEvents || _plugin == null || LogUsbBytesCheck == null) return;
             _plugin.SetUsbBytesLoggingEnabled(LogUsbBytesCheck.IsChecked == true);
+        }
+
+        // Allow or forbid the blind-capture self-heal's USB port cycle. Takes
+        // effect on the next bring-up, which is when the probe is scheduled;
+        // nothing is in flight to cancel while the user is sitting in settings.
+        private void AutoReEnumerate_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null || AutoReEnumerateCheck == null) return;
+            _plugin.Settings.AutoReEnumerateOnBlindCapture = AutoReEnumerateCheck.IsChecked == true;
+            try { _plugin.PersistSettings(); } catch { }
         }
 
         // Standing mod-install banner on the Telemetry FFB tab. The hold flag
@@ -18152,6 +18196,28 @@ namespace TrueforceForAll.Plugin
                     DialogKind.Confirm, okLabel: Loc.T("Settings_RunInstaller"), cancelLabel: Loc.T("Common_Cancel")) != true)
                 return;
             _plugin.ReinstallUsbPcapAsync();
+        }
+
+        // Run USBPcap's own uninstaller. Step one of the only repair that works
+        // when the capture driver's class-filter registration is gone: USBPcap's
+        // setup refuses to do anything while an install is on record, so
+        // "reinstall" on such a machine is a no-op that looks like a success
+        // (issue #44). Confirmed first because it does remove a working
+        // component, and the wording says plainly that two restarts follow, so
+        // nobody stops halfway and is left with no capture driver at all.
+        private void UsbPcapUninstall_Click(object sender, RoutedEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (TrueforceDialog.Show(null, "Trueforce For All",
+                    "Remove USBPcap? This needs admin (UAC prompt).\n\n"
+                        + "Reinstalling on top of a broken USBPcap does nothing, because its installer stops as soon "
+                        + "as it finds an existing install. Removing it first is the only way to rebuild the capture "
+                        + "driver's registration.\n\n"
+                        + "Afterwards: restart the computer, press Reinstall here, then restart once more. FFB "
+                        + "pass-through stays off until you finish both steps.",
+                    DialogKind.Confirm, okLabel: "Remove USBPcap", cancelLabel: "Cancel") != true)
+                return;
+            _plugin.UninstallUsbPcapAsync();
         }
     }
 }
