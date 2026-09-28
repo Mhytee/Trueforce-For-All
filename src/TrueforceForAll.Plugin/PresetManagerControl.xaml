@@ -754,7 +754,7 @@
                         <!-- Game-preset only: per-row tier badge from target_games. Blank for car-preset rows. -->
                         <DataGridTextColumn x:Name="CommunityScopeCol" Header="{loc:T PresetManager_CommunityScopeCol_Header}"     Width="120" MinWidth="80"  Binding="{Binding TierBadge}"/>
                         <DataGridTextColumn x:Name="CommunityCarIdCol" Header="{loc:T Common_CarId}"    Width="120" MinWidth="80"  Binding="{Binding CarId}"/>
-                        <DataGridTextColumn Header="{loc:T PresetManager_CommunityListDownloads_Header}" Width="80"  MinWidth="60"  Binding="{Binding Downloads}"/>
+                        <DataGridTextColumn Header="{loc:T PresetManager_CommunityListDownloads_Header}" Width="Auto" MinWidth="80"  Binding="{Binding Downloads}"/>
                         <DataGridTextColumn x:Name="CommunitySectionsCol" Header="{loc:T PresetManager_CommunitySectionsCol_Header}"  Width="160" MinWidth="100" Binding="{Binding TagsLabel}"/>
                     </DataGrid.Columns>
                 </DataGrid>
