@@ -128,7 +128,8 @@ translate, so the checks below refuse one. The tooling and its reasoning live in
    through `Read-LocJson` and `Write-LocJson` in `tools/loc/_common.ps1` so the
    ordering and escaping stay as every reader of that file expects.
 3. **Run the three checks.** `tools/loc/validate.ps1` (every key a call names
-   exists, and nothing in `en.json` is unreferenced), `tools/loc/sweep-cs.ps1` (no
+   exists, nothing in `en.json` is unreferenced, and no translated string is wider
+   than the fixed-width control it sits in), `tools/loc/sweep-cs.ps1` (no
    bare English literal reaches a label; it must report zero) and
    `dotnet test src/TrueforceForAll.Core.Tests` (the same sweep again in C#, plus
    the guards below). The test project needs no SimHub DLLs, so it runs anywhere.

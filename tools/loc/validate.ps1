@@ -11,8 +11,11 @@
 #          trailing whitespace as English per key, and no letter-bearing literal
 #          left in the converted scopes of the files converted-files.txt lists
 #          (a bare path is the whole file, 'path|spec,spec' only those scopes)
-#          unless xaml-keep-literal.txt allows it, and no XAML file carrying
-#          {loc:T} references that converted-files.txt does not list. C# is
+#          unless xaml-keep-literal.txt allows it, no XAML file carrying
+#          {loc:T} references that converted-files.txt does not list, no value
+#          holding a literal escape (\n or \" as text, from a C# literal keyed
+#          verbatim), and no translated string wider than the fixed-width
+#          control it is drawn in, measured with WPF's own text engine. C# is
 #          read with comments blanked, so a call quoted in one is not counted.
 # Usage:   .\validate.ps1 [-Root <repo>]
 #          -Root checks a rehearsal copy; its tools\loc\converted-files.txt is
@@ -225,6 +228,86 @@ foreach ($culture in @($langs.Keys | Sort-Object)) {
     }
 }
 Write-Host ('Languages: {0} value(s) hold a literal escape sequence' -f $escapes)
+# ---- 5c. localized text that cannot fit the control it sits in
+# Validate-only, unlike the checks above: it measures with WPF's own text engine, which
+# the net8 test suite cannot load. A control with a fixed Width cannot grow and its
+# text does not wrap, so a longer language clips instead of reflowing. MinWidth is not
+# a constraint, which is why the layout pass turned a fixed Width into MinWidth
+# wherever the control could grow: what is left here is the set of genuinely tight
+# spots, and this is what keeps a future translation out of them.
+#
+# 13px is what the panel draws at. The chrome allowance is an estimate of border,
+# padding and a checkbox's own box, so a few pixels over is a note and only a real
+# overshoot is a failure.
+$fitFont = 13.0
+$fitSlack = 4.0
+$fitChecked = 0
+$fitBad = 0
+$fitWpf = $true
+try {
+    Add-Type -AssemblyName PresentationCore, WindowsBase
+} catch {
+    $fitWpf = $false
+    $notes.Add('WPF is not available here, so the fixed-width fit check was skipped.')
+}
+if ($fitWpf) {
+    $fitFace = New-Object System.Windows.Media.Typeface('Segoe UI')
+    $fitCulture = [System.Globalization.CultureInfo]::GetCultureInfo('en-US')
+    $fitElement = [regex]'<([A-Za-z_][\w.:]*)((?:\s+[\w.:]+\s*=\s*"[^"]*")*)\s*/?>'
+    $fitAttr = [regex]'([\w.:]+)\s*=\s*"([^"]*)"'
+    $fitSites = New-Object System.Collections.Generic.List[object]
+    foreach ($x in (Get-LocSourceFiles $plugin '*.xaml')) {
+        $text = [System.IO.File]::ReadAllText($x.FullName)
+        foreach ($m in $fitElement.Matches($text)) {
+            $a = @{}
+            foreach ($am in $fitAttr.Matches($m.Groups[2].Value)) { $a[$am.Groups[1].Value] = $am.Groups[2].Value }
+            $limit = 0.0
+            foreach ($w in @('Width', 'MaxWidth')) {
+                if ($a.ContainsKey($w) -and $a[$w] -match '^\s*\d+(\.\d+)?\s*$') { $limit = [double]$a[$w]; break }
+            }
+            if ($limit -le 0) { continue }
+            if ($a.ContainsKey('TextWrapping') -and $a['TextWrapping'] -ne 'NoWrap') { continue }
+            foreach ($attr in @('Content', 'Text', 'Header')) {
+                if (-not $a.ContainsKey($attr)) { continue }
+                $km = [regex]::Match($a[$attr], '\{loc:T\s+([A-Za-z0-9_.]+)')
+                if (-not $km.Success) { continue }
+                $el = $m.Groups[1].Value
+                $chrome = 12
+                if ($el -match 'CheckBox|RadioButton') { $chrome = 26 }
+                elseif ($el -match 'ComboBox') { $chrome = 30 }
+                elseif ($el -match 'DataGrid.*Column') { $chrome = 20 }
+                elseif ($el -match 'Button') { $chrome = 20 }
+                elseif ($el -match 'TextBlock|Label|Run') { $chrome = 2 }
+                $fitSites.Add([pscustomobject]@{
+                    Key = $km.Groups[1].Value
+                    Room = $limit - $chrome
+                    Where = ((Get-LocRelativePath $x.FullName $Root) + ':' +
+                             ([regex]::Matches($text.Substring(0, $m.Index), "`n").Count + 1))
+                })
+            }
+        }
+    }
+    foreach ($culture in @($langs.Keys | Sort-Object)) {
+        $d = $langs[$culture]
+        foreach ($site in $fitSites) {
+            if (-not $d.Contains($site.Key)) { continue }
+            $s = [string]$d[$site.Key]
+            if ($s -eq '') { continue }
+            $fitChecked++
+            $ft = New-Object System.Windows.Media.FormattedText(
+                $s, $fitCulture, [System.Windows.FlowDirection]::LeftToRight,
+                $fitFace, $fitFont, [System.Windows.Media.Brushes]::Black, 1.0)
+            $over = [math]::Round($ft.Width - $site.Room, 1)
+            if ($over -le 0) { continue }
+            $msg = ("{0}.json: '{1}' needs about {2}px more than the {3}px it has at {4} (`"{5}`")" -f `
+                    $culture, $site.Key, $over, $site.Room, $site.Where, $s)
+            if ($over -gt $fitSlack) { $fitBad++; $fails.Add($msg) } else { $notes.Add($msg) }
+        }
+    }
+}
+Write-Host ('Fixed-width fit: {0} string(s) measured in {1} tight spot(s), {2} too wide' -f `
+    $fitChecked, $fitSites.Count, $fitBad)
+
 # ---- 6. no literals left in the converted scopes of converted XAML files
 # Under -Root the rehearsal's own list wins when it has one.
 $convertedListPath = Join-Path $Root 'tools\loc\converted-files.txt'
