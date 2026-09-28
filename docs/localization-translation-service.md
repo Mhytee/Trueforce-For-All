@@ -26,10 +26,19 @@ hooks this doc calls 0136 are therefore 0138, and are NOT built yet. No new Edge
 
 ## 1. What the service is, and the trust model
 
-Two surfaces write, one contract, one table. The static page on the
-guides site is where volume comes from. The in-plugin Translate window is
-the in-context tool: it renders each string in the real control while the
-translator types. Both send the same rows to the same RPC.
+**Decision, 2026-09-28: one surface, not two. The web page is dropped.**
+Everyone who would translate this plugin runs it, and the in-plugin window
+is the better tool anyway: it shows each string in the real control while
+the translator types, which a page cannot do. What the page was carrying
+and now is not: a contributor without SimHub, a public progress and credits
+display, and the reviewer mode. Repair is therefore service-key SQL rather
+than a screen, which the owner already does for every schema change. Section
+7 below is kept as a record of what was designed, not as work to do.
+
+The in-plugin Translate window is the only surface that writes. It sends
+`{k, t, h}` rows to `submit_translations`, which is the contract the page
+would also have used, so nothing in the schema or the RPCs assumes one
+client.
 
 **Decision, 2026-09-27: there is no review gate.** A submitted row is what
 installs receive. Everything below that reads "a reviewer approves" is the
@@ -913,7 +922,7 @@ under the 2,000 table cap.
 
 ---
 
-## 7. The web page
+## 7. The web page (DROPPED 2026-09-28, kept as a record)
 
 ### 7.1 Files
 
@@ -1553,16 +1562,25 @@ corrects rows instead of filling blanks. The other six SimHub tags read
    where reviewer = '<uid>' and reviewed_at > '<timestamp>';
   ```
 
-### 10.6 Migration 0136: the account RPCs
+### 10.6 Migration 0138: the account RPCs (APPLIED 2026-09-28)
 
-`delete_my_account` gains, before its `delete from auth.users`:
+**Owner, 2026-09-28: a deletion takes the name off the work, and removes
+nothing.** The delete of non-approved rows this section used to specify is
+gone: a row that helped is a contribution whether or not it is the one
+serving today, and `translation_contributors` already collapses a nameless
+submitter into `(anonymous)`. What shipped, before the `delete from
+auth.users`:
 
 ```sql
-delete from public.translations
- where submitter = v_uid and status in ('pending','rejected','withdrawn');
+select count(*) into v_translations from public.translations where submitter = v_uid;
 update public.translations set source_ip_hash = 'redacted'
  where submitter = v_uid;
 ```
+
+The submitter itself needs no statement: the column nulls through the
+foreign key's `on delete set null`, which is what leaves the text with no
+author. The count goes into the receipt as `translations_kept`, and the
+plugin's deletion dialog now says presets *and translations* stay.
 
 The literal `'redacted'` is why `source_ip_hash`'s check admits it beside
 a 64-hex digest (section 2.4); with a digest-only check this update makes
