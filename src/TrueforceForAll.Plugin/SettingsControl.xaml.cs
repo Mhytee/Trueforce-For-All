@@ -18243,17 +18243,13 @@ namespace TrueforceForAll.Plugin
         {
             if (_plugin == null) return;
             if (TrueforceDialog.Show(null, "Trueforce For All",
-                    "Remove USBPcap? This needs admin (UAC prompt).\n\n"
-                        + "Reinstalling on top of a broken USBPcap does nothing, because its installer stops as soon "
-                        + "as it finds an existing install. Removing it first is the only way to rebuild the capture "
-                        + "driver's registration.\n\n"
-                        + "Afterwards: restart the computer, press Reinstall here, then restart once more. FFB "
-                        + "pass-through stays off until you finish both steps.",
+                    Loc.T("Settings_RemoveUSBPcapThisNeedsAdmin"),
                     // Destructive, not Confirm: this takes a working component
                     // away and leaves pass-through off until the user finishes
                     // two restarts, so the affirmative reads red and Cancel is
                     // what Enter does.
-                    DialogKind.Destructive, okLabel: "Remove USBPcap", cancelLabel: "Cancel") != true)
+                    DialogKind.Destructive, okLabel: Loc.T("Settings_RemoveUSBPcap"),
+                    cancelLabel: Loc.T("Common_Cancel")) != true)
                 return;
             _plugin.UninstallUsbPcapAsync();
         }

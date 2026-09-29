@@ -42,6 +42,7 @@ namespace TrueforceForAll.Plugin.Localization
             { "Effects_AirborneDuckEngine", 124 },
             { "Effects_AirborneDuckPitLimiter", 124 },
             { "Header_OfflineEditDone", 64 },
+            { "Header_UsbPcapMissingBanner", 130 },
             { "PresetManager_CommunityItemCountCol_Header", 60 },
             { "PresetManager_CommunityListVote_Header", 44 },
             { "PresetManager_CommunityScopeCol_Header", 100 },
