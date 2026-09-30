@@ -214,17 +214,75 @@ namespace TrueforceForAll.Plugin.Localization
         public string N(string key, int n, params object[] args)
         {
             string baseKey = key ?? string.Empty;
-            string plural = baseKey + (n == 1 ? ".one" : ".other");
             var active = _active;
             var english = _english;
-            if (!active.ContainsKey(plural) && !english.ContainsKey(plural)
-                && (active.ContainsKey(baseKey) || english.ContainsKey(baseKey)))
+
+            // The form THIS language uses for THIS count. English has two and decides by
+            // whether the count is 1; Russian has three and decides by the last digit,
+            // with the teens carved out; Japanese has one. Asking the language is the
+            // whole point: the old rule showed "2 файлов" where Russian wants "2 файла",
+            // which is wrong in a way nobody reports because the sentence still appears.
+            string form = LocPlurals.Category(ActiveTag, n);
+            string wanted = baseKey + "." + form;
+            if (active.ContainsKey(wanted)) return F(wanted, args);
+
+            // The language declares that form but has not translated it yet. Its own
+            // 'other' is the right next step: that is the form it uses for every count it
+            // did not single out, so it reads as this language even when it is not exact.
+            string otherForm = baseKey + "." + LocPlurals.Other;
+            if (active.ContainsKey(otherForm)) return F(otherForm, args);
+
+            // Nothing in this language, so English, which always has the pair. Chosen by
+            // English's own rule rather than by this language's form, because a Russian
+            // 'few' has no English counterpart and the plural is the one that reads.
+            string englishForm = baseKey + "." + (n == 1 ? LocPlurals.One : LocPlurals.Other);
+            if (english.ContainsKey(englishForm)) return F(englishForm, args);
+            if (english.ContainsKey(wanted)) return F(wanted, args);
+
+            // A key with no plural forms at all on either side: show it as written and say
+            // so once, which is what this did before.
+            if (active.ContainsKey(baseKey) || english.ContainsKey(baseKey))
             {
-                WarnOnce("plural:" + plural, "[TF4ALL] Language: no plural form '" + plural + "' in " + ActiveTag
+                WarnOnce("plural:" + wanted, "[TF4ALL] Language: no plural form '" + wanted + "' in " + ActiveTag
                     + (_activeIsEnglish ? "" : " or English") + "; showing '" + baseKey + "' for that count.");
                 return F(baseKey, args);
             }
-            return F(plural, args);
+            return F(wanted, args);
+        }
+
+        /// <summary>The English a plural form was written against. English carries two
+        /// forms, so a language that needs four has no English row of its own for the
+        /// other two: they translate the English plural.
+        ///
+        /// Both the Translate window and the fetch need this. The window shows the
+        /// translator what they are translating, and the fetch hashes it to decide whether
+        /// a row was written for the English this build displays.</summary>
+        public string EnglishForPluralKey(string key)
+        {
+            string direct = EnglishText(key);
+            if (direct != null) return direct;
+            string baseKey, form;
+            if (!LocPlurals.TrySplit(key, out baseKey, out form)) return null;
+            // The singular translates the singular; every other form translates the
+            // plural, which is the only other thing English has to offer.
+            string source = baseKey + "." + (form == LocPlurals.One ? LocPlurals.One : LocPlurals.Other);
+            return EnglishText(source);
+        }
+
+        /// <summary>Whether this key is a plural form the given language needs, even when
+        /// English has no row for it. The window builds its rows from this.
+        ///
+        /// The tag is a parameter rather than the active language on purpose: a translator
+        /// filling in Russian is usually reading the plugin in English, so the language
+        /// being edited is not the one on screen.</summary>
+        public bool IsPluralFormFor(string tag, string key)
+        {
+            string baseKey, form;
+            if (!LocPlurals.TrySplit(key, out baseKey, out form)) return false;
+            if (EnglishText(baseKey + "." + LocPlurals.Other) == null) return false;
+            foreach (string f in LocPlurals.FormsFor(tag))
+                if (f == form) return true;
+            return false;
         }
 
         /// <summary>True and the English text when English defines the key.

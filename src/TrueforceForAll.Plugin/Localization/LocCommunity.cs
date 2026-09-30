@@ -320,7 +320,10 @@ namespace TrueforceForAll.Plugin.Localization
                 string text = row?["t"]?.ToString();
                 string hash = row?["h"]?.ToString();
                 if (string.IsNullOrEmpty(key) || text == null) { droppedUnsafe++; continue; }
-                string english = _store.EnglishText(key);
+                // EnglishForPluralKey, not EnglishText: a language with four plural
+                // forms has rows English has no counterpart for, and they are written
+                // against the English plural.
+                string english = _store.EnglishForPluralKey(key);
                 if (english == null) { droppedUnknown++; continue; }
                 // Written for a different English: record it, do not serve it. The key
                 // falls through to the shipped translation or to English rather than
@@ -488,7 +491,7 @@ namespace TrueforceForAll.Plugin.Localization
                 var batch = new JArray();
                 for (int i = start; i < rows.Count && i < start + SendChunk; i++)
                 {
-                    string english = _store.EnglishText(rows[i].Key);
+                    string english = _store.EnglishForPluralKey(rows[i].Key);
                     if (english == null) continue;          // not ours to send
                     batch.Add(new JObject
                     {

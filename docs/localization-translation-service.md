@@ -1273,8 +1273,9 @@ lives in the file, never in a settings key.
 ### 8.4 The window: what 3b adds
 
 Phase 2 builds the window: the non-modal shell, the two-column grid,
-search, filters, Save, and the language picker row with `UiLanguage`.
-Phase 3b adds to that window:
+search, filters, Save, and the language picker row with `UiLanguage`. The
+filters are gone since; see the bullets below. Phase 3b adds to that
+window:
 
 - **Status glyphs**, provenance from `ExplainSources` and outcome from
   `list_my_translations`: pending, approved, and declined with the
@@ -1295,9 +1296,28 @@ Phase 3b adds to that window:
   which supersedes Phase 2's "keys never shown". Off by default: a
   translator typing does not need the key, and a translator reporting a
   bad string cannot do without it.
-- **Send**: chunks at 50, `p_source = 'plugin'` with the build version,
-  shows each `P0001` sentence verbatim. Signed out it offers "Sign in and
-  send" or the folder plus a prefilled issue.
+- **Publishing, with no Send button** (owner, 2026-09-29: "a typo is
+  likely better than no translation at all"). A row goes to the service a
+  few seconds after it is typed, chunked at 50, `p_source = 'plugin'` with
+  the build version, each `P0001` sentence shown verbatim. A refusal is
+  remembered per key so a row the server will not take is not offered again
+  every few seconds, and the retry waits rather than repeating against a
+  per-hour cap. No sign-in (owner, 2026-09-30: "users should not need to be
+  signed in to translate"): an account is used when there is one, else the
+  client-minted `anon:<id>`, which is `submit_car_fact`'s pattern and
+  migration 0139's.
+- **One row per plural form THIS language has**, not per form English has:
+  four for Russian, one for Japanese, six for Arabic, built from
+  `LocPlurals.FormsFor(tag)` rather than from the English key list. The
+  forms of one counted string stay together and in the language's own order,
+  singular first, and each carries the counts it covers ("used for 2, 3, 4,
+  22") rather than the category name, because "few" says nothing to someone
+  who is not a translator by trade. See section 10.7 for the server half.
+- **No filters** (owner, 2026-09-29: "why 3 states, everything, still to
+  do, needs a fix?"). Untranslated rows sort first inside each area
+  heading, which is the same answer without a control, and the problem
+  count is clickable when there is one. "Copy the English" stayed, "open
+  the folder" went: the folder is not where the work happens.
 - **One setting**: `UseCommunityTranslations`, default true (owner, 2026-09-25),
   gated by `CommunityEnabled`, its row hidden when the active tag is `en`,
   with one `BackupProjection.Portable` line. Default-on is an exception to
@@ -1444,6 +1464,15 @@ holds that one, in Core.Tests alone, and nothing in `tools\loc` reads it.
 plan states but no tool enforces, and the `_loc_banned_chars()` character
 list, so the page, the plugin, the server and the scripts all refuse the
 same bytes.
+
+A plural form English does not have is compared against the English it was
+written against, which is the `.other` row of the same base (section 10.7),
+so a Russian `X.few` is a key and not a typo. Which forms a language needs
+is not checked here: the count of forms English does not have is printed
+per language, and a form the language never uses is dead weight in the file
+rather than a failure. A counted string counts as reached once the language
+has any form of it, so a Japanese file is not reported as missing the
+singular it will never write.
 
 ---
 
@@ -1620,6 +1649,59 @@ objects on the apply date, never from a file. `0097` last replaced
 a trigger beside it rather than as more lines inside it; `0115` last
 replaced `export_my_data`. The migration header records which live
 definition each one started from and the date.
+
+### 10.7 Migration 0141: the plural forms English does not have (APPLIED 2026-09-30)
+
+A counted string ships as two English rows, `X.one` and `X.other`, because
+English has two forms. Most languages do not. Russian needs four, Arabic
+six, Japanese one. Those forms are real keys with real translations and no
+English row of their own: they are written against the English plural.
+
+Three things followed from that, and none of them worked:
+
+- `_submit_translation_row` looked `X.few` up in `english_strings`, did not
+  find it, and told the translator the key was not one the server holds;
+- `translation_progress` joined `translations` to `english_strings` on the
+  key, so a form English lacks could never be current and every one of them
+  landed in `approved_other`, which is the re-approval queue;
+- the same query counted every English row towards the total, so a Japanese
+  translator, who will never write `X.one`, could not reach 100 percent.
+
+The migration adds two functions and changes the three call sites that need
+them.
+
+```sql
+public._loc_english_key(p_key text)      -- the English row that governs a key
+public._loc_progress_unit(p_key text)    -- one counted string is one unit
+```
+
+`_loc_english_key` returns the key itself when English holds it, which
+covers every ordinary key and both of the forms English ships; otherwise the
+`.other` row of the same base; otherwise null, so a stray key is still
+refused. `_loc_progress_unit` collapses a plural form onto its base with a
+`.#` suffix, which matters because `Header_MoreIssues` exists as a plain key
+beside `Header_MoreIssues.one` and `.other`, and a bare collapse would count
+the two as one.
+
+Progress is now counted in strings rather than in rows: a counted string is
+one unit however many forms the language writes for it. Counting forms would
+put Japanese permanently short of the total and Arabic permanently over it.
+A language reaches the unit with any one form of it, which is generous to a
+half-finished set and never wrong in the direction that matters.
+
+**Which forms a language uses stays out of the database.** That rule lives
+in `LocPlurals.cs`, where it is asserted count by count in
+`LocPluralTests`, and a second copy in SQL would drift from it. The server
+checks that a form was written against English it holds, which is the part
+it can know. `validate.ps1` takes the same position.
+
+The apply was verified four ways: `_loc_english_key('Header_MoreIssues.few')`
+returns `Header_MoreIssues.other` and `_loc_english_key('Nothing_Here.few')`
+returns null; `_loc_progress_unit` separates the collapsed base from the
+plain key; `translation_progress` reports a total of 2,932 units against
+2,975 live English keys; and `_submit_translation_row` returns `approved`
+for `Achievements_JoinDiscordRole.many`, inside a transaction that was rolled
+back, leaving no row behind.
 
 ---
 

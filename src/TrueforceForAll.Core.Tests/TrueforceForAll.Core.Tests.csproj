@@ -120,6 +120,13 @@
     <Compile Include="..\TrueforceForAll.Plugin\Localization\LocPlaceholderRules.cs">
       <Link>Linked\LocPlaceholderRules.cs</Link>
     </Compile>
+    <!-- The plural rules. Pure arithmetic over a language tag and a count, and the one
+         part of the localization runtime whose failure is invisible: a wrong category
+         shows an ungrammatical sentence rather than a missing one, in a language the
+         maintainer does not read. Asserted count by count in LocPluralTests. -->
+    <Compile Include="..\TrueforceForAll.Plugin\Localization\LocPlurals.cs">
+      <Link>Linked\LocPlurals.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

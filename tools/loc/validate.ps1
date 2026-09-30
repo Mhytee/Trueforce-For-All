@@ -189,6 +189,25 @@ foreach ($k in $en.Keys) {
 Write-Host ('en.json: {0} unreferenced key(s)' -f $unreferenced)
 
 # ---- 5. placeholder and edge-whitespace parity per translation
+#
+# A plural form is compared against the English it was written against, which for a
+# form English does not have is the English plural: Russian needs four forms of a
+# counted string and English offers two, so Files.few is a real key with no English
+# row of its own. The categories are CLDR's and match LocPlurals.
+$pluralCats = @('zero', 'one', 'two', 'few', 'many', 'other')
+function Get-LocPluralEnglishKey($Key, $En) {
+    # The English key a translation key stands against, or $null when there is none.
+    if ($En.Contains($Key)) { return $Key }
+    $dot = $Key.LastIndexOf('.')
+    if ($dot -le 0 -or $dot -eq $Key.Length - 1) { return $null }
+    $form = $Key.Substring($dot + 1)
+    if ($pluralCats -notcontains $form) { return $null }
+    $baseKey = $Key.Substring(0, $dot)
+    # The pair has to exist, or any dotted key would pass as a plural form.
+    if (-not $En.Contains($baseKey + '.other')) { return $null }
+    if ($form -eq 'one' -and $En.Contains($baseKey + '.one')) { return $baseKey + '.one' }
+    return $baseKey + '.other'
+}
 foreach ($culture in @($langs.Keys | Sort-Object)) {
     if ($culture -eq 'en') { continue }
     $d = $langs[$culture]
@@ -196,16 +215,32 @@ foreach ($culture in @($langs.Keys | Sort-Object)) {
     $unknown = 0
     $bad = 0
     $space = 0
+    $extraForms = 0
     foreach ($k in $d.Keys) {
         if ($k -eq '_meta') { continue }
-        if (-not $en.Contains($k)) { $unknown++; $fails.Add("$culture.json: '$k' is not an English key"); continue }
-        if ((Get-LocPlaceholders ([string]$d[$k])) -ne (Get-LocPlaceholders ([string]$en[$k]))) { $bad++; $fails.Add("$culture.json: '$k' placeholders differ from English") }
-        $want = Get-LocEdgeSpace ([string]$en[$k])
+        $ek = Get-LocPluralEnglishKey $k $en
+        if ($null -eq $ek) { $unknown++; $fails.Add("$culture.json: '$k' is not an English key"); continue }
+        if ($ek -ne $k) { $extraForms++ }
+        if ((Get-LocPlaceholders ([string]$d[$k])) -ne (Get-LocPlaceholders ([string]$en[$ek]))) { $bad++; $fails.Add("$culture.json: '$k' placeholders differ from English") }
+        $want = Get-LocEdgeSpace ([string]$en[$ek])
         $got = Get-LocEdgeSpace ([string]$d[$k])
         if ($want -ne $got) { $space++; $fails.Add("$culture.json: '$k' leading and trailing whitespace differs from English (English $want, translation $got)") }
     }
-    foreach ($k in $en.Keys) { if ($k -ne '_meta' -and -not $d.Contains($k)) { $missing++ } }
-    Write-Host ('{0}.json: {1} missing (falls back to English), {2} unknown, {3} placeholder mismatch, {4} whitespace mismatch' -f $culture, $missing, $unknown, $bad, $space)
+    # A counted string counts as reached when the language has any form of it: which
+    # forms it needs is the language's own rule, and a Japanese file is complete for a
+    # counted string with the one form Japanese has.
+    $seenBases = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+    foreach ($k in $d.Keys) {
+        $dot = $k.LastIndexOf('.')
+        if ($dot -gt 0 -and $pluralCats -contains $k.Substring($dot + 1)) { [void]$seenBases.Add($k.Substring(0, $dot)) }
+    }
+    foreach ($k in $en.Keys) {
+        if ($k -eq '_meta' -or $d.Contains($k)) { continue }
+        $dot = $k.LastIndexOf('.')
+        if ($dot -gt 0 -and $pluralCats -contains $k.Substring($dot + 1) -and $seenBases.Contains($k.Substring(0, $dot))) { continue }
+        $missing++
+    }
+    Write-Host ('{0}.json: {1} missing (falls back to English), {2} unknown, {3} placeholder mismatch, {4} whitespace mismatch, {5} plural form(s) English does not have' -f $culture, $missing, $unknown, $bad, $space, $extraForms)
 }
 
 # ---- 5b. an escape captured verbatim instead of the character it stands for

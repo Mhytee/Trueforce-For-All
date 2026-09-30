@@ -3,15 +3,20 @@
 //
 // It exists because the alternative is a 2,000-key JSON file in Notepad, where a
 // missing quote costs the whole language and nothing tells you which of the keys
-// you have not reached yet. Here a row is a row, the filter shows what is left,
-// and a save is always a valid file.
+// you have not reached yet. Here a row is a row, the headings say how much of
+// each area is left, and a save is always a valid file.
 //
 // What it writes is the root override, <languagesRoot>\<tag>.json, which is the
 // highest-precedence layer: whatever a build ships or the community sends, the
 // file a person edited on their own machine still wins. Saving reloads the store,
 // so the edit reaches the panel without a restart (docs/localization-plan.md,
-// Phase 2). The community Send half is Phase 3b; this window's Send explains how
-// to hand the file over by issue or on Discord.
+// Phase 2). There is no Send: a row goes to the service a moment after it is
+// typed, because a typo is better than no translation at all and a button that
+// has to be found is a language that never arrives.
+//
+// A counted string is one row per form THIS language has, not per form English
+// has, so a Russian translator is given the four forms Russian needs and a
+// Japanese one the single form Japanese needs.
 //
 // Keys are hidden by default. A translator does not need them, and a key column
 // invites treating the English as a name rather than as a sentence to translate.
@@ -130,6 +135,24 @@ namespace TrueforceForAll.Plugin
             /// built; the row reports into it as it is filled in.</summary>
             public AreaGroup Area { get; set; }
 
+            /// <summary>The language being written, which is rarely the one the window
+            /// itself is drawn in. Only the plural note needs it, and it needs it because
+            /// which counts a form covers is a fact about this language.</summary>
+            public string Language { get; set; }
+
+            /// <summary>What this row sorts under: its own key, or the base key when it
+            /// is one form of a counted string, so a set stays in one place.</summary>
+            public string SortKey { get; set; }
+
+            /// <summary>Where this form sits inside its set, and 0 for a row that is not
+            /// one of a set.</summary>
+            public int FormRank { get; set; }
+
+            /// <summary>Whether this row, or any form of the set it belongs to, was empty
+            /// when the rows were built. Fixed at build time: it is what puts the work
+            /// first without moving a row the moment it is typed into.</summary>
+            public bool SortEmpty { get; set; }
+
             /// <summary>Pixels this string has when the panel draws it in a control
             /// with a fixed width, or 0 when nothing constrains it. From LocFitBudget,
             /// generated off the XAML, because the window cannot see the layout a
@@ -188,18 +211,29 @@ namespace TrueforceForAll.Plugin
             /// exactly what the placeholder check refuses, and it is right to.</summary>
             public string KeyTip => Loc.F("Translate_KeyTip_Fmt", Key);
 
-            /// <summary>Which plural form this row is, in words, or empty. A plural
-            /// key ends in .one or .other, and with the key column hidden the pair
-            /// reads as the same English twice unless the window says which is
-            /// which.</summary>
+            /// <summary>Which plural form this row is, or empty. Said in counts rather
+            /// than by naming the form: with the key column hidden a set reads as the
+            /// same English two or three times over, and "used for 2, 3, 4, 22" tells a
+            /// translator which one they are writing where "few" does not. The counts
+            /// come from the rule itself, so they are this language's and not
+            /// English's.</summary>
             public string PluralForm
             {
                 get
                 {
-                    if (Key == null) return "";
-                    if (Key.EndsWith(".one", StringComparison.Ordinal)) return Loc.T("Translate_PluralOne");
-                    if (Key.EndsWith(".other", StringComparison.Ordinal)) return Loc.T("Translate_PluralOther");
-                    return "";
+                    string baseKey, form;
+                    if (!LocPlurals.TrySplit(Key, out baseKey, out form)) return "";
+                    bool more;
+                    var counts = LocPlurals.ExampleCounts(Language, form, 4, out more);
+                    if (counts.Count == 0) return "";
+                    var sb = new StringBuilder();
+                    for (int i = 0; i < counts.Count; i++)
+                    {
+                        if (i > 0) sb.Append(", ");
+                        sb.Append(counts[i].ToString(CultureInfo.InvariantCulture));
+                    }
+                    if (more) sb.Append("…");
+                    return Loc.F("Translate_PluralCounts_Fmt", sb.ToString());
                 }
             }
 
@@ -212,8 +246,14 @@ namespace TrueforceForAll.Plugin
                 {
                     string w = Warning;
                     if (w.Length > 0) return w;
+                    // Which form ahead of how much room: the forms of one counted string
+                    // carry the same English, so without this note a set of three reads
+                    // as the same row three times and the fit is the lesser thing to
+                    // know about it.
+                    string plural = PluralForm;
+                    if (plural.Length > 0) return plural;
                     if (Room > 0) return Loc.F("Translate_TightFit_Fmt", FitChars);
-                    return PluralForm;
+                    return "";
                 }
             }
 
@@ -633,7 +673,13 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Every English key, with whatever this language already says for
         /// it. The English side is the table the build ships, so a key that English
-        /// dropped cannot appear here and a key it added always does.</summary>
+        /// dropped cannot appear here and a key it added always does.
+        ///
+        /// Plural keys are the exception, because English's two forms are not every
+        /// language's. A counted string turns into one row per form THIS language has:
+        /// three for Russian, one for Japanese, six for Arabic. Both of the English rows
+        /// for a base collapse into that set, so the rows follow the language being
+        /// translated rather than the language it is being translated from.</summary>
         private void LoadRows()
         {
             _rows.Clear();
@@ -641,36 +687,83 @@ namespace TrueforceForAll.Plugin
             var existing = ReadExisting();
             var areas = new Dictionary<string, AreaGroup>(StringComparer.Ordinal);
             var built = new List<Row>();
-            foreach (string key in _store.EnglishKeys)
+            // key, English, room, the key the row sorts under, its place inside a plural
+            // set, and whether the set it belongs to still has a hole in it.
+            Action<string, string, double, string, int, bool> add =
+                (key, english, room, sortKey, rank, groupEmpty) =>
             {
-                string english;
-                if (!_store.TryGetEnglish(key, out english)) continue;
                 string mine;
                 existing.TryGetValue(key, out mine);
                 var row = new Row
                 {
                     Key = key, English = english,
-                    Room = LocFitBudget.Room(key),
+                    Room = room,
                     Area = AreaFor(areas, key),
+                    Language = _tag,
+                    SortKey = sortKey, FormRank = rank, SortEmpty = groupEmpty,
                 };
                 row.Area.Total++;
                 // Area before Text on purpose: the Text setter is what keeps Done, so
                 // assigning it now counts this row exactly once.
                 row.Text = mine ?? "";
                 built.Add(row);
+            };
+            var pluralBases = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string key in _store.EnglishKeys)
+            {
+                string baseKey, form;
+                if (LocPlurals.TrySplit(key, out baseKey, out form))
+                {
+                    // Once per base: English offers .one and .other and this would
+                    // otherwise build the same set of rows twice.
+                    if (!pluralBases.Add(baseKey)) continue;
+                    // The budget is generated from the XAML, where a counted string is
+                    // bound by its base, so every form shares the base's room.
+                    double pluralRoom = LocFitBudget.Room(baseKey);
+                    var forms = LocPlurals.FormsFor(_tag);
+                    // One emptiness for the whole set, so a half-finished set stays
+                    // together instead of one form sitting with the work and the other
+                    // with the finished rows.
+                    bool anyEmpty = false;
+                    foreach (string f in forms)
+                    {
+                        string mine;
+                        if (!existing.TryGetValue(baseKey + "." + f, out mine)
+                            || string.IsNullOrWhiteSpace(mine)) { anyEmpty = true; break; }
+                    }
+                    for (int i = 0; i < forms.Count; i++)
+                    {
+                        string formKey = baseKey + "." + forms[i];
+                        string formEnglish = _store.EnglishForPluralKey(formKey);
+                        if (formEnglish == null) continue;
+                        add(formKey, formEnglish, pluralRoom, baseKey, i, anyEmpty);
+                    }
+                    continue;
+                }
+                string english;
+                if (!_store.TryGetEnglish(key, out english)) continue;
+                string mineOne;
+                existing.TryGetValue(key, out mineOne);
+                add(key, english, LocFitBudget.Room(key), key, 0, string.IsNullOrWhiteSpace(mineOne));
             }
             // Ordered once, here, rather than by the view: a row that jumps the moment
             // it is filled in loses the translator their place. Untranslated first
             // inside each area, so the work is what you land on.
+            // Every field compared here is fixed when the rows are built, which is what
+            // makes the order hold still while a translator types in it.
             built.Sort((a, b) =>
             {
                 int byArea = a.Area.Rank.CompareTo(b.Area.Rank);
                 if (byArea != 0) return byArea;
                 int byLabel = string.CompareOrdinal(a.Area.Label, b.Area.Label);
                 if (byLabel != 0) return byLabel;
-                bool ae = string.IsNullOrWhiteSpace(a.Text), be = string.IsNullOrWhiteSpace(b.Text);
-                if (ae != be) return ae ? -1 : 1;
-                return string.CompareOrdinal(a.Key, b.Key);
+                if (a.SortEmpty != b.SortEmpty) return a.SortEmpty ? -1 : 1;
+                int byKey = string.CompareOrdinal(a.SortKey, b.SortKey);
+                if (byKey != 0) return byKey;
+                // The forms of one counted string, in the order the language uses them:
+                // the singular before the form for 2 to 4, which alphabetical order
+                // would put the other way round.
+                return a.FormRank.CompareTo(b.FormRank);
             });
             _rows.AddRange(built);
         }
