@@ -459,12 +459,14 @@ has tuned it apart: linked until unlinked.
 Persistence (closes the "calibration is session-only" audit gap): the
 tuned gains, direction and filter live in TrueforceSettings, which is the
 source of truth for the numbers (generation 1, from the G PRO effect bench
-on 2026-09-19 and 2026-09-20: FfbConditionDamperGain 1.0 /
+on 2026-09-19 and 2026-09-20, with the damper taken to 0.5 by the owner
+on 2026-09-30: FfbConditionDamperGain 0.5 /
 FfbConditionSignInverted false / FfbConditionLpfHz 200 /
 FfbConditionSpringGain 4.5 / FfbConditionFrictionGain 0.15 /
 FfbConditionInertiaGain 0.10 / FfbConditionPeriodicGain 0.9 /
 FfbConditionRampGain 0.5, with FfbConditionDefaultsGeneration re-seeding the
-gains and filter cutoffs in every stored file once; the direction flip is a
+gains and filter cutoffs in every stored file once per generation, now at 2
+for the damper change; the direction flip is a
 wheel fact, not tuning, and is held), classified
 Portable in BackupProjection (wheel feel, travels like FfbScale),
 applied at device attach. One Save writes all of them, so the loop is

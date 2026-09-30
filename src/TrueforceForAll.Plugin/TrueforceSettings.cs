@@ -1017,7 +1017,8 @@ namespace TrueforceForAll.Plugin
         // read heavy (0.15 first, 0.10 on 2026-09-20). FfbConditionDefaultsGeneration brings EVERY
         // stored file to these once, bench-tuned or not: one right tuning per
         // wheel, the bench finds it, nobody keeps a tune of their own.
-        public double FfbConditionDamperGain   { get; set; } = 1.0;
+        // Damper 0.5, down from generation 1's 1.0 (owner's call, 2026-09-30).
+        public double FfbConditionDamperGain   { get; set; } = 0.5;
         public bool   FfbConditionSignInverted { get; set; } = false;
         public double FfbConditionLpfHz        { get; set; } = 200;
         // Per-effect condition low-pass, the filter counterpart of the per-effect
@@ -1072,7 +1073,8 @@ namespace TrueforceForAll.Plugin
         // gain. Anything the user sets afterward stands.
         public bool   FfbConditionInertiaSpecMigrated { get; set; } = false;
         // Which generation of the shipped condition gains and filters this file
-        // has been brought up to. 0 = written before the 2026-09-19 retune.
+        // has been brought up to. 0 = written before the 2026-09-19 retune,
+        // 1 = that retune, 2 = the damper at 0.5 (2026-09-30).
         // Machine-local: a migration marker, not a preference.
         public int    FfbConditionDefaultsGeneration { get; set; } = 0;
         // Reveals the effect test bench at the bottom of the FFB tab. Off by

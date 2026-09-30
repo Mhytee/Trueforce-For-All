@@ -35240,9 +35240,15 @@ namespace TrueforceForAll.Plugin
             // no tuning needed or possible). A fresh install carries the new
             // numbers already. The direction flip and the inertia mode are
             // wheel facts, not tuning, and stay.
-            if (Settings.FfbConditionDefaultsGeneration < 1)
+            // Generation 2 (owner, 2026-09-30): the damper comes down to 0.5. The
+            // same reasoning applies a second time, so the gate moves rather than a
+            // damper-only branch being added beside it: a file stamped at
+            // generation 1 holds generation 1's damper, and leaving it there would
+            // split the fleet across two defaults and make the damper value in a
+            // bug report ambiguous.
+            if (Settings.FfbConditionDefaultsGeneration < 2)
             {
-                Settings.FfbConditionDefaultsGeneration = 1;
+                Settings.FfbConditionDefaultsGeneration = 2;
                 var fresh = new TrueforceSettings();
                 Settings.FfbConditionDamperGain    = fresh.FfbConditionDamperGain;
                 Settings.FfbConditionSpringGain    = fresh.FfbConditionSpringGain;
@@ -35255,9 +35261,15 @@ namespace TrueforceForAll.Plugin
                 Settings.FfbConditionSpringLpfHz   = fresh.FfbConditionSpringLpfHz;
                 Settings.FfbConditionFrictionLpfHz = fresh.FfbConditionFrictionLpfHz;
                 Settings.FfbConditionInertiaLpfHz  = fresh.FfbConditionInertiaLpfHz;
+                // Read back from the values just written rather than spelled out: a
+                // sentence quoting the numbers goes stale the first time one of them
+                // moves, which is what happened when the damper went to 0.5.
                 SimHub.Logging.Current.Info(
-                    "[TF4ALL] Condition-engine tuning brought to the generation 1 defaults (damper 1.0 at 10 Hz, "
-                    + "spring 4.5 unfiltered, friction 0.15 at 3.3 Hz, inertia 0.10, waveforms 0.9, ramp 0.5).");
+                    "[TF4ALL] Condition-engine tuning brought to the generation 2 defaults "
+                    + $"(damper {fresh.FfbConditionDamperGain:F2} at {fresh.FfbConditionDamperLpfHz:F0} Hz, "
+                    + $"spring {fresh.FfbConditionSpringGain:F2}, friction {fresh.FfbConditionFrictionGain:F2} "
+                    + $"at {fresh.FfbConditionFrictionLpfHz:F1} Hz, inertia {fresh.FfbConditionInertiaGain:F2}, "
+                    + $"waveforms {fresh.FfbConditionPeriodicGain:F2}, ramp {fresh.FfbConditionRampGain:F2}).");
             }
         }
 
