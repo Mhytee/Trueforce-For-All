@@ -1467,6 +1467,57 @@
                             TickFrequency="0.25" ValueChanged="MasterGainSlider_ValueChanged" VerticalAlignment="Center"/>
                 <Border Visibility="{Binding Visibility, ElementName=MasterGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="MasterGainText" Text="1.00"/></Border>
             </Grid>
+            <!-- Trueforce EQ, collapsed under master gain: like master gain it is
+                 GLOBAL (a trait of the wheel and rig, never preset-scoped) and
+                 shapes the whole Trueforce stream, audio rumble included, before
+                 master gain. It sits outside TelemetryEffectsPanel so audio-only
+                 games keep it. The curve editor and the band rows are built in
+                 code (SettingsControl.TrueforceEq.cs / EqCurveEditor.cs). -->
+            <Expander x:Name="TrueforceEqExpander" IsExpanded="False" Margin="0,0,0,8" Expanded="EffectExpander_Expanded">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox x:Name="TrueforceEqEnabledCheck" Content="{loc:T Effects_TrueforceEqEnabled}"
+                                  FontWeight="SemiBold" VerticalAlignment="Center"
+                                  ToolTip="{loc:T Effects_TrueforceEqEnabled_Tip}"
+                                  Checked="TrueforceEqEnabledCheck_Changed" Unchecked="TrueforceEqEnabledCheck_Changed"/>
+                        <Border x:Name="TrueforceEqNewBadge" Style="{StaticResource NewEffectBadge}">
+                            <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                        </Border>
+                        <!-- Undo wears the effects' revert style and, like them,
+                             only shows once there is something to step back.
+                             Hidden, not Collapsed, while empty, so the preset
+                             list beside it never jumps sideways. -->
+                        <Button x:Name="TrueforceEqUndoButton" Content="↶" Style="{StaticResource EffectRevertButton}" Margin="14,0,0,0" Click="TrueforceEqUndo_Click"
+                                Visibility="Hidden" ToolTip="{loc:T Effects_TrueforceEqUndo_Tip}"/>
+                        <!-- Presets: the built-ins, then the user's saved curves.
+                             Items are built in code (SettingsControl.TrueforceEq.cs).
+                             Save… shows while the curve is not a saved preset;
+                             the red cross deletes the user's own selected preset. -->
+                        <ComboBox x:Name="TrueforceEqPresetCombo" MinWidth="140" Height="22" Margin="8,0,0,0" VerticalAlignment="Center"
+                                  ToolTip="{loc:T Effects_TrueforceEqPreset_Tip}"
+                                  SelectionChanged="TrueforceEqPresetCombo_SelectionChanged"
+                                  DropDownClosed="TrueforceEqPresetCombo_DropDownClosed"/>
+                        <Button x:Name="TrueforceEqSaveButton" Content="{loc:T Common_SaveEllipsis}" Style="{StaticResource EffectSaveButton}"
+                                Click="TrueforceEqSave_Click" ToolTip="{loc:T Effects_TrueforceEqSave_Tip}"/>
+                        <Button x:Name="TrueforceEqDeletePresetButton" Content="×" Width="22" Height="22" Margin="6,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" Cursor="Hand" Click="TrueforceEqDeletePreset_Click"
+                                ToolTip="{loc:T Effects_TrueforceEqDeletePreset_Tip}"/>
+                    </StackPanel>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
+                               Text="{loc:T Effects_TrueforceEqTamesTheFrequenciesThat}"/>
+                    <Border x:Name="TrueforceEqCurveHost" Height="240" Margin="0,0,0,8"
+                            ToolTipService.InitialShowDelay="1500"
+                            ToolTip="{loc:T Effects_TrueforceEqCurveHost_Tip}"/>
+                    <StackPanel x:Name="TrueforceEqBandRows"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button x:Name="TrueforceEqAddBandButton" Content="{loc:T Effects_TrueforceEqAddBand}" Style="{StaticResource EffectTestButton}" MinWidth="80" Margin="0" Click="TrueforceEqAddBand_Click"
+                                ToolTip="{loc:T Effects_TrueforceEqAddBand_Tip}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Expander>
+
             <!-- (The old "Active car" Save/Delete box was removed: per-car
                  tuning now saves via each effect's ★/Save popover ("For this
                  car"), and deleting a car preset lives in Manage Presets. The
@@ -2668,49 +2719,6 @@
                 </Expander>
 
             </StackPanel> <!-- /TelemetryEffectsPanel -->
-
-            <!-- Trueforce EQ. Sits after the Ducking coordinators, OUTSIDE
-                 TelemetryEffectsPanel: it shapes audio rumble too, so it must
-                 stay usable when a game sends no telemetry. GLOBAL like master
-                 gain (a trait of the wheel and rig, never preset-scoped):
-                 boosts or cuts the summed haptic stream at chosen frequencies,
-                 before master gain. The curve editor and the band rows are
-                 built in code (SettingsControl.TrueforceEq.cs / EqCurveEditor.cs). -->
-            <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12"><TextBlock Text="{loc:T Effects_Output}" Style="{StaticResource SectionHeaderText}"/></Border>
-            <Expander x:Name="TrueforceEqExpander" IsExpanded="False" Margin="0,0,0,8" Expanded="EffectExpander_Expanded">
-                <Expander.Header>
-                    <StackPanel Orientation="Horizontal">
-                        <CheckBox x:Name="TrueforceEqEnabledCheck" Content="{loc:T Effects_TrueforceEqEnabled}"
-                                  FontWeight="SemiBold" VerticalAlignment="Center"
-                                  ToolTip="{loc:T Effects_TrueforceEqEnabled_Tip}"
-                                  Checked="TrueforceEqEnabledCheck_Changed" Unchecked="TrueforceEqEnabledCheck_Changed"/>
-                        <Border x:Name="TrueforceEqNewBadge" Style="{StaticResource NewEffectBadge}">
-                            <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
-                        </Border>
-                        <TextBlock x:Name="TrueforceEqSummaryText" Style="{StaticResource HelpText}" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                        <!-- Undo wears the effects' revert style and, like them,
-                             only appears once there is something to step back. -->
-                        <Button x:Name="TrueforceEqUndoButton" Content="↶" Style="{StaticResource EffectRevertButton}" Margin="14,0,0,0" Click="TrueforceEqUndo_Click"
-                                ToolTip="{loc:T Effects_TrueforceEqUndo_Tip}"/>
-                    </StackPanel>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-                    <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8"
-                               Text="{loc:T Effects_TrueforceEqTamesTheFrequenciesThat}"/>
-                    <Border x:Name="TrueforceEqCurveHost" Height="240" Margin="0,0,0,8"
-                            ToolTipService.InitialShowDelay="1500"
-                            ToolTip="{loc:T Effects_TrueforceEqCurveHost_Tip}"/>
-                    <StackPanel x:Name="TrueforceEqBandRows"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button x:Name="TrueforceEqAddBandButton" Content="{loc:T Effects_TrueforceEqAddBand}" Style="{StaticResource EffectTestButton}" MinWidth="80" Margin="0" Click="TrueforceEqAddBand_Click"
-                                ToolTip="{loc:T Effects_TrueforceEqAddBand_Tip}"/>
-                        <Button x:Name="TrueforceEqAuditionButton" Content="{loc:T Effects_TrueforceEqAudition}" Style="{StaticResource EffectTestButton}" MinWidth="80" Margin="10,0,0,0" Click="TrueforceEqAudition_Click" IsEnabled="False"
-                                ToolTip="{loc:T Effects_TrueforceEqAudition_Tip}"/>
-                        <Button x:Name="TrueforceEqResetButton" Content="{loc:T Effects_TrueforceEqReset}" Style="{StaticResource EffectTestButton}" MinWidth="100" Margin="10,0,0,0" Click="TrueforceEqReset_Click"
-                                ToolTip="{loc:T Effects_TrueforceEqReset_Tip}"/>
-                    </StackPanel>
-                </StackPanel>
-            </Expander>
 
 
             <!-- The donation block (Patreon / Ko-fi) and the full "Spread the

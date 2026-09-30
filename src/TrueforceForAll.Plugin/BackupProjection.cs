@@ -157,7 +157,7 @@ namespace TrueforceForAll.Plugin
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             // Trueforce EQ: a wheel/rig trait, global (not preset-scoped), travels.
-            "TrueforceEqEnabled", "TrueforceEqBands",
+            "TrueforceEqEnabled", "TrueforceEqBands", "TrueforceEqPresetId", "TrueforceEqUserPresets",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
             "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb", "FfbSpikeTransientThresholdLsb",
             // Condition-render tuning (FXTEST bench): describes the wheel's

@@ -62,13 +62,99 @@ namespace TrueforceForAll.Core.Tests
         public void FlatFactoryBands_AreBypassed()
         {
             var eq = new ParametricEq(Fs);
-            eq.SetBands(ParametricEq.FactoryBands());
+            var flat = EqCurves.Flat();
+            eq.SetBands(flat);
             Assert.Equal(0, eq.ActiveSectionCount);
-            Assert.Equal(6, ParametricEq.FactoryBands().Count);
             Assert.Equal(1.0, ParametricEq.DefaultQ);
+
+            // Eight points: a low cut first, six bells, a high cut last, the
+            // cuts steep and parked at the edges so none of them sounds yet.
+            Assert.Equal(8, flat.Count);
+            Assert.Equal(EqBandType.LowCut, flat[0].Type);
+            Assert.Equal(EqBandType.HighCut, flat[7].Type);
+            Assert.Equal(ParametricEq.EdgeCutSlopeDbPerOct, flat[0].SlopeDbPerOct);
+            Assert.Equal(ParametricEq.EdgeCutSlopeDbPerOct, flat[7].SlopeDbPerOct);
+            Assert.True(flat[0].IsParkedCut && flat[7].IsParkedCut);
+            for (int i = 1; i < 7; i++) Assert.Equal(EqBandType.Peak, flat[i].Type);
+
             var input = Sine(63, 400);
             var output = Run(eq, input);
             for (int i = 0; i < input.Length; i++) Assert.Equal(input[i], output[i]);
+        }
+
+        [Fact]
+        public void ParkedCuts_AreOff_AndEngageOnceMovedIn()
+        {
+            var eq = new ParametricEq(Fs);
+            var low = new EqBand { Type = EqBandType.LowCut, FrequencyHz = ParametricEq.LowCutParkHz, Q = ParametricEq.SlopeDefaultQ, SlopeDbPerOct = 24 };
+            var high = new EqBand { Type = EqBandType.HighCut, FrequencyHz = ParametricEq.HighCutParkHz, Q = ParametricEq.SlopeDefaultQ, SlopeDbPerOct = 24 };
+            var list = new List<EqBand> { low, high };
+
+            // Parked, including below the park line (a drag can land there).
+            eq.SetBands(list);
+            Assert.Equal(0, eq.ActiveSectionCount);
+            low.FrequencyHz = 7;
+            eq.SetBands(list);
+            Assert.Equal(0, eq.ActiveSectionCount);
+            Assert.Equal(0.0, ParametricEq.ResponseDb(list, 8, Fs));
+
+            // Dragged in: each engages with its full slope.
+            low.FrequencyHz = 40;
+            high.FrequencyHz = 400;
+            eq.SetBands(list);
+            Assert.Equal(4, eq.ActiveSectionCount);
+            Assert.True(MeasuredDb(eq, 10) < -40, "low cut engaged");
+            Assert.True(MeasuredDb(eq, 1600) < -40, "high cut engaged");
+            Assert.True(Math.Abs(MeasuredDb(eq, 125)) < 0.5, "passband flat");
+
+            // The park rule is for cuts only: a bell down there still sounds.
+            var bell = new EqBand { FrequencyHz = 9.9, GainDb = -12, Q = 1 };
+            Assert.False(bell.IsBypass);
+            Assert.False(bell.IsParkedCut);
+        }
+
+        [Fact]
+        public void CleanBass_LiftsTheBass_NotchesTheMud()
+        {
+            var bands = EqCurves.CleanBass();
+            Assert.Equal(10, bands.Count);
+            double at30 = ParametricEq.ResponseDb(bands, 30, Fs);
+            double at200 = ParametricEq.ResponseDb(bands, 200, Fs);
+            double at600 = ParametricEq.ResponseDb(bands, 600, Fs);
+            Assert.True(at30 > 9, $"bass lift {at30:F1} dB");
+            Assert.True(at200 < -14, $"200 Hz notch {at200:F1} dB");
+            Assert.True(at600 > 9, $"texture lift {at600:F1} dB");
+
+            // Builds a stable, finite bank.
+            var eq = new ParametricEq(Fs);
+            eq.SetBands(bands);
+            foreach (float v in Run(eq, Sine(40, 8000))) Assert.False(float.IsNaN(v) || float.IsInfinity(v));
+        }
+
+        [Fact]
+        public void BandsEqual_IgnoresOrder_CatchesEdits()
+        {
+            var a = EqCurves.CleanBass();
+            var shuffled = EqCurves.CleanBass();
+            shuffled.Reverse();
+            Assert.True(ParametricEq.BandsEqual(a, shuffled));
+            Assert.True(ParametricEq.BandsEqual(EqCurves.Flat(), ParametricEq.CloneBands(EqCurves.Flat())));
+            Assert.False(ParametricEq.BandsEqual(a, EqCurves.Flat()));
+
+            var edited = EqCurves.CleanBass();
+            edited[6].GainDb += 1.0;
+            Assert.False(ParametricEq.BandsEqual(a, edited));
+            var toggled = EqCurves.CleanBass();
+            toggled[0].Enabled = false;
+            Assert.False(ParametricEq.BandsEqual(a, toggled));
+            var fewer = EqCurves.CleanBass();
+            fewer.RemoveAt(3);
+            Assert.False(ParametricEq.BandsEqual(a, fewer));
+
+            // A cut's gain is not part of its sound, so it does not count.
+            var cutGain = EqCurves.CleanBass();
+            cutGain[9].GainDb = -29.0;
+            Assert.True(ParametricEq.BandsEqual(a, cutGain));
         }
 
         [Fact]

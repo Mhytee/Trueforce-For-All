@@ -1,13 +1,12 @@
 // The Trueforce EQ section on the Effects tab: the curve editor
 // (EqCurveEditor, hosted in TrueforceEqCurveHost) plus one code-built row
-// per band (on / type / Hz / dB / Q / slope / remove), one Audition for
-// the selected band, a
-// multi-level Undo, and the live spectrum feed (a Goertzel bank over the
-// plugin's pre/post EQ taps on a UI timer that only runs while the
-// expander is open). Global like master gain: every edit applies live
-// through TrueforcePlugin.ApplyTrueforceEq and persists on the shared
-// debounce; there is no Save/Revert flow because the EQ is never part of
-// a preset.
+// per band (on / type / Hz / dB / Q / slope / remove), a multi-level Undo,
+// the EQ's own preset list in the header (built-ins, then the user's saved
+// curves, with Save… and delete), and the live spectrum feed (a Goertzel
+// bank over the plugin's pre/post EQ taps on a UI timer that only runs
+// while the expander is open). Global like master gain: every edit applies
+// live through TrueforcePlugin.ApplyTrueforceEq and persists on the shared
+// debounce. EQ presets are their own list, never part of a game preset.
 
 using System;
 using System.Collections.Generic;
@@ -47,10 +46,16 @@ namespace TrueforceForAll.Plugin
             new[]{ Loc.T("Eq_Bell"), Loc.T("Eq_LowShelf"), Loc.T("Eq_HighShelf"), Loc.T("Eq_LowCut"), Loc.T("Eq_HighCut") };
         private static readonly string[] EqSlopeLabels = { "12 dB", "24 dB", "36 dB", "48 dB" };
 
-        // Undo: whole-list snapshots, newest last. Gestures on the same band
-        // within EqUndoCoalesceMs share one entry (a drag, a run of arrow
-        // presses, a scroll burst), so Undo steps back by intent, not by tick.
-        private readonly List<List<EqBand>> _eqUndo = new List<List<EqBand>>();
+        // Undo: whole-list snapshots plus the preset they belonged to, newest
+        // last. Gestures on the same band within EqUndoCoalesceMs share one
+        // entry (a drag, a run of arrow presses, a scroll burst), so Undo
+        // steps back by intent, not by tick.
+        private sealed class EqUndoEntry
+        {
+            public List<EqBand> Bands;
+            public string PresetId;
+        }
+        private readonly List<EqUndoEntry> _eqUndo = new List<EqUndoEntry>();
         private const int EqUndoDepth = 40;
         private const double EqUndoCoalesceMs = 700;
         private string _eqUndoLastKey;
@@ -67,6 +72,17 @@ namespace TrueforceForAll.Plugin
         private float[] _eqSpecPost, _eqSpecPre;
         private long _eqSpecLastWritten = -1;
         private bool _eqSpecHooked;
+
+        // Preset list. The combo's items are rebuilt from state each time it
+        // changes (preset picked, saved, deleted, or the curve moving on or
+        // off its preset); _eqPresetSuppress guards the rebuild itself, and a
+        // click on an item is applied when the dropdown closes, never while
+        // WPF is still processing that item.
+        private const string EqPresetCustomTag = "custom";
+        private const int EqPresetNameMax = 40;
+        private bool _eqPresetSuppress;
+        private string _eqPresetClickId;
+        private string _eqPresetShownKey;
 
         private List<EqBand> EqBands => _plugin?.Settings?.TrueforceEqBands;
 
@@ -94,12 +110,9 @@ namespace TrueforceForAll.Plugin
                 bands.RemoveAt(i);
                 EqStructureChanged(-1);
             };
-            _eqEditor.SelectionChanged += () =>
-            {
-                HighlightEqRow(_eqEditor.SelectedIndex);
-                UpdateEqAuditionButton();
-            };
+            _eqEditor.SelectionChanged += () => HighlightEqRow(_eqEditor.SelectedIndex);
             TrueforceEqCurveHost.Child = _eqEditor;
+            if (TrueforceEqDeletePresetButton != null) ModalButtonTheme.Destructive(TrueforceEqDeletePresetButton);
 
             if (!_eqSpecHooked && TrueforceEqExpander != null)
             {
@@ -125,37 +138,10 @@ namespace TrueforceForAll.Plugin
                 _eqEditor.EqActive = s.TrueforceEqEnabled;
             }
             RebuildEqRows();
-            UpdateEqSummary();
+            _eqPresetShownKey = null;   // a refresh may follow a language change
+            RefreshEqPresetCombo();
             UpdateEqUndoButton();
-            UpdateEqAuditionButton();
             if (TrueforceEqExpander != null && TrueforceEqExpander.IsExpanded && IsLoaded) StartEqSpectrum();
-        }
-
-        // One Audition for the selected point: click a point, press it, feel it.
-        private void UpdateEqAuditionButton()
-        {
-            if (TrueforceEqAuditionButton != null)
-                TrueforceEqAuditionButton.IsEnabled = EqBandAt(_eqEditor?.SelectedIndex ?? -1) != null;
-        }
-
-        private void TrueforceEqAudition_Click(object sender, RoutedEventArgs e)
-        {
-            var b = EqBandAt(_eqEditor?.SelectedIndex ?? -1);
-            if (b != null) _plugin?.AuditionEqTone(b.FrequencyHz);
-        }
-
-        private void UpdateEqSummary()
-        {
-            if (TrueforceEqSummaryText == null) return;
-            var s = _plugin?.Settings;
-            var bands = EqBands;
-            int active = 0;
-            if (bands != null) foreach (var b in bands) if (b != null && !b.IsBypass) active++;
-            TrueforceEqSummaryText.Text =
-                s == null || !s.TrueforceEqEnabled ? Loc.T("Eq_Off")
-                : active == 0 ? Loc.T("Eq_Flat")
-                : active == 1 ? Loc.T("Eq_N1BandActive")
-                : Loc.F("Eq_BandsActive_Fmt", active);
         }
 
         /// <summary>A band's values changed (editor gesture or a row edit).
@@ -165,7 +151,7 @@ namespace TrueforceForAll.Plugin
             _plugin?.ApplyTrueforceEq();
             SyncEqRow(index);
             _eqEditor?.InvalidateVisual();
-            UpdateEqSummary();
+            RefreshEqPresetCombo();
             SchedulePersistDebounced();
             if (!live) MarkEqSeen();
         }
@@ -180,9 +166,8 @@ namespace TrueforceForAll.Plugin
                 _eqEditor.SelectedIndex = select;
             }
             RebuildEqRows();
-            UpdateEqSummary();
+            RefreshEqPresetCombo();
             UpdateEqUndoButton();
-            UpdateEqAuditionButton();
             SchedulePersistDebounced();
             MarkEqSeen();
         }
@@ -201,7 +186,6 @@ namespace TrueforceForAll.Plugin
             _plugin.Settings.TrueforceEqEnabled = on;
             _plugin.ApplyTrueforceEq();
             if (_eqEditor != null) _eqEditor.EqActive = on;
-            UpdateEqSummary();
             SchedulePersistDebounced();
             MarkEqSeen();
         }
@@ -215,28 +199,282 @@ namespace TrueforceForAll.Plugin
             EqStructureChanged(bands.Count - 1);
         }
 
-        private void TrueforceEqReset_Click(object sender, RoutedEventArgs e)
+        private void TrueforceEqUndo_Click(object sender, RoutedEventArgs e) => EqUndo();
+
+        // ---------- presets ----------
+
+        private static readonly string[] EqBuiltinIds =
+            { TrueforcePlugin.EqPresetIdFlat, TrueforcePlugin.EqPresetIdCleanBass };
+
+        /// <summary>A built-in's display name, or null for an unknown id.
+        /// Literal keys so the language checks see them.</summary>
+        private static string EqBuiltinName(string id)
         {
+            switch (id)
+            {
+                case TrueforcePlugin.EqPresetIdFlat:      return Loc.T("Eq_PresetFlat");
+                case TrueforcePlugin.EqPresetIdCleanBass: return Loc.T("Eq_PresetCleanBass");
+                default:                                  return null;
+            }
+        }
+
+        private static List<EqBand> EqBuiltinBands(string id)
+        {
+            switch (id)
+            {
+                case TrueforcePlugin.EqPresetIdFlat:      return EqCurves.Flat();
+                case TrueforcePlugin.EqPresetIdCleanBass: return EqCurves.CleanBass();
+                default:                                  return null;
+            }
+        }
+
+        private List<EqPreset> EqUserPresets
+        {
+            get
+            {
+                var s = _plugin?.Settings;
+                if (s == null) return null;
+                if (s.TrueforceEqUserPresets == null) s.TrueforceEqUserPresets = new List<EqPreset>();
+                return s.TrueforceEqUserPresets;
+            }
+        }
+
+        private EqPreset FindEqUserPreset(string name)
+        {
+            var list = EqUserPresets;
+            if (list == null || string.IsNullOrWhiteSpace(name)) return null;
+            foreach (var p in list)
+                if (p != null && string.Equals(p.Name, name.Trim(), StringComparison.OrdinalIgnoreCase)) return p;
+            return null;
+        }
+
+        private static bool IsEqUserId(string id)
+            => id != null && id.StartsWith(TrueforcePlugin.EqPresetUserPrefix, StringComparison.Ordinal);
+
+        private static string EqUserNameOf(string id)
+            => IsEqUserId(id) ? id.Substring(TrueforcePlugin.EqPresetUserPrefix.Length) : null;
+
+        /// <summary>The bands a preset id stands for (a fresh copy for a
+        /// built-in, the stored list for a user preset), or null.</summary>
+        private List<EqBand> EqPresetBands(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            if (IsEqUserId(id)) return FindEqUserPreset(EqUserNameOf(id))?.Bands;
+            return EqBuiltinBands(id);
+        }
+
+        private string EqPresetDisplayName(string id)
+        {
+            if (IsEqUserId(id)) return FindEqUserPreset(EqUserNameOf(id))?.Name ?? EqUserNameOf(id);
+            return EqBuiltinName(id) ?? id;
+        }
+
+        /// <summary>The preset the curve belongs to and whether it has been
+        /// edited since. The tracked id wins while it still exists; an
+        /// untracked curve (older settings, a deleted preset) is matched
+        /// against every preset. Null id = Custom.</summary>
+        private void ResolveEqPreset(out string id, out bool edited)
+        {
+            id = null;
+            edited = false;
             var bands = EqBands;
             if (bands == null) return;
-            bool anyShaped = false;
-            foreach (var b in bands) if (b != null && !b.IsBypass) { anyShaped = true; break; }
-            if (anyShaped)
+            string tracked = _plugin?.Settings?.TrueforceEqPresetId;
+            var trackedBands = EqPresetBands(tracked);
+            if (trackedBands != null)
             {
-                // Destructive: themed Yes/No pair, Reset painted red, Cancel is
-                // the Enter default so a stray keypress keeps the curve.
-                bool? ok = TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Eq_ResetEQ"),
-                    Loc.T("Eq_PutsSixFlatBands"),
-                    DialogKind.Destructive, okLabel: Loc.T("Common_Reset"), cancelLabel: Loc.T("Eq_KeepMyCurve"));
-                if (ok != true) return;
+                id = tracked;
+                edited = !ParametricEq.BandsEqual(trackedBands, bands);
+                return;
             }
-            PushEqUndo("reset");
+            foreach (var b in EqBuiltinIds)
+                if (ParametricEq.BandsEqual(EqBuiltinBands(b), bands)) { id = b; return; }
+            var users = EqUserPresets;
+            if (users != null)
+                foreach (var p in users)
+                    if (p != null && ParametricEq.BandsEqual(p.Bands, bands)) { id = TrueforcePlugin.EqPresetUserPrefix + p.Name; return; }
+        }
+
+        /// <summary>Rebuild the preset list when what it shows has changed.
+        /// Cheap enough to call on every drag tick: it only touches the
+        /// control when the selected preset, its edited mark, or the list of
+        /// saved presets moves.</summary>
+        private void RefreshEqPresetCombo()
+        {
+            if (TrueforceEqPresetCombo == null || _plugin?.Settings == null) return;
+            if (TrueforceEqPresetCombo.IsDropDownOpen) return;
+            ResolveEqPreset(out string id, out bool edited);
+
+            var users = new List<EqPreset>();
+            if (EqUserPresets != null)
+                foreach (var p in EqUserPresets)
+                    if (p != null && !string.IsNullOrWhiteSpace(p.Name)) users.Add(p);
+            users.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase));
+
+            var key = new System.Text.StringBuilder();
+            key.Append(id ?? EqPresetCustomTag).Append('|').Append(edited ? 1 : 0).Append('|').Append(Loc.T("Eq_PresetFlat"));
+            foreach (var p in users) key.Append('|').Append(p.Name);
+            string shown = key.ToString();
+
+            bool isUser = IsEqUserId(id);
+            if (TrueforceEqSaveButton != null)
+                TrueforceEqSaveButton.Visibility = id == null || edited ? Visibility.Visible : Visibility.Collapsed;
+            if (TrueforceEqDeletePresetButton != null)
+                TrueforceEqDeletePresetButton.Visibility = isUser ? Visibility.Visible : Visibility.Collapsed;
+
+            if (shown == _eqPresetShownKey) return;
+            _eqPresetShownKey = shown;
+
+            _eqPresetSuppress = true;
+            try
+            {
+                var combo = TrueforceEqPresetCombo;
+                combo.Items.Clear();
+                ComboBoxItem selected = null;
+
+                if (id == null)
+                {
+                    selected = NewEqPresetItem(EqPresetCustomTag, Loc.T("Eq_Custom"));
+                    selected.IsEnabled = false;
+                    combo.Items.Add(selected);
+                }
+                foreach (var b in EqBuiltinIds)
+                {
+                    bool mine = b == id;
+                    var item = NewEqPresetItem(b, mine && edited ? Loc.F("Eq_PresetEdited_Fmt", EqBuiltinName(b)) : EqBuiltinName(b));
+                    combo.Items.Add(item);
+                    if (mine) selected = item;
+                }
+                if (users.Count > 0) combo.Items.Add(new Separator());
+                foreach (var p in users)
+                {
+                    string pid = TrueforcePlugin.EqPresetUserPrefix + p.Name;
+                    bool mine = isUser && string.Equals(EqUserNameOf(id), p.Name, StringComparison.OrdinalIgnoreCase);
+                    var item = NewEqPresetItem(pid, mine && edited ? Loc.F("Eq_PresetEdited_Fmt", p.Name) : p.Name);
+                    combo.Items.Add(item);
+                    if (mine) selected = item;
+                }
+                combo.SelectedItem = selected;
+            }
+            finally { _eqPresetSuppress = false; }
+        }
+
+        private ComboBoxItem NewEqPresetItem(string tag, string text)
+        {
+            var item = new ComboBoxItem { Content = text, Tag = tag };
+            // Remember which item was clicked; applied once the dropdown has
+            // closed. Picking the preset already shown still counts: that is
+            // how an edited preset goes back to its saved curve.
+            item.PreviewMouseLeftButtonUp += (s, e) => _eqPresetClickId = tag;
+            return item;
+        }
+
+        private void TrueforceEqPresetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Mouse picks are handled in DropDownClosed. This is the keyboard
+            // on a closed list (arrow keys step through the presets).
+            if (_eqPresetSuppress || TrueforceEqPresetCombo.IsDropDownOpen) return;
+            string id = (TrueforceEqPresetCombo.SelectedItem as ComboBoxItem)?.Tag as string;
+            RequestEqPreset(id, clicked: false);
+        }
+
+        private void TrueforceEqPresetCombo_DropDownClosed(object sender, EventArgs e)
+        {
+            bool clicked = _eqPresetClickId != null;
+            string id = _eqPresetClickId ?? (TrueforceEqPresetCombo.SelectedItem as ComboBoxItem)?.Tag as string;
+            _eqPresetClickId = null;
+            RequestEqPreset(id, clicked);
+        }
+
+        private void RequestEqPreset(string id, bool clicked)
+        {
+            ResolveEqPreset(out string current, out bool edited);
+            bool apply = !string.IsNullOrEmpty(id) && id != EqPresetCustomTag
+                         && (id != current || (clicked && edited));
+            // Deferred either way: the combo is still inside its own event.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (apply) ApplyEqPreset(id);
+                else { _eqPresetShownKey = null; RefreshEqPresetCombo(); }
+            }), DispatcherPriority.Background);
+        }
+
+        private void ApplyEqPreset(string id)
+        {
+            var bands = EqBands;
+            var src = EqPresetBands(id);
+            if (bands == null || src == null) return;
+            PushEqUndo("preset");
             bands.Clear();
-            bands.AddRange(ParametricEq.FactoryBands());
+            bands.AddRange(ParametricEq.CloneBands(src));
+            _plugin.Settings.TrueforceEqPresetId = id;
+            _eqPresetShownKey = null;
             EqStructureChanged(-1);
         }
 
-        private void TrueforceEqUndo_Click(object sender, RoutedEventArgs e) => EqUndo();
+        private void TrueforceEqSave_Click(object sender, RoutedEventArgs e)
+        {
+            var bands = EqBands;
+            var users = EqUserPresets;
+            if (bands == null || users == null) return;
+            ResolveEqPreset(out string current, out _);
+            string suggested = IsEqUserId(current) ? EqPresetDisplayName(current) : "";
+
+            string name = PromptForName(Loc.T("Eq_SavePresetTitle"), Loc.T("Common_PresetName"), suggested);
+            name = (name ?? "").Trim();
+            if (name.Length == 0) return;
+            if (name.Length > EqPresetNameMax) name = name.Substring(0, EqPresetNameMax).TrimEnd();
+
+            foreach (var b in EqBuiltinIds)
+            {
+                if (!string.Equals(EqBuiltinName(b), name, StringComparison.CurrentCultureIgnoreCase)) continue;
+                TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Eq_SavePresetTitle"),
+                    Loc.F("Eq_NameTakenByBuiltin_Fmt", name), DialogKind.Warning);
+                return;
+            }
+
+            var existing = FindEqUserPreset(name);
+            bool updatingCurrent = existing != null && IsEqUserId(current)
+                && string.Equals(EqUserNameOf(current), existing.Name, StringComparison.OrdinalIgnoreCase);
+            if (existing != null && !updatingCurrent)
+            {
+                bool? ok = TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Eq_ReplacePresetTitle"),
+                    Loc.F("Eq_ReplacePreset_Fmt", existing.Name), DialogKind.Confirm,
+                    okLabel: Loc.T("Eq_Replace"), cancelLabel: Loc.T("Common_Cancel"));
+                if (ok != true) return;
+            }
+
+            if (existing == null)
+            {
+                existing = new EqPreset();
+                users.Add(existing);
+            }
+            existing.Name = name;
+            existing.Bands = ParametricEq.CloneBands(bands);
+            _plugin.Settings.TrueforceEqPresetId = TrueforcePlugin.EqPresetUserPrefix + name;
+            _eqPresetShownKey = null;
+            RefreshEqPresetCombo();
+            SchedulePersistDebounced();
+            MarkEqSeen();
+        }
+
+        private void TrueforceEqDeletePreset_Click(object sender, RoutedEventArgs e)
+        {
+            ResolveEqPreset(out string current, out _);
+            if (!IsEqUserId(current)) return;
+            var preset = FindEqUserPreset(EqUserNameOf(current));
+            if (preset == null) return;
+            bool? ok = TrueforceDialog.Show(Window.GetWindow(this), Loc.T("Eq_DeletePresetTitle"),
+                Loc.F("Eq_DeletePreset_Fmt", preset.Name), DialogKind.Destructive,
+                okLabel: Loc.T("Common_Delete"), cancelLabel: Loc.T("Common_Cancel"));
+            if (ok != true) return;
+            EqUserPresets?.Remove(preset);
+            // The curve stays on the graph; it just no longer has a name.
+            _plugin.Settings.TrueforceEqPresetId = "";
+            _eqPresetShownKey = null;
+            RefreshEqPresetCombo();
+            SchedulePersistDebounced();
+        }
 
         // ---------- undo ----------
 
@@ -251,9 +489,11 @@ namespace TrueforceForAll.Plugin
                 _eqUndoLastStamp = now;   // keep the burst open
                 return;
             }
-            var snap = new List<EqBand>(bands.Count);
-            foreach (var b in bands) snap.Add(b?.Clone() ?? new EqBand());
-            _eqUndo.Add(snap);
+            _eqUndo.Add(new EqUndoEntry
+            {
+                Bands = ParametricEq.CloneBands(bands),
+                PresetId = _plugin?.Settings?.TrueforceEqPresetId ?? "",
+            });
             if (_eqUndo.Count > EqUndoDepth) _eqUndo.RemoveAt(0);
             _eqUndoLastKey = key;
             _eqUndoLastStamp = now;
@@ -268,16 +508,19 @@ namespace TrueforceForAll.Plugin
             _eqUndo.RemoveAt(_eqUndo.Count - 1);
             _eqUndoLastKey = null;
             bands.Clear();
-            bands.AddRange(snap);
+            bands.AddRange(snap.Bands);
+            if (_plugin?.Settings != null) _plugin.Settings.TrueforceEqPresetId = snap.PresetId ?? "";
+            _eqPresetShownKey = null;
             EqStructureChanged(-1);
         }
 
-        // Same behaviour as the effects' revert buttons: hidden until there is
-        // something to step back to, then the grey arrow appears in the header.
+        // Same behaviour as the effects' revert buttons: not shown until there
+        // is something to step back to, then the grey arrow appears in the
+        // header. Hidden rather than Collapsed so the preset list keeps its place.
         private void UpdateEqUndoButton()
         {
             if (TrueforceEqUndoButton != null)
-                TrueforceEqUndoButton.Visibility = _eqUndo.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+                TrueforceEqUndoButton.Visibility = _eqUndo.Count > 0 ? Visibility.Visible : Visibility.Hidden;
         }
 
         // ---------- live spectrum ----------

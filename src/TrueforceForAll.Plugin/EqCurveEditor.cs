@@ -572,7 +572,9 @@ namespace TrueforceForAll.Plugin
                     bool sel = i == _selected;
                     bool hov = i == _hover || i == _drag;
                     double r = HandleR + (hov ? 1.5 : 0);
-                    Brush fill = !b.Enabled ? HandleOffFill : sel ? Gold : HandleFill;
+                    // A cut parked at its edge is on but doing nothing: gold
+                    // ring, grey fill, so it reads as "drag me in".
+                    Brush fill = !b.Enabled ? HandleOffFill : sel ? Gold : b.IsParkedCut ? HandleOffFill : HandleFill;
                     Pen pen = b.Enabled ? HandlePen : HandleOffPen;
                     dc.DrawEllipse(fill, pen, c, r, r);
                     var t = Text((i + 1).ToString(CultureInfo.InvariantCulture), 9, sel && b.Enabled ? HandleNumSel : HandleNumOn);
@@ -584,7 +586,11 @@ namespace TrueforceForAll.Plugin
             var sb = SelectedBand();
             if (sb != null)
             {
-                string s = IsCut(sb)
+                string s = sb.IsParkedCut && sb.Type == EqBandType.LowCut
+                    ? Loc.F("Eq_LowCutParked_Fmt", TypeLabel(sb.Type))
+                    : sb.IsParkedCut
+                    ? Loc.F("Eq_HighCutParked_Fmt", TypeLabel(sb.Type))
+                    : IsCut(sb)
                     ? string.Format(CultureInfo.InvariantCulture, "{0}: {1} Hz  {2} dB/oct  Q {3:0.00}", TypeLabel(sb.Type), FormatHz(sb.FrequencyHz), ParametricEq.SnapSlope(sb.SlopeDbPerOct), sb.Q)
                     : string.Format(CultureInfo.InvariantCulture, "{0}: {1} Hz  {2:+0.0;-0.0;0.0} dB  Q {3:0.00}", TypeLabel(sb.Type), FormatHz(sb.FrequencyHz), sb.GainDb, sb.Q);
                 var t = Text(s, 11, ReadoutBrush);
@@ -592,7 +598,7 @@ namespace TrueforceForAll.Plugin
             }
             else if (!_eqActive)
             {
-                var t = Text("EQ off (bypassed)", 11, ReadoutBrush);
+                var t = Text(Loc.T("Eq_OffBypassed"), 11, ReadoutBrush);
                 dc.DrawText(t, new Point(plot.Right - t.Width - 6, plot.Top + 4));
             }
         }

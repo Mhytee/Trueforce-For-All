@@ -1333,30 +1333,29 @@ namespace TrueforceForAll.Plugin
             _trueforceEq.Enabled = s.TrueforceEqEnabled;
         }
 
-        /// <summary>One-time seed of the flat eight-band layout. The list must
-        /// default EMPTY in TrueforceSettings (SimHub's loader appends stored
-        /// arrays onto initialisers), so the factory content lives here behind
-        /// a latch, the DashTabOrder pattern. An empty list AFTER the latch is
-        /// the user's own choice and stays empty.</summary>
+        /// <summary>One-time seed of the Flat preset (end cuts parked, six flat
+        /// bells). The list must default EMPTY in TrueforceSettings (SimHub's
+        /// loader appends stored arrays onto initialisers), so the factory
+        /// content lives here behind a latch, the DashTabOrder pattern. An
+        /// empty list AFTER the latch is the user's own choice and stays empty.</summary>
         private void SeedTrueforceEqIfNeeded()
         {
             var s = Settings;
             if (s == null || s.TrueforceEqSeededV1) return;
             if (s.TrueforceEqBands == null) s.TrueforceEqBands = new List<EqBand>();
-            if (s.TrueforceEqBands.Count == 0) s.TrueforceEqBands.AddRange(ParametricEq.FactoryBands());
+            if (s.TrueforceEqBands.Count == 0)
+            {
+                s.TrueforceEqBands.AddRange(EqCurves.Flat());
+                s.TrueforceEqPresetId = EqPresetIdFlat;
+            }
             s.TrueforceEqSeededV1 = true;
         }
 
-        /// <summary>EQ editor audition: a short sine at one frequency through
-        /// the normal mix, so the EQ shapes it and the user feels a cut land.
-        /// Rides the motor-sweep effect's tone mode (same amplitude as the
-        /// SWEEP characterisation).</summary>
-        public void AuditionEqTone(double hz, int durationMs = 1500)
-        {
-            var sweep = MotorSweep;
-            if (sweep == null) return;
-            RunEffectTest(sweep, () => sweep.PlayTone((float)hz, durationMs));
-        }
+        // Built-in EQ preset ids. Stable: they are persisted in
+        // TrueforceEqPresetId. Names are resolved in the settings UI.
+        public const string EqPresetIdFlat      = "builtin:flat";
+        public const string EqPresetIdCleanBass = "builtin:cleanbass";
+        public const string EqPresetUserPrefix  = "user:";
 
         // Master-gain min/max mirror the settings slider (Minimum=0, Maximum=2).
         private const float MasterGainMin = 0f;
@@ -4229,13 +4228,7 @@ namespace TrueforceForAll.Plugin
         /// running (no FFB tap data, so the stream would otherwise be keepalive).
         /// Drives effect.TestUpdate(phase) at ~60 Hz over the test window so
         /// effects can simulate dynamic behavior (RPM ramps, slip pulses, etc).</summary>
-        public void TestEffect(TelemetryEffect effect) => RunEffectTest(effect, null);
-
-        /// <summary>Shared test runner: <paramref name="start"/> arms the effect
-        /// and returns its duration (null = the effect's own TestPlay). Holds
-        /// the device active for the run, drives TestUpdate at ~60 Hz, and
-        /// resets the effect when it ends.</summary>
-        private void RunEffectTest(TelemetryEffect effect, Func<int> start)
+        public void TestEffect(TelemetryEffect effect)
         {
             if (effect == null)
             {
@@ -4247,7 +4240,7 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info($"[TF4ALL] TestEffect '{effect.Name}': device not initialized");
                 return;
             }
-            int durationMs = start != null ? start() : effect.TestPlay();
+            int durationMs = effect.TestPlay();
             SimHub.Logging.Current.Info($"[TF4ALL] TestEffect '{effect.Name}' duration={durationMs} ms");
             if (durationMs <= 0) return;
 
@@ -6051,10 +6044,19 @@ namespace TrueforceForAll.Plugin
                         // dies stops delivering packets within milliseconds (our
                         // own ep3 stream is in that count), and an undecoded
                         // shape trips the traffic guard. A game that holds a
-                        // static non-zero force through a park without resending
-                        // it is the one case this zeroes, and none of the games
-                        // we capture does that.
+                        // static non-zero force without resending it is the one
+                        // case this zeroes wrongly, and a CLIPPED game does
+                        // exactly that: see the saturated hold below.
                         const int pcapStreamMaxAgeMs = 500;
+                        // What counts as "the game is asking for everything the
+                        // wheel has" for the saturated hold below. Full scale is
+                        // 32767 and a clip lands exactly there, so the bar is set
+                        // just under it (97.6%) rather than at a round fraction:
+                        // ordinary cornering does not sit this high AND stop
+                        // being resent, and anything that does is a clip by
+                        // another name. Wire frame, the raw captured int16, so
+                        // FfbScale and the invert do not enter into it.
+                        const int SaturatedFfbLsb = 32000;
                         chosen = _ffbTap?.TryGetFreshFfbTarget(pcapStreamMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "pcap";
                         else if (_ffbTap != null
@@ -6080,9 +6082,65 @@ namespace TrueforceForAll.Plugin
                                  // the game's own force; keepalive hands it back.
                                  && !_ffbTap.ForceTrafficSinceLastSample)
                         {
-                            chosen = (short)0;
-                            ffbSrc = "pcap-quiet";
-                            tapQuiet = true;
+                            // SATURATED HOLD. "Driving never gaps past 100 ms"
+                            // holds only while the force is still MOVING. Put
+                            // the game's output into clip (Assetto Corsa with
+                            // its in-game gain above 100% is the report,
+                            // tester via owner 2026-09-28) and the commanded
+                            // value pins at full scale through the loaded part
+                            // of a corner, unchanged, so the driver stops
+                            // writing it and the wire goes silent for as long
+                            // as the clip lasts. Zeroing there replaces the
+                            // game's maximum torque with nothing, mid-corner,
+                            // and the preset's slew limiter fades it out over
+                            // ~85 ms so it reads as the wheel going limp
+                            // rather than as a glitch. G HUB has none of this
+                            // because no ep3 stream overrides the firmware's
+                            // held force.
+                            //
+                            // So a last value at full scale is read as still
+                            // pinned, not as released: release is itself a
+                            // change, which the driver does send. The guard is
+                            // positive per-tick evidence that the game's
+                            // physics is ADVANCING, not just that a session
+                            // exists, because the case this must not resurrect
+                            // is a game that stops sending while saturated
+                            // (the Wreckfest alt-tab class, which is why the
+                            // 500 ms window exists at all). A frozen page ages
+                            // MsSinceLastFrame out within a quarter second, an
+                            // announced pause trips the flag, and either
+                            // releases the hold to the zero below. Same three
+                            // conditions the Mode B slip-starved gate uses.
+                            //
+                            // Bounded by FfbTargetMaxAgeMs as a side effect of
+                            // reading the value through it: a clip that outlasts
+                            // 10 s (an oval at a gain high enough to saturate a
+                            // whole lap) ages out and lands back on the zero.
+                            // Deliberate, and not a number worth raising without
+                            // a report that hits it.
+                            short? held = _ffbTap.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000);
+                            if (held.HasValue
+                                && Math.Abs((int)held.Value) >= SaturatedFfbLsb
+                                && src != null
+                                && src.IsSessionActive
+                                && src.MsSinceLastFrame <= 250.0
+                                && !_gameNotDrivingState)
+                            {
+                                // Not tapQuiet: the tap really did capture
+                                // this value, it is only old, so the trace
+                                // records it as captured. The ambiguity
+                                // tapQuiet exists to prevent is a SUBSTITUTED
+                                // zero against a captured one, and a held full
+                                // scale is neither.
+                                chosen = held;
+                                ffbSrc = "pcap-clip";
+                            }
+                            else
+                            {
+                                chosen = (short)0;
+                                ffbSrc = "pcap-quiet";
+                                tapQuiet = true;
+                            }
                         }
                     }
                     // Farming Simulator streams NO real force values on any

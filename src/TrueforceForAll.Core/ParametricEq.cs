@@ -66,8 +66,11 @@ namespace TrueforceForAll.Core
 
         public bool IsCut => Type == EqBandType.LowCut || Type == EqBandType.HighCut;
 
-        /// <summary>True when the band contributes nothing (disabled, or a
-        /// gain-driven type sitting at 0 dB).</summary>
+        /// <summary>True when the band contributes nothing: disabled, a
+        /// gain-driven type sitting at 0 dB, or a cut parked at its edge (a
+        /// low cut at <see cref="ParametricEq.LowCutParkHz"/> or below, a high
+        /// cut at <see cref="ParametricEq.HighCutParkHz"/>), the way a channel
+        /// strip's filter knob turned all the way out is off.</summary>
         public bool IsBypass
         {
             get
@@ -79,11 +82,20 @@ namespace TrueforceForAll.Core
                     case EqBandType.LowShelf:
                     case EqBandType.HighShelf:
                         return Math.Abs(GainDb) < 0.005;
+                    case EqBandType.LowCut:
+                        return FrequencyHz <= ParametricEq.LowCutParkHz + 1e-9;
+                    case EqBandType.HighCut:
+                        return FrequencyHz >= ParametricEq.HighCutParkHz - 1e-9;
                     default:
                         return false;
                 }
             }
         }
+
+        /// <summary>A cut sitting at its park position (see IsBypass).</summary>
+        public bool IsParkedCut
+            => (Type == EqBandType.LowCut && FrequencyHz <= ParametricEq.LowCutParkHz + 1e-9)
+            || (Type == EqBandType.HighCut && FrequencyHz >= ParametricEq.HighCutParkHz - 1e-9);
     }
 
     public sealed class ParametricEq : ISampleProcessor
@@ -109,17 +121,90 @@ namespace TrueforceForAll.Core
         public const double SlopeDefaultQ = 0.7071;
         public const int MaxBands = 32;
 
-        /// <summary>The flat starting layout: six bells an octave apart across
-        /// the band the effects live in, all at 0 dB. Visible handles to grab,
-        /// no sound until one moves. Octave spacing suits the Q 1 width (1.4
-        /// octaves) with modest overlap.</summary>
+        /// <summary>Park positions: a low cut at or below LowCutParkHz, or a
+        /// high cut at HighCutParkHz, is off. They are the editor's left edge
+        /// and the top of the frequency range, so dragging a cut all the way
+        /// out switches it off and dragging it in engages it.</summary>
+        public const double LowCutParkHz = 10.0;
+        public const double HighCutParkHz = MaxFrequencyHz;
+
+        /// <summary>Slope the end cuts start at: steep, the way an EQ's
+        /// high-pass and low-pass are usually used (owner, 2026-09-30).</summary>
+        public const int EdgeCutSlopeDbPerOct = 24;
+
+        /// <summary>The bells between the end cuts in the flat layout: six an
+        /// octave apart across the band the effects live in, all at 0 dB.
+        /// Octave spacing suits the Q 1 width (1.4 octaves) with modest overlap.</summary>
         public static readonly double[] FactoryFrequenciesHz = { 20, 40, 80, 160, 320, 640 };
 
+        /// <summary>The flat starting layout, eight points: a low cut parked at
+        /// the left edge, six flat bells, a high cut parked at the right edge.
+        /// Every point is a handle to grab and none of them changes the sound
+        /// until it moves (owner, 2026-09-30: the first and last points are
+        /// the cuts, the middle ones boost and lower).</summary>
         public static List<EqBand> FactoryBands()
         {
-            var list = new List<EqBand>(FactoryFrequenciesHz.Length);
+            var list = new List<EqBand>(FactoryFrequenciesHz.Length + 2);
+            list.Add(new EqBand
+            {
+                Type = EqBandType.LowCut, FrequencyHz = LowCutParkHz, Q = SlopeDefaultQ,
+                SlopeDbPerOct = EdgeCutSlopeDbPerOct,
+            });
             foreach (double f in FactoryFrequenciesHz)
                 list.Add(new EqBand { FrequencyHz = f, GainDb = 0, Q = DefaultQ, Type = EqBandType.Peak });
+            list.Add(new EqBand
+            {
+                Type = EqBandType.HighCut, FrequencyHz = HighCutParkHz, Q = SlopeDefaultQ,
+                SlopeDbPerOct = EdgeCutSlopeDbPerOct,
+            });
+            return list;
+        }
+
+        /// <summary>Same curve, band for band within display rounding, in any
+        /// order: the sections are linear and run in series, so order never
+        /// changes the sound. How the preset list tells a preset from an edit.</summary>
+        public static bool BandsEqual(IList<EqBand> a, IList<EqBand> b)
+        {
+            int na = a?.Count ?? 0, nb = b?.Count ?? 0;
+            if (na != nb) return false;
+            if (na == 0) return true;
+            var sa = SortedForCompare(a);
+            var sb = SortedForCompare(b);
+            for (int i = 0; i < na; i++)
+            {
+                var x = sa[i];
+                var y = sb[i];
+                if (x == null || y == null) { if (x != y) return false; continue; }
+                if (x.Enabled != y.Enabled || x.Type != y.Type) return false;
+                if (Math.Abs(x.FrequencyHz - y.FrequencyHz) > 0.05) return false;
+                if (Math.Abs(x.Q - y.Q) > 0.005) return false;
+                if (!x.IsCut && Math.Abs(x.GainDb - y.GainDb) > 0.05) return false;
+                if (x.IsCut && SnapSlope(x.SlopeDbPerOct) != SnapSlope(y.SlopeDbPerOct)) return false;
+            }
+            return true;
+        }
+
+        private static List<EqBand> SortedForCompare(IList<EqBand> src)
+        {
+            var list = new List<EqBand>(src);
+            list.Sort((x, y) =>
+            {
+                if (x == null || y == null) return (x == null ? 0 : 1) - (y == null ? 0 : 1);
+                int c = Math.Round(x.FrequencyHz, 1).CompareTo(Math.Round(y.FrequencyHz, 1));
+                if (c != 0) return c;
+                c = ((int)x.Type).CompareTo((int)y.Type);
+                if (c != 0) return c;
+                c = Math.Round(x.GainDb, 1).CompareTo(Math.Round(y.GainDb, 1));
+                if (c != 0) return c;
+                return Math.Round(x.Q, 2).CompareTo(Math.Round(y.Q, 2));
+            });
+            return list;
+        }
+
+        public static List<EqBand> CloneBands(IList<EqBand> src)
+        {
+            var list = new List<EqBand>(src?.Count ?? 0);
+            if (src != null) foreach (var b in src) list.Add(b?.Clone() ?? new EqBand());
             return list;
         }
 

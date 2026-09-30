@@ -738,6 +738,17 @@ namespace TrueforceForAll.Plugin
         public List<EqBand> TrueforceEqBands { get; set; } = new List<EqBand>();
         public bool TrueforceEqSeededV1 { get; set; } = false;
 
+        // The EQ preset the curve was last picked or saved from: a built-in id
+        // ("builtin:flat", "builtin:cleanbass") or "user:" + a saved preset's
+        // name. Empty = untracked; the preset list then matches the curve
+        // against the presets and shows Custom when none fits. An edit keeps
+        // the id, and the list shows the preset as edited until it is saved
+        // or picked again.
+        public string TrueforceEqPresetId { get; set; } = "";
+        // Curves the user saved from the EQ editor, shown in its preset list
+        // after the built-ins. MUST default EMPTY (the append landmine above).
+        public List<EqPreset> TrueforceEqUserPresets { get; set; } = new List<EqPreset>();
+
         // Inject a Trueforce quick-gain box into SimHub's home-screen "Feedback"
         // section, next to Motors/Wind. That section is hardcoded in SimHubWPF
         // with no plugin extension point, so the box is added by a defensive
@@ -972,7 +983,18 @@ namespace TrueforceForAll.Plugin
         // convention disagrees with ep3 cur (default true matches AC). Smooth
         // converts AC's 7ms-staircase FFB target into a ramp by IIR low-pass
         // (0 ms = no smoothing).
-        public float FfbScale                 { get; set; } = 0.80f;
+        //
+        // 1.0, and nothing we ship starts under it (owner, 2026-09-29): every
+        // built-in preset that carried 0.8 has been raised to match. The 0.8
+        // was read as headroom and is not: the haptic window rides its own
+        // bytes in the ep3 packet and cur (bytes 6-9) carries the torque
+        // alone, so this is a pure strength control and 0.8 simply handed the
+        // driver four fifths of the force the game asked for. Users who found
+        // the wheel weak raised the in-game gain instead, which clipped the
+        // game's output, and a clipped force stops being resent (see the
+        // saturated hold in TrueforcePlugin's FFB pipeline). An existing
+        // settings file keeps whatever it has; this only moves fresh installs.
+        public float FfbScale                 { get; set; } = 1.00f;
         // Sign of the FFB target sent to the motor. Defaults true (inverted),
         // which is correct on every wheel we've tested in the common games,
         // but NOT universal: RaceRoom (and possibly other games/wheels) report
@@ -2708,7 +2730,7 @@ namespace TrueforceForAll.Plugin
         // setting (top-level TrueforceSettings.MasterGain, auto-persisted),
         // not preset-scoped. Old preset JSON may still carry a "MasterGain"
         // key; it is ignored on load.
-        public float FfbScale                  { get; set; } = 0.80f;
+        public float FfbScale                  { get; set; } = 1.00f;
         public bool  FfbInvertSign             { get; set; } = true;
         public float FfbSmoothTimeConstantMs   { get; set; } = 0.0f;
         public bool  FfbSpikeTamingEnabled     { get; set; } = true;

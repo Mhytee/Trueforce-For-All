@@ -657,8 +657,16 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
-                // 0.4.0 shipped 2026-09-23; the EQ rides the next release.
-                Version = new Version(0, 4, 1),
+                // File a block at the version it will SHIP in, checked against the
+                // tags rather than the build props: 0.4.1 went out as a hotfix cut
+                // from main on 2026-09-28 and is not in dev's history, so the build
+                // props here sat behind the public release. An entry left at a
+                // number that already shipped is skipped by EntriesNewerThan (which
+                // is STRICTLY newer) for everyone who ran it. That costs nothing in
+                // the normal path, where the modal prefers the GitHub release body,
+                // and shows up in the OFFLINE fallback, which is also how a dev
+                // build previews changelog copy before the release exists.
+                Version = new Version(0, 5, 0),
                 Title = "Trueforce EQ",
                 Entries = new List<ChangelogEntry>
                 {
@@ -666,7 +674,22 @@ namespace TrueforceForAll.Plugin
                         Group = "New features",
                         EffectId = "TrueforceEq",
                         Headline = "Trueforce EQ",
-                        Description = "Cut the frequencies that make your wheel or rig rattle, or lift the ones it barely renders. Drag points on a curve, add bands, set their width, and audition a tone to check the cut. Applies in every game and preset; starts flat.",
+                        Description = "Cut the frequencies that make your wheel or rig rattle, or lift the ones it barely renders. Drag points on a curve, add bands and set their width, or start from a preset and save your own. Applies in every game and preset; starts flat.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "The plugin in your language",
+                        Description = "The panel speaks Spanish, as a machine translation to start from, and any other language can be started and translated from inside the plugin. Your corrections publish to everyone showing that language.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Full strength by default",
+                        Description = "Default FFB scale changed from 0.8 to 1, in every built-in preset and on a fresh install. Your own presets keep the strength you set.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "No more mid-corner dropouts",
+                        Description = "Force feedback no longer cuts out mid-corner when a game's force is clipped, such as Assetto Corsa with its in-game gain above 100%.",
                     },
                 },
             },
