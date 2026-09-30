@@ -39,11 +39,17 @@ namespace TrueforceForAll.Plugin.Localization
         public static bool Check(string english, string translation)
             => Signature(english) == Signature(translation);
 
-        // The characters no value may carry: C0 except TAB and LF, DEL, C1, and the
-        // invisible and bidi controls that let one string render as another. The
-        // same list as _loc_banned_chars() in migration 0136, which is the check the
-        // server applies; this is the copy that stops a row the server accepted
-        // before that list was tightened.
+        // The characters no value may carry, the same list as _loc_banned_chars() in
+        // migration 0140. Narrower than 0136's, which refused text that other writing
+        // systems need in order to be written at all: Persian cannot be spelled without
+        // the zero-width non-joiner, Indic conjuncts need the joiner, and mixed
+        // Arabic-and-Latin needs a directional mark to put its punctuation in the right
+        // place. What stays refused is what can make a string render as something other
+        // than itself.
+        //
+        // Both sides hold the list because either can be the one out of date. The count
+        // is asserted in Core.Tests against the number this file and the migration agree
+        // on, which is what stops them drifting.
         private static readonly HashSet<char> Banned = BuildBanned();
 
         private static HashSet<char> BuildBanned()
@@ -54,10 +60,9 @@ namespace TrueforceForAll.Plugin.Localization
             for (int c = 14; c <= 31; c++) set.Add((char)c);      // C0 above CR
             set.Add((char)127);                                  // DEL
             for (int c = 128; c <= 159; c++) set.Add((char)c);    // C1
-            for (int c = 0x200B; c <= 0x200F; c++) set.Add((char)c);  // ZWSP..RLM
-            set.Add((char)0x2028); set.Add((char)0x2029);         // LS, PS
-            for (int c = 0x202A; c <= 0x202E; c++) set.Add((char)c);  // LRE..RLO
-            for (int c = 0x2066; c <= 0x2069; c++) set.Add((char)c);  // LRI..PDI
+            set.Add((char)0x200B);                               // ZWSP: padding, invisible text
+            set.Add((char)0x2028); set.Add((char)0x2029);         // LS, PS: break a one-line label
+            for (int c = 0x202A; c <= 0x202E; c++) set.Add((char)c);  // LRE..RLO: disguise text
             set.Add((char)0xFEFF);                               // ZWNBSP, a stray BOM
             return set;
         }

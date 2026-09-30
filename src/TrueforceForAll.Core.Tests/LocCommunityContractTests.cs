@@ -143,7 +143,10 @@ namespace TrueforceForAll.Core.Tests
         [InlineData("tabs\tand\nbreaks are fine", false)]
         [InlineData("Español", false)]
         [InlineData("zero​width", true)]        // ZWSP
-        [InlineData("bidi‮override", true)]     // RLO
+        [InlineData("bidi‮override", true)]     // RLO, can disguise a string
+        [InlineData("Persian‌spelling", false)] // ZWNJ, required to spell Persian
+        [InlineData("Arabic‏ mark", false)]     // RLM, punctuation in mixed text
+        [InlineData("⁦isolated⁩", false)] // the directional isolates
         [InlineData("bell\u0007", true)]
         [InlineData("bom﻿", true)]
         public void UnsafeCharacters(string value, bool unsafeText)
@@ -175,13 +178,15 @@ namespace TrueforceForAll.Core.Tests
         [Fact]
         public void TheBannedListMatchesTheServerSCount()
         {
-            // _loc_banned_chars() in migration 0136 returns 78 code points. Counting
-            // them here is what keeps the two lists from drifting apart: the server
-            // would refuse a row this side had already let through, or the reverse.
+            // _loc_banned_chars() in migration 0140 returns 70 code points, eight fewer
+            // than 0136's: the joiners and the directional marks and isolates came off it
+            // because a script that needs them cannot be written without them. Counting
+            // here is what keeps the two lists from drifting apart: the server would
+            // refuse a row this side had already let through, or the reverse.
             int banned = 0;
             for (int c = 1; c <= 0xFFFF; c++)
                 if (LocPlaceholderRules.HasUnsafeChars(((char)c).ToString())) banned++;
-            Assert.Equal(78, banned);
+            Assert.Equal(70, banned);
         }
     }
 }

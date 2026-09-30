@@ -148,18 +148,22 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
-            /// <summary>Roughly how many characters fit, worked out from this row's own
-            /// English rather than an alphabet-wide average: the string in hand is the
-            /// better guide, and a translator can act on characters where pixels mean
-            /// nothing.</summary>
+            /// <summary>Roughly how many characters fit. Measured from the translation
+            /// once there is one, and from the English until then: a Chinese character is
+            /// about twice the width of a Latin letter, so counting in English letters
+            /// would promise a Chinese translator twice the room they have. A translator
+            /// can act on characters where pixels mean nothing, which is why this is not
+            /// just reported in pixels.</summary>
             private int FitChars
             {
                 get
                 {
-                    if (Room <= 0 || string.IsNullOrEmpty(English)) return 0;
-                    double w = MeasureWidth(English);
+                    if (Room <= 0) return 0;
+                    string gauge = string.IsNullOrEmpty(_text) ? English : _text;
+                    if (string.IsNullOrEmpty(gauge)) return 0;
+                    double w = MeasureWidth(gauge);
                     if (w <= 0) return 0;
-                    return Math.Max(1, (int)(Room / (w / English.Length)));
+                    return Math.Max(1, (int)(Room / (w / gauge.Length)));
                 }
             }
 
