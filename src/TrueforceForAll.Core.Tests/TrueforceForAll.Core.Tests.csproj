@@ -127,6 +127,12 @@
     <Compile Include="..\TrueforceForAll.Plugin\Localization\LocPlurals.cs">
       <Link>Linked\LocPlurals.cs</Link>
     </Compile>
+    <!-- Which language tags reach the picker. Pure, and linked here because the culture
+         table differs between net48 and net8: the rule is asserted against fixed inputs
+         rather than against whichever table the test host carries. -->
+    <Compile Include="..\TrueforceForAll.Plugin\Localization\LocLanguageList.cs">
+      <Link>Linked\LocLanguageList.cs</Link>
+    </Compile>
   </ItemGroup>
 
 </Project>

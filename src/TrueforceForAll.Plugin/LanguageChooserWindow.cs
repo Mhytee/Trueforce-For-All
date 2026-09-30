@@ -241,8 +241,24 @@ namespace TrueforceForAll.Plugin
             }
             catch { }
 
+            // The framework lists a language twice when it also names the script that
+            // language is written in by default: pa beside pa-Guru, uz beside uz-Latn,
+            // bs beside bs-Latn, mn beside mn-Cyrl. Both read as the same word, so the
+            // list showed 37 pairs of what looked like the same language twice.
+            //
+            // The bare tag is the one to keep: a file written for it serves every region
+            // and script of that language, and it is what the resolution chain walks to.
+            // A script that reads differently is a different entry and stays: zh-Hans
+            // and zh-Hant are not the same list item, and neither are sr-Cyrl and sr.
+            //
+            // Dropped tags are deliberately NOT marked seen, so one that has a file here
+            // is still added by the loop below. A tag someone is translating belongs in
+            // the list whatever this rule thinks of it.
+            var nativeByTag = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in cultures) nativeByTag[c.Name] = c.NativeName;
             foreach (var c in cultures)
             {
+                if (LocLanguageList.RestatesItsLanguage(c.Name, c.NativeName, nativeByTag)) continue;
                 seen.Add(c.Name);
                 _rows.Add(MakeRow(store, c.Name, c.NativeName, c.EnglishName, known, windowsLang));
             }
@@ -263,8 +279,27 @@ namespace TrueforceForAll.Plugin
                 _rows.Add(MakeRow(store, tag, native, english, known, windowsLang));
             }
 
+            // Two languages can share a name and be different languages: North and South
+            // Ndebele are both isiNdebele, and two varieties of Tamazight are both
+            // written the same. Those are not duplicates to collapse, so the English
+            // name goes on the end of exactly the rows that need telling apart.
+            var byName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var r in _rows)
+            {
+                int n;
+                byName[r.Native] = byName.TryGetValue(r.Native, out n) ? n + 1 : 1;
+            }
+            foreach (var r in _rows)
+            {
+                int n;
+                if (!byName.TryGetValue(r.Native, out n) || n < 2) continue;
+                if (string.IsNullOrEmpty(r.English)) continue;
+                r.Native = r.Native + " (" + r.English + ")";
+            }
+
             _rows.Sort(CompareRows);
         }
+
 
         private static int CompareRows(Row a, Row b)
         {
