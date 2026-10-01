@@ -33,6 +33,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -123,20 +124,32 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(head);
 
             var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-            bar.Children.Add(new TextBlock
-            {
-                Text = Loc.T("Translate_Search"), Foreground = MutedFg, FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
-            });
             _search = new TextBox
             {
-                Width = 260, Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
+                Width = 360, Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
                 Padding = new Thickness(5, 3, 5, 3), FontSize = 12,
                 ToolTip = Loc.T("LangPicker_Search_Tip"),
             };
-            _search.TextChanged += (s, e) => ApplyFilter();
+            // The hint goes in the box, and says the second thing this box does. Typing a
+            // code the list has no row for is how a language Windows has never heard of
+            // gets started, and nothing on screen said so: the box looked like a filter.
+            var hint = new TextBlock
+            {
+                Text = Loc.T("LangPicker_SearchHint"),
+                Foreground = MutedFg, FontSize = 12, IsHitTestVisible = false,
+                Margin = new Thickness(7, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            _search.TextChanged += (s, e) =>
+            {
+                hint.Visibility = _search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+                ApplyFilter();
+            };
             _search.Loaded += (s, e) => _search.Focus();
-            bar.Children.Add(_search);
+            var searchCell = new Grid();
+            searchCell.Children.Add(_search);
+            searchCell.Children.Add(hint);
+            bar.Children.Add(searchCell);
             Grid.SetRow(bar, 1);
             root.Children.Add(bar);
 
@@ -159,12 +172,19 @@ namespace TrueforceForAll.Plugin
                 SelectionMode = DataGridSelectionMode.Single,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             };
+            // The same inherited style that stopped the Translate window virtualizing
+            // reaches this grid too: a ScrollViewer with CanContentScroll false measures
+            // its content at unlimited height, so all 273 rows get built up front.
+            // DataGrid's own default is true, and setting it here beats the style.
+            ScrollViewer.SetCanContentScroll(_grid, true);
+            VirtualizingPanel.SetScrollUnit(_grid, ScrollUnit.Item);
+            VirtualizingPanel.SetVirtualizationMode(_grid, VirtualizationMode.Recycling);
             AddColumn(Loc.T("LangPicker_ColumnLanguage"), nameof(Row.Native),
                       new DataGridLength(1, DataGridLengthUnitType.Star));
             AddColumn(Loc.T("LangPicker_ColumnProgress"), nameof(Row.Progress),
                       new DataGridLength(170));
             // A double-click is how a long list is used; Enter is for the keyboard.
-            _grid.MouseDoubleClick += (s, e) => Accept();
+            _grid.MouseDoubleClick += (s, e) => { if (HitARow(e.OriginalSource as DependencyObject)) Accept(); };
             _grid.PreviewKeyDown += (s, e) => { if (e.Key == Key.Enter) { Accept(); e.Handled = true; } };
             Grid.SetRow(_grid, 2);
             root.Children.Add(_grid);
@@ -177,6 +197,11 @@ namespace TrueforceForAll.Plugin
             };
             var open = MakeButton(Loc.T("LangPicker_Open"), (s, e) => Accept());
             open.IsDefault = true;
+            // Opening a language is the action this window exists for, so it carries the
+            // gold accent. Through ModalButtonTheme because WPF's default template draws
+            // system chrome over a brush set by hand, and IsDefault makes that chrome
+            // worse rather than better.
+            ModalButtonTheme.Primary(open);
             buttons.Children.Add(open);
             var close = MakeButton(Loc.T("Settings_Close"), (s, e) => Close());
             close.IsCancel = true;
@@ -191,6 +216,30 @@ namespace TrueforceForAll.Plugin
             // a person opened this window; the rows are already correct without it, just
             // smaller for a language this PC has never fetched.
             LoadSentPercentagesAsync();
+            // And say the two names this PC has no font for in English instead of boxes.
+            LabelUndrawableNamesAsync();
+        }
+
+        /// <summary>Whether a click landed on a row rather than on the furniture around
+        /// them. A DataGrid's scrollbar, headers and empty space are all inside the
+        /// DataGrid, so a plain MouseDoubleClick on the grid fires for a double-click on
+        /// the scroll arrow too. The list always has a selected row, so that opened
+        /// whichever language happened to be selected: two clicks on the down arrow and
+        /// the picker closed and the Translate window started loading.</summary>
+        private static bool HitARow(DependencyObject hit)
+        {
+            for (int guard = 0; hit != null && guard < 64; guard++)
+            {
+                if (hit is DataGridRow) return true;
+                // Stop at the grid itself: anything above it is not a row either, and a
+                // ScrollBar part reaches the grid without ever passing a row.
+                if (hit is DataGrid) return false;
+                if (hit is System.Windows.Controls.Primitives.ScrollBar) return false;
+                hit = hit is System.Windows.Media.Visual || hit is System.Windows.Media.Media3D.Visual3D
+                    ? VisualTreeHelper.GetParent(hit)
+                    : LogicalTreeHelper.GetParent(hit);
+            }
+            return false;
         }
 
         private void AddColumn(string header, string path, DataGridLength width)
@@ -208,14 +257,17 @@ namespace TrueforceForAll.Plugin
             });
         }
 
+        /// <summary>A button in this window's theme. Through ModalButtonTheme, which
+        /// replaces the template: WPF's own draws system chrome over a brush set by hand,
+        /// so these rendered as plain Windows buttons on a dark panel.</summary>
         private Button MakeButton(string text, RoutedEventHandler click)
         {
             var b = new Button
             {
                 Content = text, Padding = new Thickness(12, 5, 12, 5), MinWidth = 110,
-                Margin = new Thickness(8, 0, 0, 0), Background = InputBg, Foreground = TextFg,
-                BorderBrush = BorderFg,
+                Margin = new Thickness(8, 0, 0, 0),
             };
+            ModalButtonTheme.Secondary(b);
             b.Click += click;
             return b;
         }
@@ -343,6 +395,60 @@ namespace TrueforceForAll.Plugin
         /// translator with rows written and not yet sent must not see their own work read
         /// as whatever the server happens to hold. A row with nothing anywhere says so in
         /// words instead of showing a zero.</summary>
+        /// <summary>Name the languages whose own name this PC cannot draw, then say them
+        /// in English instead. Three names in the framework's list use scripts Windows
+        /// ships no font for, and a row of empty boxes tells a reader nothing at all:
+        /// Chakma and Fula in Adlam, on this machine.
+        ///
+        /// Off the UI thread, because the probe has to open every installed font to read
+        /// its glyph table and this window has already been one stall too many. The rows
+        /// are correct before it finishes; two of them just read better after.</summary>
+        private async void LabelUndrawableNamesAsync()
+        {
+            var names = _rows.Select(r => r.Native).Distinct(StringComparer.Ordinal).ToList();
+            HashSet<string> undrawable;
+            try
+            {
+                undrawable = await Task.Run(() =>
+                {
+                    var covered = new HashSet<int>();
+                    foreach (var face in Fonts.SystemTypefaces)
+                    {
+                        GlyphTypeface gt;
+                        try { if (!face.TryGetGlyphTypeface(out gt) || gt == null) continue; }
+                        catch { continue; }
+                        try { foreach (int cp in gt.CharacterToGlyphMap.Keys) covered.Add(cp); }
+                        catch { }
+                    }
+                    // Nothing readable came back: treat every name as drawable rather than
+                    // relabel the whole list off a failed probe.
+                    var bad = new HashSet<string>(StringComparer.Ordinal);
+                    if (covered.Count == 0) return bad;
+                    foreach (string n in names)
+                    {
+                        if (string.IsNullOrEmpty(n)) continue;
+                        foreach (char ch in n)
+                        {
+                            if (char.IsWhiteSpace(ch) || char.IsPunctuation(ch)) continue;
+                            if (!covered.Contains(ch)) { bad.Add(n); break; }
+                        }
+                    }
+                    return bad;
+                }).ConfigureAwait(true);
+            }
+            catch { return; }
+            if (undrawable == null || undrawable.Count == 0) return;
+
+            bool changed = false;
+            foreach (var r in _rows)
+            {
+                if (!undrawable.Contains(r.Native) || string.IsNullOrEmpty(r.English)) continue;
+                r.Native = r.English;
+                changed = true;
+            }
+            if (changed) { _rows.Sort(CompareRows); ApplyFilter(); }
+        }
+
         private void ApplyPercent(Row row)
         {
             double sent;

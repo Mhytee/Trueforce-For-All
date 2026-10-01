@@ -42,7 +42,7 @@ using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
-    internal sealed class TranslateWindow : Window
+    internal sealed partial class TranslateWindow : Window
     {
         private static readonly Brush WindowBg = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A));
         private static readonly Brush PanelBg  = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
@@ -77,6 +77,13 @@ namespace TrueforceForAll.Plugin
         /// offered again every few seconds. Cleared when the row is edited, because the
         /// edit may be the fix.</summary>
         private readonly HashSet<string> _refused = new HashSet<string>(StringComparer.Ordinal);
+        /// <summary>Rows WPF has built, counted so the log can say whether this window
+        /// virtualizes. A screenful is a few dozen; the whole table is near 3,000.</summary>
+        private Border _progressTrack;
+        private Border _progressFill;
+        private double _progressDone;
+        private int _rowsBuilt;
+        private bool _costReported;
         private DispatcherTimer _publishTimer;
         private bool _publishing;
         /// <summary>When the queue may be offered again. The server's caps are counted
@@ -350,22 +357,44 @@ namespace TrueforceForAll.Plugin
                 Foreground = MutedFg, FontSize = 12, TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 4, 0, 0),
             });
+            // How far along, as a bar rather than only as a sentence at the bottom of the
+            // window. 2,974 rows is a long way, and a number read once does not give the
+            // same sense of movement as a line that grows.
+            _progressFill = new Border { Background = HeaderFg, HorizontalAlignment = HorizontalAlignment.Left };
+            _progressTrack = new Border
+            {
+                Background = BorderFg, Height = 4, Margin = new Thickness(0, 10, 0, 0),
+                Child = _progressFill,
+            };
+            _progressTrack.SizeChanged += (s, e) => PaintProgressBar();
+            head.Children.Add(_progressTrack);
             Grid.SetRow(head, 0);
             root.Children.Add(head);
 
             var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-            bar.Children.Add(new TextBlock
-            {
-                Text = Loc.T("Translate_Search"), Foreground = MutedFg, FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
-            });
+            // The box says what it searches, in it, rather than a "Search" label sitting
+            // beside an empty box saying less.
             _search = new TextBox
             {
-                Width = 220, Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
+                Width = 300, Foreground = TextFg, Background = InputBg, BorderBrush = BorderFg,
                 Padding = new Thickness(5, 3, 5, 3), FontSize = 12,
             };
-            _search.TextChanged += (s, e) => ApplyFilter();
-            bar.Children.Add(_search);
+            var searchHint = new TextBlock
+            {
+                Text = Loc.T("Translate_SearchHint"),
+                Foreground = MutedFg, FontSize = 12, IsHitTestVisible = false,
+                Margin = new Thickness(7, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            _search.TextChanged += (s, e) =>
+            {
+                searchHint.Visibility = _search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+                ApplyFilter();
+            };
+            var searchCell = new Grid();
+            searchCell.Children.Add(_search);
+            searchCell.Children.Add(searchHint);
+            bar.Children.Add(searchCell);
 
             // The name is set once. It shows while it is unset, which is when it
             // matters, and afterwards it lives in the title with the heading offering
@@ -391,6 +420,7 @@ namespace TrueforceForAll.Plugin
             bool named = !(string.IsNullOrWhiteSpace(languageName) || languageName == tag);
             if (named) _nameRow.Visibility = Visibility.Collapsed;
             bar.Children.Add(_nameRow);
+            bar.Children.Add(BuildViewSwitch());
             Grid.SetRow(bar, 1);
             root.Children.Add(bar);
 
@@ -401,11 +431,12 @@ namespace TrueforceForAll.Plugin
                 CanUserDeleteRows = false,
                 CanUserResizeRows = false,
                 HeadersVisibility = DataGridHeadersVisibility.Column,
-                GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
+                // No lines and no stripes. Both are what made this read as a
+                // spreadsheet; the boxes and the spacing separate the rows now.
+                GridLinesVisibility = DataGridGridLinesVisibility.None,
                 Background = PanelBg,
                 Foreground = TextFg,
                 RowBackground = PanelBg,
-                AlternatingRowBackground = new SolidColorBrush(Color.FromRgb(0x38, 0x38, 0x38)),
                 HorizontalGridLinesBrush = BorderFg,
                 BorderBrush = BorderFg,
                 EnableRowVirtualization = true,
@@ -422,13 +453,22 @@ namespace TrueforceForAll.Plugin
                 // the key names the tab it lives in without a column spent on it.
                 ElementStyle = EnglishStyle(),
             });
-            _grid.Columns.Add(new DataGridTextColumn
+            // A real input box on every row, always there. This was a DataGridTextColumn,
+            // which draws a TextBlock until the cell is clicked: an untranslated row
+            // showed nothing at all on the right, and the only hint it could be typed
+            // into was finding out that clicking changed it (owner, 2026-09-30: "its not
+            // particularly clear a user can or is supposed to type into the row next to
+            // english"). A template column has no edit mode to enter, so the box is the
+            // cell and one click puts the caret in it.
+            //
+            // IsReadOnly is about the grid, not the box: it stops the DataGrid trying to
+            // start an edit over the top of a control that is already editing.
+            _grid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = Loc.F("Translate_ColumnYours_Fmt", tag),
-                Binding = new Binding(nameof(Row.Text)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.LostFocus },
                 Width = new DataGridLength(1, DataGridLengthUnitType.Star),
-                ElementStyle = WrapStyle(),
-                EditingElementStyle = EditStyle(),
+                CellTemplate = TranslationBoxTemplate(),
+                IsReadOnly = true,
             });
             _grid.Columns.Add(new DataGridTextColumn
             {
@@ -438,9 +478,39 @@ namespace TrueforceForAll.Plugin
                 Width = new DataGridLength(190),
                 ElementStyle = NoteStyle(),
             });
-            // Grouped, and still virtualized: without this WPF builds all 2,956 rows
-            // the moment a group description is added.
+            // Grouped, and still virtualized. Three things are needed and this had one of
+            // them, which is why opening the window built all 2,974 rows and took 49
+            // seconds: long enough that Windows called SimHub unresponsive and offered to
+            // close it.
+            //
+            // IsVirtualizingWhenGrouping is the permission. It is not the mechanism: a
+            // grouped list puts each group's rows inside the group's own items panel, and
+            // the default there is a plain StackPanel, which has no notion of only
+            // building what shows. Every group therefore built every row it held. The
+            // panel below is the part that actually virtualizes, and recycling keeps the
+            // row containers rather than throwing them away on each scroll.
             VirtualizingPanel.SetIsVirtualizingWhenGrouping(_grid, true);
+            VirtualizingPanel.SetVirtualizationMode(_grid, VirtualizationMode.Recycling);
+            // The one that actually mattered. A ScrollViewer with CanContentScroll false
+            // scrolls its content by pixels, so it measures that content at unlimited
+            // height and every row has to exist before anything can be drawn. No amount
+            // of virtualization settings underneath can survive that, which is why the
+            // three above changed nothing on their own: the window still built all 2,974
+            // rows and took 33 seconds to do it.
+            //
+            // DataGrid's own default is true. It arrives false here, so something in the
+            // styling this window inherits from SimHub turns it off; setting it on the
+            // grid beats an inherited style. Scrolling becomes row by row rather than
+            // smooth, which is what every virtualized list does and the price of the
+            // window opening at all.
+            ScrollViewer.SetCanContentScroll(_grid, true);
+            VirtualizingPanel.SetScrollUnit(_grid, ScrollUnit.Item);
+            // How many rows WPF actually built, said out loud. Opening this window stalled
+            // the UI thread for over 1.6 seconds, long enough for Windows to call SimHub
+            // unresponsive, and the dump showed the time going into arranging DataGrid
+            // cells. Whether that is a screenful or all of them is the whole question, and
+            // it is not a thing to guess at twice.
+            _grid.LoadingRow += (s, e) => _rowsBuilt++;
             var groupStyle = new GroupStyle();
             var groupHeading = new FrameworkElementFactory(typeof(TextBlock));
             groupHeading.SetBinding(TextBlock.TextProperty, new Binding("Name.Header"));
@@ -448,7 +518,30 @@ namespace TrueforceForAll.Plugin
             groupHeading.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
             groupHeading.SetValue(TextBlock.FontSizeProperty, 12.0);
             groupHeading.SetValue(TextBlock.MarginProperty, new Thickness(2, 10, 0, 4));
-            groupStyle.HeaderTemplate = new DataTemplate { VisualTree = groupHeading };
+            var headerTemplate = new DataTemplate { VisualTree = groupHeading };
+            // The panel the rows of one group are laid out by. Without this the group
+            // builds all of them.
+            groupStyle.Panel = new ItemsPanelTemplate(
+                new FrameworkElementFactory(typeof(VirtualizingStackPanel)));
+            // Each area folds. 62 of them, all permanently open, left scrolling as the
+            // only way to get anywhere; the headings already say how much of each is
+            // done, so shutting the finished ones turns the rest into a short list.
+            // Expanded to start, because a translator opening this window should see
+            // work rather than a wall of closed headings.
+            var container = new Style(typeof(GroupItem));
+            var shell = new ControlTemplate(typeof(GroupItem));
+            var expander = new FrameworkElementFactory(typeof(Expander));
+            expander.SetValue(Expander.IsExpandedProperty, true);
+            expander.SetValue(Expander.ForegroundProperty, HeaderFg);
+            expander.SetValue(Expander.BorderThicknessProperty, new Thickness(0));
+            expander.SetValue(Expander.MarginProperty, new Thickness(0, 2, 0, 2));
+            // The group itself is the header, drawn by the template built above.
+            expander.SetBinding(Expander.HeaderProperty, new Binding());
+            expander.SetValue(Expander.HeaderTemplateProperty, headerTemplate);
+            expander.AppendChild(new FrameworkElementFactory(typeof(ItemsPresenter)));
+            shell.VisualTree = expander;
+            container.Setters.Add(new Setter(GroupItem.TemplateProperty, shell));
+            groupStyle.ContainerStyle = container;
             _grid.GroupStyle.Add(groupStyle);
 
             // Copying the English into a row is a row action, so it lives on the row.
@@ -469,28 +562,13 @@ namespace TrueforceForAll.Plugin
             InputBindings.Add(new KeyBinding(new DelegateCommand(CopyEnglish), Key.D, ModifierKeys.Control));
             InputBindings.Add(new KeyBinding(new DelegateCommand(() => Save(quiet: false)), Key.S, ModifierKeys.Control));
 
-            // A committed cell is a finished row: write the file and reload, which
-            // is what makes the panel behind this window change as you work.
-            _grid.CellEditEnding += (s, e) =>
-            {
-                if (e.EditAction != DataGridEditAction.Commit) return;
-                var box = e.EditingElement as TextBox;
-                var row = e.Row?.Item as Row;
-                if (box != null && row != null)
-                {
-                    row.Text = box.Text;
-                    // The edit may be the fix for whatever the server refused.
-                    _refused.Remove(row.Key);
-                    // Null rather than the cache: one row, and re-reading the file per
-                    // keystroke would be the wrong trade. A row that matches what the
-                    // server already has is answered already_approved, which costs one
-                    // row of a batch and nothing else.
-                    if (IsMine(row, null)) _pending.Add(row.Key);
-                }
-                Dispatcher.BeginInvoke(new Action(() => Save(quiet: true)));
-            };
             Grid.SetRow(_grid, 2);
             root.Children.Add(_grid);
+            // One string at a time, in the same row as the list: TranslateWindow.FocusMode.cs
+            // swaps which of the two is visible. Same rows, same file, same publish queue.
+            var focus = BuildFocusPanel(tag);
+            Grid.SetRow(focus, 2);
+            root.Children.Add(focus);
 
             var statusRow = new StackPanel
             {
@@ -517,6 +595,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 10, 0, 0),
             };
             var close = MakeButton(Loc.T("Settings_Close"), (s, e) => Close());
+            ModalButtonTheme.Secondary(close);
             close.IsCancel = true;
             buttons.Children.Add(close);
             Grid.SetRow(buttons, 4);
@@ -613,6 +692,110 @@ namespace TrueforceForAll.Plugin
             return st;
         }
 
+        /// <summary>The input box a row is translated in. One per visible row, which is
+        /// a few dozen rather than all 2,974 of them: the window virtualizes properly
+        /// since ScrollViewer.CanContentScroll was set back to true on the grid.</summary>
+        private DataTemplate TranslationBoxTemplate()
+        {
+            var box = new FrameworkElementFactory(typeof(TextBox));
+            // One way, with the write back done by hand on LostFocus. A two way binding
+            // would update the row at the same moment as the handler that has to queue
+            // the row for publishing and save the file, and the order of the two is not
+            // something to depend on.
+            box.SetBinding(TextBox.TextProperty, new Binding(nameof(Row.Text)) { Mode = BindingMode.OneWay });
+            box.SetValue(TextBox.TextWrappingProperty, TextWrapping.Wrap);
+            // Thirty-two of the strings carry a line break: the dialog bodies, the
+            // numbered setup steps, the game notices. Without this a translator can read
+            // those breaks and not type one, so the longest strings in the plugin cannot
+            // be translated. The box takes the Enter key before the grid sees it, which
+            // leaves Tab and clicking away as the ways to finish a row.
+            box.SetValue(TextBox.AcceptsReturnProperty, true);
+            box.SetValue(TextBox.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
+            // The longest English string is 769 characters; past this the box scrolls
+            // rather than pushing the rest of the grid off screen.
+            box.SetValue(TextBox.MaxHeightProperty, 180.0);
+            // What makes it read as something to fill in rather than as a cell.
+            box.SetValue(TextBox.BackgroundProperty, InputBg);
+            box.SetValue(TextBox.ForegroundProperty, TextFg);
+            box.SetValue(TextBox.BorderBrushProperty, BorderFg);
+            box.SetValue(TextBox.BorderThicknessProperty, new Thickness(1));
+            box.SetValue(TextBox.PaddingProperty, new Thickness(5, 3, 5, 3));
+            box.SetValue(TextBox.MarginProperty, new Thickness(2, 3, 2, 3));
+            box.SetValue(TextBox.MinHeightProperty, 26.0);
+            box.AddHandler(TextBox.LostFocusEvent, new RoutedEventHandler(TranslationBox_LostFocus));
+            // Tab belongs to the column of boxes, not to the grid's cells. Left alone it
+            // walks into the English cell and the note beside it, which is three presses
+            // per row to do the one thing this window is for.
+            box.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(TranslationBox_PreviewKeyDown));
+            return new DataTemplate { VisualTree = box };
+        }
+
+        /// <summary>A box that has been left is a finished row: write the file and reload,
+        /// which is what makes the panel behind this window change as you work. This was
+        /// DataGrid.CellEditEnding, which cannot fire any more because the column no
+        /// longer has an edit mode to end.</summary>
+        /// <summary>Tab to the next row's box, Shift+Tab to the one before. The box the
+        /// focus leaves is committed on the way out by LostFocus, as any other way of
+        /// leaving it would be.</summary>
+        private void TranslationBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Tab) return;
+            var row = (sender as TextBox)?.DataContext as Row;
+            if (row == null) return;
+            e.Handled = true;
+            MoveToRowBox(row, (Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? -1 : 1);
+        }
+
+        /// <summary>Select the row one step away and put the caret in its box. The row has
+        /// to be scrolled to first: with virtualization working, the container for a row
+        /// off screen does not exist yet, which is why the focus happens a beat later.</summary>
+        private void MoveToRowBox(Row from, int delta)
+        {
+            var items = _grid.Items;
+            int at = items.IndexOf(from);
+            if (at < 0) return;
+            int next = at + delta;
+            if (next < 0 || next >= items.Count) return;
+            object target = items[next];
+            _grid.SelectedItem = target;
+            _grid.ScrollIntoView(target);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                var container = _grid.ItemContainerGenerator.ContainerFromItem(target) as DataGridRow;
+                var box = container == null ? null : FindDescendant<TextBox>(container);
+                if (box != null) { box.Focus(); box.CaretIndex = (box.Text ?? "").Length; }
+            }), DispatcherPriority.Background);
+        }
+
+        private static T FindDescendant<T>(DependencyObject root) where T : DependencyObject
+        {
+            if (root == null) return null;
+            int n = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < n; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                var hit = child as T ?? FindDescendant<T>(child);
+                if (hit != null) return hit;
+            }
+            return null;
+        }
+
+        private void TranslationBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            var box = sender as TextBox;
+            var row = box?.DataContext as Row;
+            if (box == null || row == null) return;
+            if (string.Equals(row.Text ?? "", box.Text ?? "", StringComparison.Ordinal)) return;
+            row.Text = box.Text;
+            // The edit may be the fix for whatever the server refused.
+            _refused.Remove(row.Key);
+            // Null rather than the cache: one row, and re-reading the file per keystroke
+            // would be the wrong trade. A row that matches what the server already has is
+            // answered already_approved, which costs one row of a batch and nothing else.
+            if (IsMine(row, null)) _pending.Add(row.Key);
+            Dispatcher.BeginInvoke(new Action(() => Save(quiet: true)));
+        }
+
         private static Style EditStyle()
         {
             var st = new Style(typeof(TextBox));
@@ -659,14 +842,20 @@ namespace TrueforceForAll.Plugin
             public event EventHandler CanExecuteChanged { add { } remove { } }
         }
 
+        /// <summary>A button in this window's theme. Through ModalButtonTheme, which
+        /// replaces the template: setting Background and Foreground by hand is not
+        /// enough, because WPF's own button template draws system chrome over them, so
+        /// every button here rendered as a plain Windows button on a dark panel (owner,
+        /// 2026-09-30: "none of the buttons on the translate pages are styled?"). The
+        /// callers that want the gold accent say so with ModalButtonTheme.Primary.</summary>
         private Button MakeButton(string text, RoutedEventHandler click)
         {
             var b = new Button
             {
                 Content = text, Padding = new Thickness(12, 5, 12, 5), MinWidth = 96,
-                Margin = new Thickness(8, 0, 0, 0), Background = InputBg, Foreground = TextFg,
-                BorderBrush = BorderFg,
+                Margin = new Thickness(8, 0, 0, 0),
             };
+            ModalButtonTheme.Secondary(b);
             b.Click += click;
             return b;
         }
@@ -832,6 +1021,16 @@ namespace TrueforceForAll.Plugin
         /// <summary>Width in device-independent pixels at the size the settings panel
         /// draws at, which is the unit LocFitBudget's numbers are in. Characters would
         /// not do: "Iiii" and "MMMM" are both four.</summary>
+        /// <summary>The filled part of the bar. Width in pixels rather than a ratio,
+        /// because the track only knows how wide it is once it has been laid out, which
+        /// is why this runs again on SizeChanged.</summary>
+        private void PaintProgressBar()
+        {
+            if (_progressTrack == null || _progressFill == null) return;
+            double w = _progressTrack.ActualWidth;
+            _progressFill.Width = w <= 0 ? 0 : Math.Max(0, Math.Min(w, w * _progressDone));
+        }
+
         private static double MeasureWidth(string text)
         {
             if (string.IsNullOrEmpty(text)) return 0;
@@ -870,8 +1069,12 @@ namespace TrueforceForAll.Plugin
         {
             var row = _grid.SelectedItem as Row;
             if (row == null) return;
-            try { _grid.CommitEdit(DataGridEditingUnit.Row, true); } catch { }
             row.Text = row.English;
+            // Queued here rather than left to the box losing focus: this writes the row
+            // without the caret ever being in it, and the CommitEdit that used to carry
+            // the queueing is gone with the grid's edit mode.
+            _refused.Remove(row.Key);
+            if (IsMine(row, null)) _pending.Add(row.Key);
             Save(quiet: true);
         }
 
@@ -892,6 +1095,29 @@ namespace TrueforceForAll.Plugin
             grouped.GroupDescriptions.Add(new PropertyGroupDescription(nameof(Row.Area)));
             _grid.ItemsSource = grouped;
             UpdateStatus(list.Count);
+            ReportBuildCostOnce(list.Count);
+        }
+
+        /// <summary>Say once, after the window has drawn, how long it took and how many
+        /// rows WPF built to do it. Opening this window froze SimHub for over 1.6 seconds
+        /// and the dump put the time in DataGrid cell arrange, so the number that settles
+        /// it is how many cells there were.</summary>
+        private void ReportBuildCostOnce(int shown)
+        {
+            if (_costReported) return;
+            _costReported = true;
+            var started = DateTime.UtcNow;
+            // At Loaded priority the first layout pass is done, so this measures the
+            // stall rather than racing it.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                double ms = (DateTime.UtcNow - started).TotalMilliseconds;
+                _log("[TF4ALL] Translate window: " + shown + " row(s) shown, WPF built "
+                     + _rowsBuilt + " of them, first layout " + ms.ToString("F0") + " ms."
+                     + (_rowsBuilt > 200
+                        ? " Row virtualization is NOT working: a screenful is a few dozen."
+                        : ""));
+            }), DispatcherPriority.Loaded);
         }
 
         private void UpdateStatus(int shown)
@@ -903,6 +1129,8 @@ namespace TrueforceForAll.Plugin
             if (holes > 0) text += " " + Loc.N("Translate_RowsNeedPlaceholder", holes, holes);
             if (wide > 0) text += " " + Loc.N("Translate_RowsTooWide", wide, wide);
             _status.Text = text;
+            _progressDone = _rows.Count == 0 ? 0 : (double)done / _rows.Count;
+            PaintProgressBar();
             if (_onlyProblems)
             {
                 _problemLink.Text = Loc.T("Translate_ShowAll");
