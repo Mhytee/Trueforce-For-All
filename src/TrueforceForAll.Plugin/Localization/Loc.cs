@@ -24,10 +24,13 @@ namespace TrueforceForAll.Plugin.Localization
         /// <param name="requestedTag">The culture tag to resolve ("es",
         /// "de-DE"); null or empty means English.</param>
         /// <param name="log">Receives already-prefixed warning text.</param>
-        public static void Initialize(Func<string, string> readEmbedded, string languagesRoot, string requestedTag, Action<string> log)
+        /// <param name="automatic">True when the tag is the user's surroundings
+        /// rather than their own pick (LocStore.Load).</param>
+        public static void Initialize(Func<string, string> readEmbedded, string languagesRoot, string requestedTag, Action<string> log,
+                                      bool automatic = false)
         {
             var store = new LocStore(readEmbedded, languagesRoot, log);
-            store.Load(requestedTag);
+            store.Load(requestedTag, automatic);
             Instance = store;
         }
 

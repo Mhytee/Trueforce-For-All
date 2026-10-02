@@ -165,6 +165,75 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
+        public void LocStore_AutomaticPick_NeedsCoverage_AndAHandPickDoesNot()
+        {
+            // Owner call 2026-10-01: a language found from SimHub's or Windows'
+            // setting shows only once it covers AutomaticMinimumCoverage of the
+            // panel; below that the panel is English. A hand pick shows at any
+            // coverage, and Reload keeps whichever kind of request it was.
+            string root = Path.Combine(Path.GetTempPath(), "tf4all-loc-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var utf8 = new UTF8Encoding(false);
+            try
+            {
+                var keys = new[] { "A", "B", "C", "D", "E", "F", "G", "H", "I", "J" };
+                var embedded = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["en"] = LangJson("en", keys.Select(k => (k, k + "-en")).ToArray()),
+                };
+                var log = new List<string>();
+                Func<string, string> readEmbedded = tag => embedded.TryGetValue(tag, out string json) ? json : null;
+                var store = new LocStore(readEmbedded, root, log.Add);
+                string dePath = Path.Combine(root, "de.json");
+
+                // 6 of 10: under the bar.
+                File.WriteAllText(dePath, LangJson("de", keys.Take(6).Select(k => (k, k + "-de")).ToArray()), utf8);
+                store.Load("de", true);
+                Assert.Equal("en", store.ActiveTag);
+                Assert.Equal("thin", store.ActiveSource);
+                Assert.Equal("de", store.RequestedTag);
+                Assert.True(store.RequestedAutomatically);
+                Assert.Equal("A-en", store["A"]);
+
+                // The same language picked by hand shows as it is.
+                store.Load("de", false);
+                Assert.Equal("de", store.ActiveTag);
+                Assert.Equal("A-de", store["A"]);
+                Assert.Equal("J-en", store["J"]);
+
+                // 7 of 10 reaches it, and Reload stays automatic: the path a
+                // community download takes to switch the panel over.
+                store.Load("de", true);
+                Assert.Equal("en", store.ActiveTag);
+                File.WriteAllText(dePath, LangJson("de", keys.Take(7).Select(k => (k, k + "-de")).ToArray()), utf8);
+                store.Reload();
+                Assert.True(store.RequestedAutomatically);
+                Assert.Equal("de", store.ActiveTag);
+                Assert.Equal("requested", store.ActiveSource);
+
+                // English is never held to it.
+                store.Load("en", true);
+                Assert.Equal("en", store.ActiveTag);
+                Assert.Equal("requested", store.ActiveSource);
+            }
+            finally
+            {
+                try { Directory.Delete(root, true); } catch { }
+            }
+        }
+
+        [Fact]
+        public void LocStore_IsEnglishFamily_CoversRegionalEnglish()
+        {
+            Assert.True(LocStore.IsEnglishFamily("en"));
+            Assert.True(LocStore.IsEnglishFamily("en-US"));
+            Assert.True(LocStore.IsEnglishFamily("EN-gb"));
+            Assert.False(LocStore.IsEnglishFamily("es"));
+            Assert.False(LocStore.IsEnglishFamily("es-MX"));
+            Assert.False(LocStore.IsEnglishFamily("not a tag"));
+        }
+
+        [Fact]
         public void LocStore_LayerPrecedence_AndParentFallback()
         {
             string root = Path.Combine(Path.GetTempPath(), "tf4all-loc-" + Guid.NewGuid().ToString("N"));

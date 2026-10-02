@@ -109,11 +109,23 @@ namespace TrueforceForAll.Plugin.Localization
         /// "parent" when a parent tag supplied them (es-MX served by es, or
         /// en-US served by English), "region" when only a regional file of the
         /// same language exists (es served by es-ES), "english" when nothing
-        /// matched.</summary>
+        /// matched, "thin" when an automatic pick found the language but it
+        /// covers less than AutomaticMinimumCoverage, so English is shown.</summary>
         public string ActiveSource { get; private set; } = "english";
 
         /// <summary>The tag Load was last asked for, before resolution.</summary>
         public string RequestedTag { get; private set; } = EnglishTag;
+
+        /// <summary>Whether that tag came from the user's surroundings (SimHub's
+        /// or Windows' language) rather than from a pick on the Settings tab.
+        /// Only an automatic request is held to AutomaticMinimumCoverage.</summary>
+        public bool RequestedAutomatically { get; private set; }
+
+        /// <summary>The share of the panel's strings a language must translate
+        /// before an automatic request shows it (owner call 2026-10-01). Below it
+        /// the panel reads better in English than in a patchwork. A language the
+        /// user picks by hand is shown at any coverage: they asked for it.</summary>
+        public const double AutomaticMinimumCoverage = 0.70;
 
         /// <summary>The folder the disk layers live in, or null.</summary>
         public string LanguagesRoot => _languagesRoot;
@@ -356,8 +368,16 @@ namespace TrueforceForAll.Plugin.Localization
         /// <summary>Resolve a language: the requested tag's layers, then each
         /// parent's via ParentTag, then English. Reads every layer fresh, so
         /// this is also what Reload does.</summary>
-        public void Load(string requestedTag)
+        public void Load(string requestedTag) => Load(requestedTag, false);
+
+        /// <summary>Load, saying whether the tag is the user's surroundings
+        /// (automatic) or their own pick. An automatic tag that resolves to a
+        /// language covering less than AutomaticMinimumCoverage shows English
+        /// instead; RequestedTag still names it, so the community fetch keeps
+        /// filling it in and a later Reload switches over once it is enough.</summary>
+        public void Load(string requestedTag, bool automatic)
         {
+            RequestedAutomatically = automatic;
             string requested = NormalizeTag(requestedTag);
             if (requested == null)
             {
@@ -418,6 +438,22 @@ namespace TrueforceForAll.Plugin.Localization
                 }
             }
 
+            if (automatic && !IsEnglish(activeTag) && english.Count > 0)
+            {
+                int covered = 0;
+                foreach (var k in english.Keys) if (active.ContainsKey(k)) covered++;
+                if (covered < AutomaticMinimumCoverage * english.Count)
+                {
+                    WarnOnce("thin:" + activeTag + ":" + covered,
+                        "[TF4ALL] Language: " + activeTag + " covers " + covered + " of " + english.Count
+                        + " strings, under the " + (int)Math.Round(AutomaticMinimumCoverage * 100)
+                        + "% an automatic pick needs; showing English. Picking it on the Settings tab shows it anyway.");
+                    active.Clear();
+                    activeTag = EnglishTag;
+                    source = "thin";
+                }
+            }
+
             _english = english;
             _embeddedEnglishKeys = embeddedEnglishKeys;
             _active = active;
@@ -429,7 +465,7 @@ namespace TrueforceForAll.Plugin.Localization
 
         /// <summary>Same tag, every disk layer re-read. What the folder
         /// watcher calls after a translator saves a file.</summary>
-        public void Reload() => Load(RequestedTag);
+        public void Reload() => Load(RequestedTag, RequestedAutomatically);
 
         /// <summary>English keys a user of the given tag would see in English:
         /// the keys neither the tag's own layers nor any parent's define.
@@ -767,6 +803,17 @@ namespace TrueforceForAll.Plugin.Localization
         /// it before making a request, because an English install must not notice
         /// the translation service exists.</summary>
         public static bool IsEnglishTag(string tag) => IsEnglish(tag);
+
+        /// <summary>English or any regional English ("en-US", "en-GB"): the tag's
+        /// root language is "en". What the fetch asks of the requested tag, which,
+        /// unlike the active one, can arrive regional from SimHub's setting.</summary>
+        public static bool IsEnglishFamily(string tag)
+        {
+            string t = NormalizeTag(tag);
+            if (t == null) return false;
+            for (string p = ParentTag(t); p != null; p = ParentTag(p)) t = p;
+            return IsEnglish(t);
+        }
 
         private static IReadOnlyList<string> SortedKeys(Dictionary<string, string> layer)
         {

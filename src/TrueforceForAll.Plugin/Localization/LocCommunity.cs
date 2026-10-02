@@ -162,8 +162,10 @@ namespace TrueforceForAll.Plugin.Localization
             if (s == null || !s.CommunityEnabled || !s.UseCommunityTranslations) return false;
             if (_store == null || _store.LanguagesRoot == null) return false;
             // English needs no fetch, and an English install must not notice this
-            // feature exists: no request, no file, no layer.
-            if (LocStore.IsEnglishTag(_store.ActiveTag)) return false;
+            // feature exists: no request, no file, no layer. Asked of the REQUESTED
+            // tag, not the active one: a German first run shows English until a
+            // translation exists on this PC, and only this fetch can bring one.
+            if (LocStore.IsEnglishFamily(_store.RequestedTag)) return false;
             url = (s.CommunityBackendUrl ?? "").Trim();
             anonKey = (s.CommunityBackendAnonKey ?? "").Trim();
             if (url.Length == 0 || anonKey.Length == 0) return false;
@@ -185,11 +187,19 @@ namespace TrueforceForAll.Plugin.Localization
                 if (!Ready(out url, out anonKey)) return;
 
                 bool wrote = false;
+                // The requested chain first (it may have nothing on disk yet, which
+                // is the first-run case), then the active one when it differs: a
+                // regional stand-in, "pt" served by pt-BR, keeps its own file fresh.
                 var members = new List<string>();
-                for (string t = _store.ActiveTag; t != null && members.Count < MaxChainMembers; t = LocStore.ParentTag(t))
+                foreach (string start in new[] { _store.RequestedTag, _store.ActiveTag })
                 {
-                    if (LocStore.IsEnglishTag(t)) break;
-                    members.Add(t);
+                    int added = 0;
+                    for (string t = start; t != null && added < MaxChainMembers; t = LocStore.ParentTag(t))
+                    {
+                        if (LocStore.IsEnglishTag(t)) break;
+                        if (!members.Contains(t)) members.Add(t);
+                        added++;
+                    }
                 }
                 foreach (string tag in members)
                 {

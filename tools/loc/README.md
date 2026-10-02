@@ -60,7 +60,7 @@ the tab's stem (`SupportTab` becomes `Support`) and `Trailer`.
   It starts empty; the converter adds a line per converted file, so after the
   rehearsal it names SettingsControl.xaml (scoped), PresetManagerControl.xaml
   and MotdStrip.xaml.
-- `baseline\xaml-2026-09-24.csv`: the inventory of the four XAML files before
+- `baseline\xaml-2026-09-28.csv`: the inventory of the four XAML files before
   any conversion. The round-trip test re-inventories the converted files with
   keys resolved and expects the same real strings, byte-identical, in order.
   It is the round-trip reference only: after a conversion its rows no longer
@@ -68,8 +68,10 @@ the tab's stem (`SupportTab` becomes `Support`) and `Trailer`.
   outside the converted scopes, test 3 reports rows the baseline lacks or rows
   the walk did not produce; if the change is intended, regenerate the baseline
   in place with
-  `.\inventory.ps1 -Xaml ..\..\src\TrueforceForAll.Plugin\SettingsControl.xaml, ..\..\src\TrueforceForAll.Plugin\PresetManagerControl.xaml, ..\..\src\TrueforceForAll.Plugin\CustomEngineEditor.xaml, ..\..\src\TrueforceForAll.Plugin\MotdStrip.xaml -ResolveWith ..\..\src\TrueforceForAll.Plugin\Languages\en.json -Out baseline\xaml-2026-09-24.csv`
+  `.\inventory.ps1 -Xaml ..\..\src\TrueforceForAll.Plugin\SettingsControl.xaml, ..\..\src\TrueforceForAll.Plugin\PresetManagerControl.xaml, ..\..\src\TrueforceForAll.Plugin\MotdStrip.xaml, ..\..\src\TrueforceForAll.Plugin\CustomEngineEditor.xaml -ResolveWith ..\..\src\TrueforceForAll.Plugin\Languages\en.json -Out baseline\xaml-2026-09-28.csv`
   (overwrite it; a second CSV owning the same file makes the tests throw).
+  Run it from PowerShell itself: `powershell -File` splits the comma list
+  into separate arguments and the script refuses them.
   Keep the four files in that order: the CSV's file blocks follow the
   argument order, and the baseline's hash depends on it.
   Converted rows come back as their English text, so the round trip still

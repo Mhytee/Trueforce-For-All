@@ -2088,6 +2088,7 @@
   "Settings_Language": "Idioma",
   "Settings_LanguageActive_Fmt": "Se muestra {0}. {1} de {2} textos están traducidos; lo que falte se queda en inglés.",
   "Settings_LanguageBadTag": "Eso no es un código de idioma. Usa letras, dígitos y guiones sueltos, como es o pt-BR.",
+  "Settings_LanguageBelowBar_Fmt": "{0} está traducido al {1}%, así que el panel sigue en inglés hasta llegar al {2}%.",
   "Settings_LanguageEnglishActive": "El panel está en inglés. Elige un idioma arriba, o empieza uno y tradúcelo tú.",
   "Settings_LanguageFollowHost_Fmt": "Automático ({0})",
   "Settings_LanguageHelp": "Cada idioma es un archivo de la carpeta de idiomas. Un archivo que edites ahí gana sobre el que trae la compilación, y el panel recoge el guardado sin reiniciar SimHub.",

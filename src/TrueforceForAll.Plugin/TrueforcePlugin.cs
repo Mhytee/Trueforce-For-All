@@ -4451,7 +4451,8 @@ namespace TrueforceForAll.Plugin
                 string requestedTag = ResolveUiLanguageTag();
                 var pluginAssembly = typeof(TrueforcePlugin).Assembly;
                 Action<string> warn = msg => SimHub.Logging.Current.Warn(msg);
-                Loc.Initialize(tag => LocSeed.ReadEmbeddedText(pluginAssembly, tag), languagesRoot, requestedTag, warn);
+                Loc.Initialize(tag => LocSeed.ReadEmbeddedText(pluginAssembly, tag), languagesRoot, requestedTag, warn,
+                               UiLanguageIsAutomatic);
                 LocSeed.Run(pluginAssembly, languagesRoot, warn);
                 LocDiagnostics.StartupReport(msg => SimHub.Logging.Current.Info(msg), warn);
                 _locWatcher = new LocWatcher(languagesRoot, warn);
@@ -25557,6 +25558,11 @@ namespace TrueforceForAll.Plugin
         /// en-US for every user whatever their Windows language is
         /// (docs/localization-plan.md, fact 1), so reading it would make every
         /// install in the world look English.</summary>
+        /// <summary>True while the user has made no pick on the Settings tab, so
+        /// the tag above is their surroundings and is held to the store's coverage
+        /// bar (LocStore.AutomaticMinimumCoverage).</summary>
+        internal bool UiLanguageIsAutomatic => string.IsNullOrWhiteSpace(Settings?.UiLanguage);
+
         internal string ResolveUiLanguageTag()
         {
             string chosen = Settings?.UiLanguage;

@@ -2088,6 +2088,7 @@
   "Settings_Language": "Language",
   "Settings_LanguageActive_Fmt": "Showing {0}. {1} of {2} strings are translated; anything missing stays in English.",
   "Settings_LanguageBadTag": "That is not a language code. Use letters, digits and single hyphens, like es or pt-BR.",
+  "Settings_LanguageBelowBar_Fmt": "{0} is {1}% translated, so the panel stays in English until it reaches {2}%.",
   "Settings_LanguageEnglishActive": "The panel is in English. Pick a language above, or start one and translate it yourself.",
   "Settings_LanguageFollowHost_Fmt": "Automatic ({0})",
   "Settings_LanguageHelp": "Each language is one file in the languages folder. A file you edit there wins over whatever the build ships, and the panel picks up a save without restarting SimHub.",

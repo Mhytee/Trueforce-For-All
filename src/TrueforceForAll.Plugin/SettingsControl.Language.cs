@@ -88,14 +88,16 @@ namespace TrueforceForAll.Plugin
         /// <summary>What the panel is showing and how complete it is. A reader who
         /// sees a mix of their language and English deserves to know why.</summary>
         /// <summary>The community-translation switch: its state, and whether it is
-        /// shown at all. An English panel hides it, because with "en" active the fetch
-        /// makes no request, writes no file and adds no layer, so the row would offer
-        /// a choice that changes nothing.</summary>
+        /// shown at all. Hidden when English is the language asked for, because the
+        /// fetch then makes no request, writes no file and adds no layer, so the row
+        /// would offer a choice that changes nothing. Asked of the requested tag, the
+        /// same one the fetch asks: an English panel standing in for a language that
+        /// is still filling in keeps the row, since the fetch is what fills it.</summary>
         private void SyncCommunityTranslationsRow()
         {
             var store = Loc.Instance;
             if (UseCommunityTranslationsCheck == null) return;
-            bool english = store == null || store.ActiveTag == LocStore.EnglishTag;
+            bool english = store == null || LocStore.IsEnglishFamily(store.RequestedTag);
             UseCommunityTranslationsCheck.Visibility = english ? Visibility.Collapsed : Visibility.Visible;
             var s = _plugin?.Settings;
             if (s == null) return;
@@ -136,6 +138,19 @@ namespace TrueforceForAll.Plugin
             SyncCommunityTranslationsRow();
             var store = Loc.Instance;
             if (UiLanguageNote == null || store == null) return;
+            if (store.ActiveSource == "thin")
+            {
+                // Automatic found the user's language but too little of it, so the
+                // panel is English. Say so, or it reads as the language not being
+                // detected at all.
+                var thin = store.Describe(store.RequestedTag);
+                int all = thin.DefinedCount + thin.Missing.Count;
+                int percent = all > 0 ? (int)Math.Round(100.0 * thin.DefinedCount / all) : 0;
+                UiLanguageNote.Text = Loc.F("Settings_LanguageBelowBar_Fmt",
+                    LanguageName(store, store.RequestedTag), percent,
+                    (int)Math.Round(LocStore.AutomaticMinimumCoverage * 100));
+                return;
+            }
             if (store.ActiveTag == LocStore.EnglishTag)
             {
                 UiLanguageNote.Text = Loc.T("Settings_LanguageEnglishActive");
@@ -181,7 +196,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 var store = Loc.Instance;
-                if (store != null) store.Load(_plugin.ResolveUiLanguageTag());
+                if (store != null) store.Load(_plugin.ResolveUiLanguageTag(), _plugin.UiLanguageIsAutomatic);
             }
             catch (Exception ex)
             {
@@ -204,6 +219,17 @@ namespace TrueforceForAll.Plugin
             RebuildLanguageSection();                 // put the selection back
             if (!ok || string.IsNullOrEmpty(dlg.ChosenTag)) return;
             OpenTranslateWindow(dlg.ChosenTag, dlg.ChosenName);
+        }
+
+        /// <summary>A language's name for a sentence: its file's own name, else the
+        /// name Windows knows it by, else the bare tag. A language that exists only
+        /// as a community download has no file name of its own to offer.</summary>
+        private static string LanguageName(LocStore store, string tag)
+        {
+            string name = store.DisplayName(tag);
+            if (!string.IsNullOrEmpty(name)) return name;
+            try { return System.Globalization.CultureInfo.GetCultureInfo(tag).NativeName; }
+            catch { return tag; }
         }
 
         /// <summary>A picker row: the language's own name, its tag, and how much of
