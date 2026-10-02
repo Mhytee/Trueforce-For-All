@@ -36,6 +36,36 @@
              inherits the behaviour without anyone having to know. -->
         <SolidColorBrush x:Key="EditableNumberBorder" Color="#8CFFFFFF"/>
 
+        <!-- Segmented selector (RadioButton), the Preset Manager's
+             SegmentButton: checked = accent blue, unchecked = flat grey pill.
+             Used by the Effects tab's Simple / Advanced switch. -->
+        <Style x:Key="SegmentButton" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Padding" Value="16,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#CFCFCF"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Background="#3A3A3A" CornerRadius="4"
+                                SnapsToDevicePixels="True" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#474747"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A6BBE"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="SectionHeaderBorder" TargetType="Border">
             <Setter Property="BorderBrush" Value="#444"/>
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
@@ -1449,6 +1479,19 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14,12,14,14">
 
+            <!-- Simple / Advanced view (SettingsControl.SimpleMode.cs). Simple
+                 collapses every element on this tab tagged Tag="Advanced",
+                 leaving each effect's on/off, gain and frequency. Display
+                 only: hidden settings keep their values and keep applying. -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <RadioButton x:Name="EffectsModeSimpleButton" Content="{loc:T Effects_ModeSimple}" GroupName="EffectsMode"
+                             Style="{StaticResource SegmentButton}" Checked="EffectsMode_Checked"
+                             ToolTip="{loc:T Effects_ModeSimple_Tip}"/>
+                <RadioButton x:Name="EffectsModeAdvancedButton" Content="{loc:T Effects_ModeAdvanced}" GroupName="EffectsMode"
+                             Style="{StaticResource SegmentButton}" Checked="EffectsMode_Checked"
+                             ToolTip="{loc:T Effects_ModeAdvanced_Tip}"/>
+            </StackPanel>
+
             <!-- Master. Master gain is a GLOBAL setting (auto-saved, not
                  preset-scoped), so this section has no Save/Revert. The
                  FFB pass-through Save/Revert (which cover scale/smooth/invert,
@@ -1560,7 +1603,7 @@
                                     TickFrequency="0.5" ValueChanged="AudioGainSlider_ValueChanged" VerticalAlignment="Center"/>
                         <Border Visibility="{Binding Visibility, ElementName=AudioGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AudioGainText" Text="1.00"/></Border>
                     </Grid>
-                    <Grid Margin="0,0,0,4">
+                    <Grid Tag="Advanced" Margin="0,0,0,4">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{loc:T Effects_AudioHighpassHz}" Style="{StaticResource LabelText}"/>
                         <Slider     Grid.Column="1" x:Name="AudioHighpassSlider"
@@ -1568,7 +1611,7 @@
                                     TickFrequency="20" ValueChanged="AudioHighpassSlider_ValueChanged" VerticalAlignment="Center"/>
                         <Border Visibility="{Binding Visibility, ElementName=AudioHighpassText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AudioHighpassText" Text="30"/></Border>
                     </Grid>
-                    <Grid Margin="0,0,0,8">
+                    <Grid Tag="Advanced" Margin="0,0,0,8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{loc:T Effects_AudioLowpassHz}" Style="{StaticResource LabelText}"/>
                         <Slider     Grid.Column="1" x:Name="AudioFilterSlider"
@@ -1645,21 +1688,21 @@
                                         TickFrequency="0.25" ValueChanged="EngineGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=EngineGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="EngineGainText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_EnginePitch}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="EnginePitchSlider" Minimum="0.25" Maximum="4.0" SmallChange="0.05" LargeChange="0.25"
                                         TickFrequency="0.25" ValueChanged="EnginePitchSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=EnginePitchText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="EnginePitchText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="EngineWaveformCombo" SelectionChanged="EngineWaveform_Changed">
                                 <ComboBoxItem Content="{loc:T Common_Sine}"/><ComboBoxItem Content="{loc:T Common_Square}"/><ComboBoxItem Content="{loc:T Common_Saw}"/><ComboBoxItem Content="{loc:T Common_Triangle}"/><ComboBoxItem Content="{loc:T Common_Noise}"/>
                             </ComboBox>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_EngineLowpassHz}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_EngineLowpassHz_Tip}"/>
@@ -1670,7 +1713,7 @@
                         <!-- Electric car behavior: applies only when the resolver
                              flags the active car as a pure EV. Combustion cars
                              ignore this. Per-car preset overrides the global. -->
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_EngineElectricCars}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_EngineElectricCars_Tip}"/>
@@ -1688,29 +1731,29 @@
                         <!-- High-RPM perceptibility helpers. On by default;
                              keep the engine feel present where the wheel
                              motor naturally rolls off the firing pulse. -->
-                        <Separator Margin="0,8,0,8"/>
-                        <Grid Margin="0,0,0,4">
+                        <Separator Tag="Advanced" Margin="0,8,0,8"/>
+                        <Grid Tag="Advanced" Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="EngineLoadLayerCheck"
                                       Content="{loc:T Effects_EngineLoadLayer}" VerticalAlignment="Center"
                                       Checked="EngineLoadLayer_Changed" Unchecked="EngineLoadLayer_Changed"
                                       ToolTip="{loc:T Effects_EngineLoadLayer_Tip}"/>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_EngineStrength}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="EngineLoadLayerGainSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
                                         TickFrequency="0.1" ValueChanged="EngineLoadLayerGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=EngineLoadLayerGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="EngineLoadLayerGainText" Text="0.80"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,4">
+                        <Grid Tag="Advanced" Margin="0,0,0,4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="EngineHighRpmBoostCheck"
                                       Content="{loc:T Effects_EngineHighRpmBoost}" VerticalAlignment="Center"
                                       Checked="EngineHighRpmBoost_Changed" Unchecked="EngineHighRpmBoost_Changed"
                                       ToolTip="{loc:T Effects_EngineHighRpmBoost_Tip}"/>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_EngineAmount}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="EngineHighRpmBoostSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
@@ -1744,7 +1787,7 @@
                                         TickFrequency="0.25" ValueChanged="SlipGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=SlipGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="SlipGainText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="BumpsWaveformCombo" SelectionChanged="BumpsWaveform_Changed">
@@ -1759,66 +1802,69 @@
                             <Border Visibility="{Binding Visibility, ElementName=BumpsFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="BumpsFreqText" Text="60"/></Border>
                         </Grid>
 
-                        <!-- FS-only: the Kerb thump voice folded into this
-                             section as its "Leading edge" dimension (owner
-                             call 2026-08-08). Drives the SAME KerbThump
-                             settings block the standalone (Forza) section
-                             edits, so presets carry one identity; 0 on this
-                             slider means off (no separate enable in the
-                             folded shape). -->
-                        <StackPanel x:Name="BumpsLeadingEdgePanel" Visibility="Collapsed">
-                            <Grid Margin="0,0,0,2">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsLeadingEdge}" Style="{StaticResource LabelText}"
-                                           ToolTip="{loc:T Effects_BumpsLeadingEdge_Tip}"/>
-                                <Slider     Grid.Column="1" x:Name="BumpsLeadingEdgeSlider" Minimum="0" Maximum="3" SmallChange="0.05" LargeChange="0.1"
-                                            TickFrequency="0.25" ValueChanged="BumpsLeadingEdge_ValueChanged" VerticalAlignment="Center"/>
-                                <Border Visibility="{Binding Visibility, ElementName=BumpsLeadingEdgeText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="BumpsLeadingEdgeText" Text="0.00"/></Border>
-                            </Grid>
-                        </StackPanel>
-
-                        <!-- Surface texture (Forza-supplied SurfaceRumble + WheelOnRumbleStrip).
-                             Has its own oscillator so the user can pick a higher freq /
-                             brighter waveform than the heave path. Visible ONLY while a
-                             Forza title is active (RefreshFromPlugin): no other source
-                             supplies SurfaceRumble, and dead knobs in other games read
-                             as broken (owner call 2026-08-08). -->
-                        <Border x:Name="BumpsSurfacePanel" BorderThickness="0,1,0,0" BorderBrush="#22FFFFFF" Margin="0,4,0,8" Padding="0,8,0,0">
-                            <StackPanel>
-                                <CheckBox x:Name="BumpsSurfaceEnabledCheck" Content="{loc:T Effects_BumpsSurfaceEnabled}" FontWeight="SemiBold" Margin="0,0,0,4"
-                                          Checked="BumpsSurfaceEnabled_Changed" Unchecked="BumpsSurfaceEnabled_Changed"
-                                          ToolTip="{loc:T Effects_BumpsSurfaceEnabled_Tip}"/>
-                                <Grid Margin="0,0,0,8">
+                        <!-- Simple mode wrapper (the panels inside keep their per-game gates). -->
+                        <StackPanel Tag="Advanced">
+                            <!-- FS-only: the Kerb thump voice folded into this
+                                 section as its "Leading edge" dimension (owner
+                                 call 2026-08-08). Drives the SAME KerbThump
+                                 settings block the standalone (Forza) section
+                                 edits, so presets carry one identity; 0 on this
+                                 slider means off (no separate enable in the
+                                 folded shape). -->
+                            <StackPanel x:Name="BumpsLeadingEdgePanel" Visibility="Collapsed">
+                                <Grid Margin="0,0,0,2">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsSurfaceGain}" Style="{StaticResource LabelText}"/>
-                                    <Slider     Grid.Column="1" x:Name="BumpsSurfaceGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
-                                                TickFrequency="0.25" ValueChanged="BumpsSurfaceGainSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <Border Visibility="{Binding Visibility, ElementName=BumpsSurfaceGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="BumpsSurfaceGainText" Text="1.00"/></Border>
-                                </Grid>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsSurfaceFreqHz}" Style="{StaticResource LabelText}"/>
-                                    <Slider     Grid.Column="1" x:Name="BumpsSurfaceFreqSlider" Minimum="20" Maximum="600" SmallChange="5" LargeChange="25"
-                                                TickFrequency="50" ValueChanged="BumpsSurfaceFreqSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <Border Visibility="{Binding Visibility, ElementName=BumpsSurfaceFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="BumpsSurfaceFreqText" Text="120"/></Border>
-                                </Grid>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsSurfaceWaveform}" Style="{StaticResource LabelText}"/>
-                                    <ComboBox  Grid.Column="1" x:Name="BumpsSurfaceWaveformCombo" SelectionChanged="BumpsSurfaceWaveform_Changed">
-                                        <ComboBoxItem Content="{loc:T Common_Sine}"/><ComboBoxItem Content="{loc:T Common_Square}"/><ComboBoxItem Content="{loc:T Common_Saw}"/><ComboBoxItem Content="{loc:T Common_Triangle}"/><ComboBoxItem Content="{loc:T Common_Noise}"/>
-                                    </ComboBox>
-                                </Grid>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsSurfaceRumbleScale}" Style="{StaticResource LabelText}"
-                                               ToolTip="{loc:T Effects_BumpsSurfaceRumbleScale_Tip}"/>
-                                    <Slider     Grid.Column="1" x:Name="BumpsSurfaceRumbleScaleSlider" Minimum="0.1" Maximum="3.0" SmallChange="0.1" LargeChange="0.25"
-                                                TickFrequency="0.25" ValueChanged="BumpsSurfaceRumbleScaleSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <Border Visibility="{Binding Visibility, ElementName=BumpsSurfaceRumbleScaleText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="BumpsSurfaceRumbleScaleText" Text="1.00"/></Border>
+                                    <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsLeadingEdge}" Style="{StaticResource LabelText}"
+                                               ToolTip="{loc:T Effects_BumpsLeadingEdge_Tip}"/>
+                                    <Slider     Grid.Column="1" x:Name="BumpsLeadingEdgeSlider" Minimum="0" Maximum="3" SmallChange="0.05" LargeChange="0.1"
+                                                TickFrequency="0.25" ValueChanged="BumpsLeadingEdge_ValueChanged" VerticalAlignment="Center"/>
+                                    <Border Visibility="{Binding Visibility, ElementName=BumpsLeadingEdgeText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="BumpsLeadingEdgeText" Text="0.00"/></Border>
                                 </Grid>
                             </StackPanel>
-                        </Border>
+
+                            <!-- Surface texture (Forza-supplied SurfaceRumble + WheelOnRumbleStrip).
+                                 Has its own oscillator so the user can pick a higher freq /
+                                 brighter waveform than the heave path. Visible ONLY while a
+                                 Forza title is active (RefreshFromPlugin): no other source
+                                 supplies SurfaceRumble, and dead knobs in other games read
+                                 as broken (owner call 2026-08-08). -->
+                            <Border x:Name="BumpsSurfacePanel" BorderThickness="0,1,0,0" BorderBrush="#22FFFFFF" Margin="0,4,0,8" Padding="0,8,0,0">
+                                <StackPanel>
+                                    <CheckBox x:Name="BumpsSurfaceEnabledCheck" Content="{loc:T Effects_BumpsSurfaceEnabled}" FontWeight="SemiBold" Margin="0,0,0,4"
+                                              Checked="BumpsSurfaceEnabled_Changed" Unchecked="BumpsSurfaceEnabled_Changed"
+                                              ToolTip="{loc:T Effects_BumpsSurfaceEnabled_Tip}"/>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsSurfaceGain}" Style="{StaticResource LabelText}"/>
+                                        <Slider     Grid.Column="1" x:Name="BumpsSurfaceGainSlider" Minimum="0" Maximum="2.0" SmallChange="0.05" LargeChange="0.1"
+                                                    TickFrequency="0.25" ValueChanged="BumpsSurfaceGainSlider_ValueChanged" VerticalAlignment="Center"/>
+                                        <Border Visibility="{Binding Visibility, ElementName=BumpsSurfaceGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="BumpsSurfaceGainText" Text="1.00"/></Border>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsSurfaceFreqHz}" Style="{StaticResource LabelText}"/>
+                                        <Slider     Grid.Column="1" x:Name="BumpsSurfaceFreqSlider" Minimum="20" Maximum="600" SmallChange="5" LargeChange="25"
+                                                    TickFrequency="50" ValueChanged="BumpsSurfaceFreqSlider_ValueChanged" VerticalAlignment="Center"/>
+                                        <Border Visibility="{Binding Visibility, ElementName=BumpsSurfaceFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="BumpsSurfaceFreqText" Text="120"/></Border>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsSurfaceWaveform}" Style="{StaticResource LabelText}"/>
+                                        <ComboBox  Grid.Column="1" x:Name="BumpsSurfaceWaveformCombo" SelectionChanged="BumpsSurfaceWaveform_Changed">
+                                            <ComboBoxItem Content="{loc:T Common_Sine}"/><ComboBoxItem Content="{loc:T Common_Square}"/><ComboBoxItem Content="{loc:T Common_Saw}"/><ComboBoxItem Content="{loc:T Common_Triangle}"/><ComboBoxItem Content="{loc:T Common_Noise}"/>
+                                        </ComboBox>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Effects_BumpsSurfaceRumbleScale}" Style="{StaticResource LabelText}"
+                                                   ToolTip="{loc:T Effects_BumpsSurfaceRumbleScale_Tip}"/>
+                                        <Slider     Grid.Column="1" x:Name="BumpsSurfaceRumbleScaleSlider" Minimum="0.1" Maximum="3.0" SmallChange="0.1" LargeChange="0.25"
+                                                    TickFrequency="0.25" ValueChanged="BumpsSurfaceRumbleScaleSlider_ValueChanged" VerticalAlignment="Center"/>
+                                        <Border Visibility="{Binding Visibility, ElementName=BumpsSurfaceRumbleScaleText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="BumpsSurfaceRumbleScaleText" Text="1.00"/></Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </Expander>
 
@@ -1846,14 +1892,14 @@
                                         TickFrequency="0.25" ValueChanged="TractionGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=TractionGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="TractionGainText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_TractionSensitivity}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="TractionSensitivitySlider" Minimum="0.1" Maximum="3.0" SmallChange="0.1" LargeChange="0.25"
                                         TickFrequency="0.25" ValueChanged="TractionSensitivitySlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=TractionSensitivityText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="TractionSensitivityText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="TractionWaveformCombo" SelectionChanged="TractionWaveform_Changed">
@@ -1870,22 +1916,25 @@
                         <!-- Noise filter rows: only relevant for Noise waveform.
                              Collapsed otherwise so the panel doesn't show
                              controls that have no audible effect. -->
-                        <Grid x:Name="TractionNoiseLpRow" Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{loc:T Effects_TractionNoiseLpRowNoiseLowpassHz}" Style="{StaticResource LabelText}"
-                                       ToolTip="{loc:T Effects_TractionNoiseLpRowNoiseLowpassHz_Tip}"/>
-                            <Slider     Grid.Column="1" x:Name="TractionNoiseLpSlider" Minimum="50" Maximum="1000" SmallChange="10" LargeChange="50"
-                                        TickFrequency="100" ValueChanged="TractionNoiseLpSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <Border Visibility="{Binding Visibility, ElementName=TractionNoiseLpText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="TractionNoiseLpText" Text="250"/></Border>
-                        </Grid>
-                        <Grid x:Name="TractionNoiseHpRow" Margin="0,0,0,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{loc:T Effects_TractionNoiseHpRowNoiseHighpassHz}" Style="{StaticResource LabelText}"
-                                       ToolTip="{loc:T Effects_TractionNoiseHpRowNoiseHighpassHz_Tip}"/>
-                            <Slider     Grid.Column="1" x:Name="TractionNoiseHpSlider" Minimum="0" Maximum="200" SmallChange="5" LargeChange="20"
-                                        TickFrequency="20" ValueChanged="TractionNoiseHpSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <Border Visibility="{Binding Visibility, ElementName=TractionNoiseHpText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="TractionNoiseHpText" Text="30"/></Border>
-                        </Grid>
+                        <!-- Simple mode wrapper (the rows inside keep their Noise-only gate). -->
+                        <StackPanel Tag="Advanced">
+                            <Grid x:Name="TractionNoiseLpRow" Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:T Effects_TractionNoiseLpRowNoiseLowpassHz}" Style="{StaticResource LabelText}"
+                                           ToolTip="{loc:T Effects_TractionNoiseLpRowNoiseLowpassHz_Tip}"/>
+                                <Slider     Grid.Column="1" x:Name="TractionNoiseLpSlider" Minimum="50" Maximum="1000" SmallChange="10" LargeChange="50"
+                                            TickFrequency="100" ValueChanged="TractionNoiseLpSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <Border Visibility="{Binding Visibility, ElementName=TractionNoiseLpText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="TractionNoiseLpText" Text="250"/></Border>
+                            </Grid>
+                            <Grid x:Name="TractionNoiseHpRow" Margin="0,0,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:T Effects_TractionNoiseHpRowNoiseHighpassHz}" Style="{StaticResource LabelText}"
+                                           ToolTip="{loc:T Effects_TractionNoiseHpRowNoiseHighpassHz_Tip}"/>
+                                <Slider     Grid.Column="1" x:Name="TractionNoiseHpSlider" Minimum="0" Maximum="200" SmallChange="5" LargeChange="20"
+                                            TickFrequency="20" ValueChanged="TractionNoiseHpSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <Border Visibility="{Binding Visibility, ElementName=TractionNoiseHpText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="TractionNoiseHpText" Text="30"/></Border>
+                            </Grid>
+                        </StackPanel>
                     </StackPanel>
                 </Expander>
 
@@ -1917,7 +1966,7 @@
                                         TickFrequency="0.25" ValueChanged="AxleSlipGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AxleSlipGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AxleSlipGainText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_AxleSlipFrontStrength}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_AxleSlipFrontStrength_Tip}"/>
@@ -1925,7 +1974,7 @@
                                         TickFrequency="0.1" ValueChanged="AxleSlipFrontStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AxleSlipFrontStrengthText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AxleSlipFrontStrengthText" Text="0.30"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_AxleSlipRearStrength}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_AxleSlipRearStrength_Tip}"/>
@@ -1933,7 +1982,7 @@
                                         TickFrequency="0.1" ValueChanged="AxleSlipRearStrengthSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AxleSlipRearStrengthText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AxleSlipRearStrengthText" Text="0.21"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_AxleSlipFrontPitchHz}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_AxleSlipFrontPitchHz_Tip}"/>
@@ -1941,7 +1990,7 @@
                                         TickFrequency="25" ValueChanged="AxleSlipFrontPitchSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AxleSlipFrontPitchText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AxleSlipFrontPitchText" Text="200"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_AxleSlipRearPitchHz}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_AxleSlipRearPitchHz_Tip}"/>
@@ -1949,7 +1998,7 @@
                                         TickFrequency="5" ValueChanged="AxleSlipRearPitchSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AxleSlipRearPitchText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AxleSlipRearPitchText" Text="35"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_AxleSlipUndersteerJudder}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_AxleSlipUndersteerJudder_Tip}"/>
@@ -1957,7 +2006,7 @@
                                         TickFrequency="0.1" ValueChanged="AxleSlipJudderSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AxleSlipJudderText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AxleSlipJudderText" Text="0.80"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_AxleSlipOnsetThreshold}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_AxleSlipOnsetThreshold_Tip}"/>
@@ -1965,14 +2014,14 @@
                                         TickFrequency="0.05" ValueChanged="AxleSlipOnsetSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AxleSlipOnsetText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AxleSlipOnsetText" Text="0.85"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,2">
+                        <Grid Tag="Advanced" Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="AxleSlipPredictiveCheck"
                                       Content="{loc:T Effects_AxleSlipPredictive}" VerticalAlignment="Center"
                                       Checked="AxleSlipPredictive_Changed" Unchecked="AxleSlipPredictive_Changed"
                                       ToolTip="{loc:T Effects_AxleSlipPredictive_Tip}"/>
                         </Grid>
-                        <Grid Margin="0,0,0,2">
+                        <Grid Tag="Advanced" Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0" x:Name="AxleSlipRevLockedCheck"
                                       Content="{loc:T Effects_AxleSlipRevLocked}" VerticalAlignment="Center"
@@ -2074,7 +2123,7 @@
                                         TickFrequency="0.25" ValueChanged="ShiftGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=ShiftGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ShiftGainText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="ShiftWaveformCombo" SelectionChanged="ShiftWaveform_Changed">
@@ -2120,7 +2169,7 @@
                                         TickFrequency="0.1" ValueChanged="ImplementThudGain_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=ImplementThudGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ImplementThudGainText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="ImplementThudWaveformCombo" SelectionChanged="ImplementThudWaveform_Changed">
@@ -2134,7 +2183,7 @@
                                         TickFrequency="10" ValueChanged="ImplementThudFreq_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=ImplementThudFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ImplementThudFreqText" Text="30"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,2">
+                        <Grid Tag="Advanced" Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_ImplementThudRaiseAmount}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_ImplementThudRaiseAmount_Tip}"/>
@@ -2142,7 +2191,7 @@
                                         TickFrequency="0.1" ValueChanged="ImplementThudRaise_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=ImplementThudRaiseText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ImplementThudRaiseText" Text="0.60"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,2">
+                        <Grid Tag="Advanced" Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_ImplementThudHydraulicHum}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_ImplementThudHydraulicHum_Tip}"/>
@@ -2150,7 +2199,7 @@
                                         TickFrequency="0.1" ValueChanged="ImplementThudHum_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=ImplementThudHumText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ImplementThudHumText" Text="0.30"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,2">
+                        <Grid Tag="Advanced" Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_ImplementThudHumFrequencyHz}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_ImplementThudHumFrequencyHz_Tip}"/>
@@ -2158,7 +2207,7 @@
                                         TickFrequency="10" ValueChanged="ImplementThudHumFreq_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=ImplementThudHumFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ImplementThudHumFreqText" Text="46"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,2">
+                        <Grid Tag="Advanced" Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_ImplementThudPitchBend}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_ImplementThudPitchBend_Tip}"/>
@@ -2166,7 +2215,7 @@
                                         TickFrequency="0.05" ValueChanged="ImplementThudBend_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=ImplementThudBendText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ImplementThudBendText" Text="0.15"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,2">
+                        <Grid Tag="Advanced" Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_ImplementThudSpeedPitch}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_ImplementThudSpeedPitch_Tip}"/>
@@ -2174,7 +2223,7 @@
                                         TickFrequency="0.05" ValueChanged="ImplementThudSpeedPitch_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=ImplementThudSpeedPitchText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ImplementThudSpeedPitchText" Text="0.12"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,2">
+                        <Grid Tag="Advanced" Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_ImplementThudSpeedVolume}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_ImplementThudSpeedVolume_Tip}"/>
@@ -2182,7 +2231,7 @@
                                         TickFrequency="0.1" ValueChanged="ImplementThudSpeedVol_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=ImplementThudSpeedVolText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="ImplementThudSpeedVolText" Text="0.50"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,2">
+                        <Grid Tag="Advanced" Margin="0,0,0,2">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_ImplementThudOctaveLayer}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_ImplementThudOctaveLayer_Tip}"/>
@@ -2220,14 +2269,14 @@
                                         TickFrequency="0.25" ValueChanged="AbsGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=AbsGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AbsGainText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="AbsWaveformCombo" SelectionChanged="AbsWaveform_Changed">
                                 <ComboBoxItem Content="{loc:T Common_Sine}"/><ComboBoxItem Content="{loc:T Common_Square}"/><ComboBoxItem Content="{loc:T Common_Saw}"/><ComboBoxItem Content="{loc:T Common_Triangle}"/><ComboBoxItem Content="{loc:T Common_Noise}"/>
                             </ComboBox>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_AbsMode}" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="AbsModeCombo" SelectionChanged="AbsMode_Changed">
@@ -2244,7 +2293,7 @@
                         </Grid>
                         <!-- Pulse rate / length are only meaningful in Pulse mode.
                              Greyed when AbsMode = PerTick. -->
-                        <StackPanel x:Name="AbsPulseControls">
+                        <StackPanel x:Name="AbsPulseControls" Tag="Advanced">
                             <Grid Margin="0,0,0,8">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="{loc:T Effects_AbsPulseControlsPulseRateHz}" Style="{StaticResource LabelText}"/>
@@ -2292,7 +2341,7 @@
                                         TickFrequency="0.25" ValueChanged="PitLimiterGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=PitLimiterGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="PitLimiterGainText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="PitLimiterWaveformCombo" SelectionChanged="PitLimiterWaveform_Changed">
@@ -2307,7 +2356,7 @@
                                         TickFrequency="10" ValueChanged="PitLimiterFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=PitLimiterFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="PitLimiterFreqText" Text="50"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_PitLimiterPulseRateHz}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_PitLimiterPulseRateHz_Tip}"/>
@@ -2315,7 +2364,7 @@
                                         TickFrequency="1" ValueChanged="PitLimiterPulseFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=PitLimiterPulseFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="PitLimiterPulseFreqText" Text="6.0"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_PitLimiterPulseLength}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_PitLimiterPulseLength_Tip}"/>
@@ -2323,7 +2372,7 @@
                                         TickFrequency="0.1" ValueChanged="PitLimiterDutyCycleSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=PitLimiterDutyCycleText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="PitLimiterDutyCycleText" Text="0.60"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,0">
+                        <Grid Tag="Advanced" Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_PitLimiterActiveAmp}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_PitLimiterActiveAmp_Tip}"/>
@@ -2363,8 +2412,8 @@
                                         TickFrequency="0.25" ValueChanged="DrsGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=DrsGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DrsGainText" Text="1.00"/></Border>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,4" Text="{loc:T Effects_DrsActivationChirpRisingEdge}" FontWeight="SemiBold"/>
-                        <Grid Margin="0,0,0,8">
+                        <TextBlock Style="{StaticResource HelpText}" Tag="Advanced" Margin="0,4,0,4" Text="{loc:T Effects_DrsActivationChirpRisingEdge}" FontWeight="SemiBold"/>
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_DrsActivationWaveform_Tip}"/>
@@ -2372,29 +2421,29 @@
                                 <ComboBoxItem Content="{loc:T Common_Sine}"/><ComboBoxItem Content="{loc:T Common_Square}"/><ComboBoxItem Content="{loc:T Common_Saw}"/><ComboBoxItem Content="{loc:T Common_Triangle}"/><ComboBoxItem Content="{loc:T Common_Noise}"/>
                             </ComboBox>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_FrequencyHz}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsActivationFreqSlider" Minimum="40" Maximum="200" SmallChange="1" LargeChange="5"
                                         TickFrequency="20" ValueChanged="DrsActivationFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=DrsActivationFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DrsActivationFreqText" Text="120"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_DrsDurationMs}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsActivationMsSlider" Minimum="20" Maximum="200" SmallChange="5" LargeChange="20"
                                         TickFrequency="20" ValueChanged="DrsActivationMsSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=DrsActivationMsText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DrsActivationMsText" Text="60"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_DrsActivationAmp}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsActivationAmpSlider" Minimum="0" Maximum="0.6" SmallChange="0.02" LargeChange="0.05"
                                         TickFrequency="0.1" ValueChanged="DrsActivationAmpSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=DrsActivationAmpText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DrsActivationAmpText" Text="0.30"/></Border>
                         </Grid>
-                        <TextBlock Style="{StaticResource HelpText}" Margin="0,4,0,4" Text="{loc:T Effects_DrsSustainedToneWhileDrs}" FontWeight="SemiBold"/>
-                        <Grid Margin="0,0,0,8">
+                        <TextBlock Style="{StaticResource HelpText}" Tag="Advanced" Margin="0,4,0,4" Text="{loc:T Effects_DrsSustainedToneWhileDrs}" FontWeight="SemiBold"/>
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_DrsSustainedWaveform_Tip}"/>
@@ -2402,14 +2451,14 @@
                                 <ComboBoxItem Content="{loc:T Common_Sine}"/><ComboBoxItem Content="{loc:T Common_Square}"/><ComboBoxItem Content="{loc:T Common_Saw}"/><ComboBoxItem Content="{loc:T Common_Triangle}"/><ComboBoxItem Content="{loc:T Common_Noise}"/>
                             </ComboBox>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_FrequencyHz}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsSustainedFreqSlider" Minimum="20" Maximum="150" SmallChange="1" LargeChange="5"
                                         TickFrequency="10" ValueChanged="DrsSustainedFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=DrsSustainedFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DrsSustainedFreqText" Text="70"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,0">
+                        <Grid Tag="Advanced" Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_DrsSustainedAmp}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="DrsSustainedAmpSlider" Minimum="0" Maximum="0.4" SmallChange="0.02" LargeChange="0.05"
@@ -2450,7 +2499,7 @@
                                         TickFrequency="0.25" ValueChanged="CollisionGainSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=CollisionGainText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="CollisionGainText" Text="1.00"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_CollisionMinThreshold}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_CollisionMinThreshold_Tip}"/>
@@ -2458,7 +2507,7 @@
                                         TickFrequency="0.1" ValueChanged="CollisionMinThresholdSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=CollisionMinThresholdText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="CollisionMinThresholdText" Text="0.20"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_CollisionMaxAmplitude}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_CollisionMaxAmplitude_Tip}"/>
@@ -2466,7 +2515,7 @@
                                         TickFrequency="0.1" ValueChanged="CollisionMaxAmpSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=CollisionMaxAmpText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="CollisionMaxAmpText" Text="0.85"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_FrequencyHz}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_CollisionFrequencyHz_Tip}"/>
@@ -2474,14 +2523,14 @@
                                         TickFrequency="10" ValueChanged="CollisionFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=CollisionFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="CollisionFreqText" Text="50"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_CollisionDurationMs}" Style="{StaticResource LabelText}"/>
                             <Slider     Grid.Column="1" x:Name="CollisionEnvelopeMsSlider" Minimum="40" Maximum="300" SmallChange="5" LargeChange="20"
                                         TickFrequency="20" ValueChanged="CollisionEnvelopeMsSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=CollisionEnvelopeMsText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="CollisionEnvelopeMsText" Text="120"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,0">
+                        <Grid Tag="Advanced" Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_CollisionWaveform_Tip}"/>
@@ -2555,7 +2604,7 @@
                              values directly, corrections are just setting your own
                              redline, and agreement accrues from other drivers'
                              auto-submitted saves rather than a dedicated prompt.) -->
-                        <Grid x:Name="RevLimiterOffsetRow" Margin="0,0,0,8">
+                        <Grid Tag="Advanced" x:Name="RevLimiterOffsetRow" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_RevLimiterOffsetRowRedlineOffset}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_RevLimiterOffsetRowRedlineOffset_Tip}"/>
@@ -2563,7 +2612,7 @@
                                         TickFrequency="250" ValueChanged="RevLimiterOffsetSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=RevLimiterOffsetText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="RevLimiterOffsetText" Text="0"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Common_Waveform}" Style="{StaticResource LabelText}"/>
                             <ComboBox  Grid.Column="1" x:Name="RevLimiterWaveformCombo" SelectionChanged="RevLimiterWaveform_Changed">
@@ -2578,7 +2627,7 @@
                                         TickFrequency="10" ValueChanged="RevLimiterFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=RevLimiterFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="RevLimiterFreqText" Text="90"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_RevLimiterPulseRateHz}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_RevLimiterPulseRateHz_Tip}"/>
@@ -2586,7 +2635,7 @@
                                         TickFrequency="5" ValueChanged="RevLimiterPulseFreqSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=RevLimiterPulseFreqText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="RevLimiterPulseFreqText" Text="20.0"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,8">
+                        <Grid Tag="Advanced" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_RevLimiterPulseLength}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_RevLimiterPulseLength_Tip}"/>
@@ -2594,7 +2643,7 @@
                                         TickFrequency="0.1" ValueChanged="RevLimiterDutyCycleSlider_ValueChanged" VerticalAlignment="Center"/>
                             <Border Visibility="{Binding Visibility, ElementName=RevLimiterDutyCycleText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="RevLimiterDutyCycleText" Text="0.50"/></Border>
                         </Grid>
-                        <Grid Margin="0,0,0,0">
+                        <Grid Tag="Advanced" Margin="0,0,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{loc:T Effects_RevLimiterActiveAmp}" Style="{StaticResource LabelText}"
                                        ToolTip="{loc:T Effects_RevLimiterActiveAmp_Tip}"/>
@@ -2605,118 +2654,121 @@
                     </StackPanel>
                 </Expander>
 
-                <!-- Ducking: cross-effect amplitude coordinators. Airborne
-                     ducking cuts effects while the car is off the ground;
-                     sidechain ducking dips continuous effects when transient
-                     ones fire. Neither is a voice of its own. -->
-                <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12"><TextBlock Text="{loc:T Effects_TelemetryEffectsDucking}" Style="{StaticResource SectionHeaderText}"/></Border>
+                <!-- Simple mode hides the whole Ducking section; both keep running. -->
+                <StackPanel Tag="Advanced">
+                    <!-- Ducking: cross-effect amplitude coordinators. Airborne
+                         ducking cuts effects while the car is off the ground;
+                         sidechain ducking dips continuous effects when transient
+                         ones fire. Neither is a voice of its own. -->
+                    <Border Style="{StaticResource SectionHeaderBorder}" Margin="0,24,0,12"><TextBlock Text="{loc:T Effects_TelemetryEffectsDucking}" Style="{StaticResource SectionHeaderText}"/></Border>
 
-                <!-- Airborne ducking. A coordinator, not a voice: it produces
-                     no haptic of its own, it pulls down the OTHER effects while
-                     the car is off the ground so jumps / crest pops don't fire
-                     phantom slide, engine, or road feedback. Detection comes
-                     from the enhanced sources (AC wheel load, Forza suspension
-                     droop, FS per-wheel contact flags from the mod); the
-                     universal SimHub path can't tell, so it's a no-op there.
-                     Global (no per-car override / Save button):
-                     edits persist immediately. -->
-                <Expander x:Name="AirborneExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
-                    <Expander.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <CheckBox x:Name="AirborneEnabledCheck" Content="{loc:T Effects_AirborneEnabled}"
-                                      FontWeight="SemiBold" VerticalAlignment="Center"
-                                      ToolTip="{loc:T Effects_AirborneEnabled_Tip}"
-                                      Checked="AirborneEnabled_Changed" Unchecked="AirborneEnabled_Changed"/>
-                            <Border x:Name="AirborneNewBadge" Style="{StaticResource NewEffectBadge}">
-                                <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
-                            </Border>
-                            <Button x:Name="AirborneRevertBtn" Content="↶" Tag="Airborne" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                            <Button x:Name="AirborneSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Airborne" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                        </StackPanel>
-                    </Expander.Header>
-                    <StackPanel Margin="0,8,0,0">
-                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
-                                   Text="{loc:T Effects_AirborneCutsVibrationsWhileThe}"/>
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{loc:T Effects_AirborneReduction}" Style="{StaticResource LabelText}"
-                                       ToolTip="{loc:T Effects_AirborneReduction_Tip}"/>
-                            <Slider     Grid.Column="1" x:Name="AirborneReductionSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
-                                        TickFrequency="0.1" ValueChanged="AirborneReductionSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <Border Visibility="{Binding Visibility, ElementName=AirborneReductionText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AirborneReductionText" Text="100%"/></Border>
-                        </Grid>
-                        <TextBlock Text="{loc:T Effects_AirborneDuckTheseWhileAirborne}" Style="{StaticResource LabelText}" Margin="0,0,0,6"/>
-                        <WrapPanel Orientation="Horizontal">
-                            <CheckBox x:Name="AirborneDuckEngineCheck"      Content="{loc:T Effects_AirborneDuckEngine}"   Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckAudioCheck"       Content="{loc:T Effects_AirborneDuckAudio}" Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckRoadBumpsCheck"   Content="{loc:T Effects_AirborneDuckRoadBumps}"     MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckTractionCheck"    Content="{loc:T Effects_AirborneDuckTraction}"  MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckRevLimiterCheck"  Content="{loc:T Effects_AirborneDuckRevLimiter}"   MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckGearShiftCheck"   Content="{loc:T Effects_AirborneDuckGearShift}"     MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckAbsCheck"         Content="{loc:T Effects_AirborneDuckAbs}"            MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckPitLimiterCheck"  Content="{loc:T Effects_AirborneDuckPitLimiter}"    Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckDrsCheck"         Content="{loc:T Effects_AirborneDuckDrs}"            Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                            <CheckBox x:Name="AirborneDuckCollisionCheck"   Content="{loc:T Effects_AirborneDuckCollision}"      Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
-                        </WrapPanel>
-                    </StackPanel>
-                </Expander>
-
-                <!-- Sidechain ducking. When transient effects fire, continuous
-                     effects duck to make room. Sits next to Airborne ducking:
-                     both are cross-effect amplitude coordinators rather than
-                     voices of their own. -->
-                <Expander x:Name="DuckingExpander" IsExpanded="False" Margin="0,0,0,4">
-                    <Expander.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <CheckBox x:Name="DuckingEnabledCheck" Content="{loc:T Effects_DuckingEnabled}"
-                                      FontWeight="SemiBold" VerticalAlignment="Center"
-                                      Checked="DuckingEnabled_Changed" Unchecked="DuckingEnabled_Changed"/>
-                            <Button x:Name="DuckingRevertBtn" Content="↶" Tag="Ducking" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
-                            <Button x:Name="DuckingSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Ducking" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
-                        </StackPanel>
-                    </Expander.Header>
-                    <StackPanel Margin="0,8,0,0">
-                        <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
-                            Text="{loc:T Effects_DuckingWhenTransientEffectsGear}"/>
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{loc:T Effects_DuckingDepth}" Style="{StaticResource LabelText}"/>
-                            <Slider     Grid.Column="1" x:Name="DuckDepthSlider"
-                                        Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
-                                        TickFrequency="0.1" ValueChanged="DuckDepthSlider_ValueChanged" VerticalAlignment="Center"/>
-                            <Border Visibility="{Binding Visibility, ElementName=DuckDepthText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DuckDepthText" Text="0.50"/></Border>
-                        </Grid>
-                        <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,0">
-                            <Expander.Header>
-                                <TextBlock Text="{loc:T Effects_AdvancedDuckingAdvancedEnvelope}" FontSize="12"/>
-                            </Expander.Header>
-                            <StackPanel Margin="0,8,0,0">
-                                <Grid Margin="0,0,0,4">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{loc:T Effects_AdvancedDuckingAttackMs}" Style="{StaticResource LabelText}"/>
-                                    <Slider     Grid.Column="1" x:Name="DuckAttackSlider"
-                                                Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
-                                                TickFrequency="10" ValueChanged="DuckAttackSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <Border Visibility="{Binding Visibility, ElementName=DuckAttackText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DuckAttackText" Text="5"/></Border>
-                                </Grid>
-                                <Grid Margin="0,0,0,0">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{loc:T Effects_AdvancedDuckingReleaseMs}" Style="{StaticResource LabelText}"/>
-                                    <Slider     Grid.Column="1" x:Name="DuckReleaseSlider"
-                                                Minimum="10" Maximum="500" SmallChange="5" LargeChange="25"
-                                                TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <Border Visibility="{Binding Visibility, ElementName=DuckReleaseText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DuckReleaseText" Text="80"/></Border>
-                                </Grid>
-                                <CheckBox x:Name="DuckFrequencyAwareCheck" Content="{loc:T Effects_DuckFrequencyAware}"
-                                          Margin="0,8,0,2" VerticalAlignment="Center"
-                                          ToolTip="{loc:T Effects_DuckFrequencyAware_Tip}"
-                                          Checked="DuckFrequencyAware_Changed" Unchecked="DuckFrequencyAware_Changed"/>
-                                <TextBlock Style="{StaticResource HelpText}" Margin="18,0,0,0" FontSize="12" TextWrapping="Wrap"
-                                           Text="{loc:T Effects_AdvancedDuckingOnlyDucksEffectsThat}"/>
+                    <!-- Airborne ducking. A coordinator, not a voice: it produces
+                         no haptic of its own, it pulls down the OTHER effects while
+                         the car is off the ground so jumps / crest pops don't fire
+                         phantom slide, engine, or road feedback. Detection comes
+                         from the enhanced sources (AC wheel load, Forza suspension
+                         droop, FS per-wheel contact flags from the mod); the
+                         universal SimHub path can't tell, so it's a no-op there.
+                         Global (no per-car override / Save button):
+                         edits persist immediately. -->
+                    <Expander x:Name="AirborneExpander" IsExpanded="False" Margin="0,0,0,4" Expanded="EffectExpander_Expanded">
+                        <Expander.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox x:Name="AirborneEnabledCheck" Content="{loc:T Effects_AirborneEnabled}"
+                                          FontWeight="SemiBold" VerticalAlignment="Center"
+                                          ToolTip="{loc:T Effects_AirborneEnabled_Tip}"
+                                          Checked="AirborneEnabled_Changed" Unchecked="AirborneEnabled_Changed"/>
+                                <Border x:Name="AirborneNewBadge" Style="{StaticResource NewEffectBadge}">
+                                    <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                </Border>
+                                <Button x:Name="AirborneRevertBtn" Content="↶" Tag="Airborne" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                                <Button x:Name="AirborneSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Airborne" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                             </StackPanel>
-                        </Expander>
-                    </StackPanel>
-                </Expander>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                       Text="{loc:T Effects_AirborneCutsVibrationsWhileThe}"/>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:T Effects_AirborneReduction}" Style="{StaticResource LabelText}"
+                                           ToolTip="{loc:T Effects_AirborneReduction_Tip}"/>
+                                <Slider     Grid.Column="1" x:Name="AirborneReductionSlider" Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                            TickFrequency="0.1" ValueChanged="AirborneReductionSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <Border Visibility="{Binding Visibility, ElementName=AirborneReductionText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="AirborneReductionText" Text="100%"/></Border>
+                            </Grid>
+                            <TextBlock Text="{loc:T Effects_AirborneDuckTheseWhileAirborne}" Style="{StaticResource LabelText}" Margin="0,0,0,6"/>
+                            <WrapPanel Orientation="Horizontal">
+                                <CheckBox x:Name="AirborneDuckEngineCheck"      Content="{loc:T Effects_AirborneDuckEngine}"   Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                                <CheckBox x:Name="AirborneDuckAudioCheck"       Content="{loc:T Effects_AirborneDuckAudio}" Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                                <CheckBox x:Name="AirborneDuckRoadBumpsCheck"   Content="{loc:T Effects_AirborneDuckRoadBumps}"     MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                                <CheckBox x:Name="AirborneDuckTractionCheck"    Content="{loc:T Effects_AirborneDuckTraction}"  MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                                <CheckBox x:Name="AirborneDuckRevLimiterCheck"  Content="{loc:T Effects_AirborneDuckRevLimiter}"   MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                                <CheckBox x:Name="AirborneDuckGearShiftCheck"   Content="{loc:T Effects_AirborneDuckGearShift}"     MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                                <CheckBox x:Name="AirborneDuckAbsCheck"         Content="{loc:T Effects_AirborneDuckAbs}"            MinWidth="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                                <CheckBox x:Name="AirborneDuckPitLimiterCheck"  Content="{loc:T Effects_AirborneDuckPitLimiter}"    Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                                <CheckBox x:Name="AirborneDuckDrsCheck"         Content="{loc:T Effects_AirborneDuckDrs}"            Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                                <CheckBox x:Name="AirborneDuckCollisionCheck"   Content="{loc:T Effects_AirborneDuckCollision}"      Width="150" Margin="0,0,0,6" Checked="AirborneToggle_Changed" Unchecked="AirborneToggle_Changed"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Expander>
+
+                    <!-- Sidechain ducking. When transient effects fire, continuous
+                         effects duck to make room. Sits next to Airborne ducking:
+                         both are cross-effect amplitude coordinators rather than
+                         voices of their own. -->
+                    <Expander x:Name="DuckingExpander" IsExpanded="False" Margin="0,0,0,4">
+                        <Expander.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox x:Name="DuckingEnabledCheck" Content="{loc:T Effects_DuckingEnabled}"
+                                          FontWeight="SemiBold" VerticalAlignment="Center"
+                                          Checked="DuckingEnabled_Changed" Unchecked="DuckingEnabled_Changed"/>
+                                <Button x:Name="DuckingRevertBtn" Content="↶" Tag="Ducking" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
+                                <Button x:Name="DuckingSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Ducking" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
+                            </StackPanel>
+                        </Expander.Header>
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock Style="{StaticResource HelpText}" Margin="0,0,0,8" FontSize="12"
+                                Text="{loc:T Effects_DuckingWhenTransientEffectsGear}"/>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:T Effects_DuckingDepth}" Style="{StaticResource LabelText}"/>
+                                <Slider     Grid.Column="1" x:Name="DuckDepthSlider"
+                                            Minimum="0" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                            TickFrequency="0.1" ValueChanged="DuckDepthSlider_ValueChanged" VerticalAlignment="Center"/>
+                                <Border Visibility="{Binding Visibility, ElementName=DuckDepthText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DuckDepthText" Text="0.50"/></Border>
+                            </Grid>
+                            <Expander x:Name="AdvancedDuckingExpander" IsExpanded="False" Margin="0,4,0,0">
+                                <Expander.Header>
+                                    <TextBlock Text="{loc:T Effects_AdvancedDuckingAdvancedEnvelope}" FontSize="12"/>
+                                </Expander.Header>
+                                <StackPanel Margin="0,8,0,0">
+                                    <Grid Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Effects_AdvancedDuckingAttackMs}" Style="{StaticResource LabelText}"/>
+                                        <Slider     Grid.Column="1" x:Name="DuckAttackSlider"
+                                                    Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
+                                                    TickFrequency="10" ValueChanged="DuckAttackSlider_ValueChanged" VerticalAlignment="Center"/>
+                                        <Border Visibility="{Binding Visibility, ElementName=DuckAttackText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DuckAttackText" Text="5"/></Border>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{loc:T Effects_AdvancedDuckingReleaseMs}" Style="{StaticResource LabelText}"/>
+                                        <Slider     Grid.Column="1" x:Name="DuckReleaseSlider"
+                                                    Minimum="10" Maximum="500" SmallChange="5" LargeChange="25"
+                                                    TickFrequency="50" ValueChanged="DuckReleaseSlider_ValueChanged" VerticalAlignment="Center"/>
+                                        <Border Visibility="{Binding Visibility, ElementName=DuckReleaseText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="DuckReleaseText" Text="80"/></Border>
+                                    </Grid>
+                                    <CheckBox x:Name="DuckFrequencyAwareCheck" Content="{loc:T Effects_DuckFrequencyAware}"
+                                              Margin="0,8,0,2" VerticalAlignment="Center"
+                                              ToolTip="{loc:T Effects_DuckFrequencyAware_Tip}"
+                                              Checked="DuckFrequencyAware_Changed" Unchecked="DuckFrequencyAware_Changed"/>
+                                    <TextBlock Style="{StaticResource HelpText}" Margin="18,0,0,0" FontSize="12" TextWrapping="Wrap"
+                                               Text="{loc:T Effects_AdvancedDuckingOnlyDucksEffectsThat}"/>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
 
             </StackPanel> <!-- /TelemetryEffectsPanel -->
 
@@ -5414,7 +5466,14 @@
                               ToolTip="{loc:T Settings_ShowPerGearRedlineEditor_Tip}"/>
                     <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,4" FontSize="12"
                                Text="{loc:T Settings_WidgetsOffByDefaultToKeep}"/>
+                    <!-- One time setup again (SettingsControl.OneTimeSetup.cs): the
+                         only way an existing install meets it. -->
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button x:Name="RunOneTimeSetupButton" Content="{loc:T Settings_RunOneTimeSetup}" MinWidth="220" Height="26"
+                                Click="RunOneTimeSetup_Click"
+                                ToolTip="{loc:T Settings_RunOneTimeSetup_Tip}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                         <Button x:Name="ResetNoticesButton" Content="{loc:T Settings_ResetNotices}" MinWidth="220" Height="26"
                                 Click="ResetNotices_Click"
                                 ToolTip="{loc:T Settings_ResetNotices_Tip}"/>

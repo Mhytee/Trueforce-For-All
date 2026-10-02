@@ -58,48 +58,7 @@ namespace TrueforceForAll.Plugin
 
             var root = new StackPanel { Margin = new Thickness(22, 20, 22, 18) };
             Content = root;
-
-            root.Children.Add(new TextBlock {
-                Text = Loc.T("Welcome_Heading"),
-                Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 17,
-                Margin = new Thickness(0, 0, 0, 6),
-            });
-            root.Children.Add(new TextBlock {
-                Text = Loc.T("Welcome_Intro"),
-                Foreground = MutedFg, FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 18),
-                TextWrapping = TextWrapping.Wrap,
-            });
-
-            root.Children.Add(MakePrereleaseNotice());
-
-            root.Children.Add(MakeBullet(
-                Loc.T("Welcome_CarDataTitle"),
-                Loc.T("Welcome_CarDataBody")));
-            root.Children.Add(MakeBullet(
-                Loc.T("Welcome_PresetsTitle"),
-                Loc.T("Welcome_PresetsBody")));
-            root.Children.Add(MakeBullet(
-                Loc.T("Welcome_GrowsTitle"),
-                Loc.T("Welcome_GrowsBody")));
-            root.Children.Add(MakeBullet(
-                Loc.T("Welcome_AchievementsTitle"),
-                Loc.T("Welcome_AchievementsBody")));
-            root.Children.Add(MakeBullet(
-                Loc.T("Welcome_PrivacyTitle"),
-                Loc.T("Welcome_PrivacyBody")));
-
-            // Policy link, indented to align with the bullet bodies.
-            var policyLine = new TextBlock {
-                FontSize = 11, Margin = new Thickness(18, 0, 0, 0),
-                TextWrapping = TextWrapping.Wrap,
-            };
-            var policyLink = new System.Windows.Documents.Hyperlink(
-                new System.Windows.Documents.Run(Loc.T("Welcome_ReadPrivacyPolicy")))
-            { Foreground = HeaderFg };
-            policyLink.Click += (s, e) => OpenUrl(SettingsControl.PrivacyPolicyUrl);
-            policyLine.Inlines.Add(policyLink);
-            root.Children.Add(policyLine);
+            root.Children.Add(BuildBody());
 
             var btnRow = new StackPanel {
                 Orientation = Orientation.Horizontal,
@@ -139,11 +98,59 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(btnRow);
         }
 
+        /// <summary>Everything above the buttons: the heading, the five
+        /// bullets and the privacy-policy link. Shared with One
+        /// time setup, whose first page is this disclosure with its own buttons.</summary>
+        internal static StackPanel BuildBody()
+        {
+            var body = new StackPanel();
+            body.Children.Add(new TextBlock {
+                Text = Loc.T("Welcome_Heading"),
+                Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 17,
+                Margin = new Thickness(0, 0, 0, 6),
+            });
+            body.Children.Add(new TextBlock {
+                Text = Loc.T("Welcome_Intro"),
+                Foreground = MutedFg, FontSize = 12,
+                Margin = new Thickness(0, 0, 0, 18),
+                TextWrapping = TextWrapping.Wrap,
+            });
+
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_CarDataTitle"),
+                Loc.T("Welcome_CarDataBody")));
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_PresetsTitle"),
+                Loc.T("Welcome_PresetsBody")));
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_GrowsTitle"),
+                Loc.T("Welcome_GrowsBody")));
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_AchievementsTitle"),
+                Loc.T("Welcome_AchievementsBody")));
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_PrivacyTitle"),
+                Loc.T("Welcome_PrivacyBody")));
+
+            // Policy link, indented to align with the bullet bodies.
+            var policyLine = new TextBlock {
+                FontSize = 11, Margin = new Thickness(18, 0, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            var policyLink = new System.Windows.Documents.Hyperlink(
+                new System.Windows.Documents.Run(Loc.T("Welcome_ReadPrivacyPolicy")))
+            { Foreground = HeaderFg };
+            policyLink.Click += (s, e) => OpenUrl(SettingsControl.PrivacyPolicyUrl);
+            policyLine.Inlines.Add(policyLink);
+            body.Children.Add(policyLine);
+            return body;
+        }
+
         // Filled button with an explicit hover/pressed template. Without a
         // custom template WPF's default Button chrome ignores our Background on
         // mouse-over and paints the stock light-gray hover brush, which made the
         // gold "Get started" button turn gray instead of lightening.
-        private static Style MakeFilledButtonStyle(Brush fg, Color normal, Color hover, Color pressed)
+        internal static Style MakeFilledButtonStyle(Brush fg, Color normal, Color hover, Color pressed)
         {
             var template = new ControlTemplate(typeof(Button));
 
@@ -172,35 +179,6 @@ namespace TrueforceForAll.Plugin
             return style;
         }
 
-        // A distinct callout (not one of the green marketing bullets) so the
-        // pre-release state of the community backend is unmissable at first
-        // contact. The reassurance in the last sentence holds only if the
-        // eventual data cleanup stays selective: keep accounts, achievements,
-        // and car facts; reset only the shared preset/pack marketplace.
-        private FrameworkElement MakePrereleaseNotice()
-        {
-            var border = new Border {
-                Background      = new SolidColorBrush(Color.FromRgb(0x39, 0x33, 0x22)),
-                BorderBrush     = HeaderFg,
-                BorderThickness = new Thickness(3, 0, 0, 0),
-                CornerRadius    = new CornerRadius(2),
-                Padding         = new Thickness(12, 10, 12, 10),
-                Margin          = new Thickness(0, 0, 0, 16),
-            };
-            var stack = new StackPanel();
-            stack.Children.Add(new TextBlock {
-                Text = Loc.T("Welcome_TestBackendTitle"),
-                Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 3),
-            });
-            stack.Children.Add(new TextBlock {
-                Text = Loc.T("Welcome_TestBackendBody"),
-                Foreground = TextFg, FontSize = 11, TextWrapping = TextWrapping.Wrap,
-            });
-            border.Child = stack;
-            return border;
-        }
-
         private static void OpenUrl(string url)
         {
             try
@@ -213,7 +191,7 @@ namespace TrueforceForAll.Plugin
             catch { }
         }
 
-        private FrameworkElement MakeBullet(string title, string body)
+        private static FrameworkElement MakeBullet(string title, string body)
         {
             var grid = new Grid { Margin = new Thickness(0, 0, 0, 12) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });

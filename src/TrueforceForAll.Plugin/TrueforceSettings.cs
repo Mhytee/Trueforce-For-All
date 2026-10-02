@@ -749,6 +749,20 @@ namespace TrueforceForAll.Plugin
         // after the built-ins. MUST default EMPTY (the append landmine above).
         public List<EqPreset> TrueforceEqUserPresets { get; set; } = new List<EqPreset>();
 
+        // Effects tab Simple mode: hides the fine tuning and leaves each
+        // effect's on/off, gain and frequency (SettingsControl.SimpleMode.cs).
+        // Display only: hidden settings keep their values and keep applying.
+        // Defaults false so an existing install, whose settings file predates
+        // the field, stays in Advanced; TrueforcePlugin.Init turns it on for a
+        // fresh install only. Global, Portable in backup.
+        public bool SimpleMode { get; set; } = false;
+
+        // One time setup (OneTimeSetupWindow) still owed to this install: set by
+        // TrueforcePlugin.Init on a FRESH install only, cleared when the user
+        // finishes or skips it. An existing install never has it set, so it only
+        // ever meets setup through the Settings tab button. Excluded from backup.
+        public bool OneTimeSetupPending { get; set; } = false;
+
         // Inject a Trueforce quick-gain box into SimHub's home-screen "Feedback"
         // section, next to Motors/Wind. That section is hardcoded in SimHubWPF
         // with no plugin extension point, so the box is added by a defensive

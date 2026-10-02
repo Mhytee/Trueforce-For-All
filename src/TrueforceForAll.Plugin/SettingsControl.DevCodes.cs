@@ -52,7 +52,8 @@ namespace TrueforceForAll.Plugin
             "FZBANNERS      Toggle the two info-tier Forza banners (SimHub-fallback notice + discovered-port) on to eyeball their button styling.\n" +
             "SPRINGTEST     Desk test of the stationary spring (motor pushes one way, then the other).\n" +
             "WHATSNEW       Re-show the 'What's new' banner and all NEW effect badges.\n" +
-            "WELCOME        Reset the networked-welcome modal AND the Mode B intro seen state and re-trigger them now (HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt / HasSeenModeBIntro all cleared).\n" +
+            "ONBOARDING     Preview One time setup exactly as a new user sees it: every page (welcome, account, rev lights) whatever this PC's state, and nothing committed on close.\n" +
+            "WELCOME        Rehearse a fresh install's first open: re-arm One time setup (the networked welcome is its first page) and the Mode B intro, and open setup now (OneTimeSetupPending set; HasSeenNetworkedWelcome / WelcomeDeclineCount / WelcomeNextShowAt / HasSeenModeBIntro cleared).\n" +
             "MOTDFLUSH      Clear the Message-of-the-day cache + all MOTD dismissals and refetch now (so dismissed/edited messages reappear; bypasses the ~6h cache).\n" +
             "MOTDROLL       Preview the MOTD strip on a RANDOM upcoming day (shows which day in the strip + status). Run again to re-roll. Dismissals + nag cooldown bypassed.\n" +
             "MOTDDATE<MMDDYYYY>  Preview the MOTD strip as if it were that date, e.g. MOTDDATE12252026, to see upcoming messages before they trigger.\n" +
@@ -515,6 +516,20 @@ namespace TrueforceForAll.Plugin
             // gating fields: HasSeenNetworkedWelcome (the hard latch),
             // WelcomeDeclineCount (the second-decline-locks counter),
             // and WelcomeNextShowAt (the 14-day re-show timer).
+            // Preview the whole of One time setup as a new user meets it, on a PC
+            // that is not new: every page shows (welcome, account, rev lights) and
+            // closing it commits nothing. Deleting the settings file cannot stand
+            // in for a fresh install, because SimHub silently restores it from
+            // PluginsData\Common\_Backups on the next start.
+            if (code.Equals("ONBOARDING", StringComparison.OrdinalIgnoreCase))
+            {
+                AccessCodeBox.Text = string.Empty;
+                if (AccessCodeStatus != null)
+                    AccessCodeStatus.Text = "One time setup preview: every page, nothing committed on close.";
+                MaybeShowOneTimeSetup(force: true, preview: true);
+                return;
+            }
+
             if (code.Equals("WELCOME", StringComparison.OrdinalIgnoreCase))
             {
                 _plugin.Settings.HasSeenNetworkedWelcome = false;
@@ -522,16 +537,20 @@ namespace TrueforceForAll.Plugin
                 _plugin.Settings.WelcomeNextShowAt       = null;
                 // Also reset the Mode B intro so both first-run modals can be retested.
                 _plugin.Settings.HasSeenModeBIntro       = false;
+                // And re-arm One time setup, which now carries the welcome as its
+                // first page: this rehearses a fresh install's first open.
+                _plugin.Settings.OneTimeSetupPending     = true;
                 try { _plugin.PersistSettings(); }
                 catch (Exception ex) { SimHub.Logging.Current.Info("[TF4ALL] Persist settings failed: " + ex.Message); }
                 AccessCodeBox.Text = string.Empty;
                 if (AccessCodeStatus != null)
-                    AccessCodeStatus.Text = "Networked-welcome reset (opening now); Mode B intro re-armed for the Telemetry Based FFB tab.";
+                    AccessCodeStatus.Text = "One time setup and the networked welcome reset (opening now); Mode B intro re-armed for the Telemetry Based FFB tab.";
                 // Re-trigger via the same gate the normal startup path
                 // uses so any preconditions (backend URL configured,
                 // etc.) apply identically. Clear the per-session guard
                 // first or the reset would no-op after an earlier show.
                 WelcomeWindow.ShownThisSession = false;
+                OneTimeSetupWindow.ShownThisSession = false;
                 MaybeShowNetworkedWelcome();
                 // The Mode B intro is NOT force-shown here: it would pop over
                 // whatever screen you're on (and stack on the welcome, which is

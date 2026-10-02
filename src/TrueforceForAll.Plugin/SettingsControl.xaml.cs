@@ -282,6 +282,7 @@ namespace TrueforceForAll.Plugin
             // any visibility pass runs over the controls inside it.
             ApplyFxBenchVisibility();
             ApplyLightsyncTabVisibility();
+            ApplySimpleMode();
 
             // Header version readout. Read once at construction; doesn't change
             // at runtime within a session. ToString(3) drops the build/revision
@@ -502,6 +503,7 @@ namespace TrueforceForAll.Plugin
                 MasterGainStepSlider.Value = _plugin.MasterGainStep;
                 MasterGainStepText.Text    = _plugin.MasterGainStep.ToString("F2");
                 RefreshTrueforceEq();
+                SyncSimpleMode();
                 if (ShowFeedbackBoxCheck != null)
                     ShowFeedbackBoxCheck.IsChecked = _plugin.Settings?.ShowFeedbackBox == true;
                 if (ShowPerGearRedlineEditorCheck != null)
@@ -10023,7 +10025,12 @@ namespace TrueforceForAll.Plugin
         // client worded), which stays as written until the next refresh.
         private Func<string> _discordStatusRender;
 
-        private async void LinkDiscord_Click(object sender, RoutedEventArgs e)
+        private async void LinkDiscord_Click(object sender, RoutedEventArgs e) => await LinkDiscordAsync();
+
+        /// <summary>The Discord link flow behind the Account tab's button, awaitable
+        /// so One time setup can show the outcome on its own page. A second call
+        /// while one is running cancels it, as the button does.</summary>
+        private async System.Threading.Tasks.Task LinkDiscordAsync()
         {
             if (_plugin == null) return;
             // While a link is running, the same button cancels it.
@@ -13087,6 +13094,9 @@ namespace TrueforceForAll.Plugin
         private void MaybeShowNetworkedWelcome()
         {
             if (_plugin?.Settings == null) return;
+            // A fresh install gets One time setup instead, which carries this
+            // welcome as its first page while it is still unseen.
+            if (_plugin.Settings.OneTimeSetupPending) { MaybeShowOneTimeSetup(force: false); return; }
             if (_plugin.Settings.HasSeenNetworkedWelcome) return;
             // Backend not configured - nothing to pitch yet. Don't latch
             // _welcomeTriggeredThisSession on this branch so a later
@@ -13125,7 +13135,14 @@ namespace TrueforceForAll.Plugin
 
             var welcome = new WelcomeWindow { Owner = owner };
             welcome.ShowDialog();
+            CommitNetworkedWelcome();
+            if (welcome.SignInRequested) RunWelcomeSignIn(owner);
+        }
 
+        /// <summary>What closing the welcome means, from either the standalone
+        /// window or One time setup's first page.</summary>
+        private void CommitNetworkedWelcome()
+        {
             // The welcome is a PROCEED, not a consent gate: community
             // features and car-data sharing are the default posture, so ANY
             // dismissal (either button, Esc, the X) latches the welcome and
@@ -13149,27 +13166,27 @@ namespace TrueforceForAll.Plugin
             try { _plugin.PersistSettings(); }
             catch (Exception ex) { SimHub.Logging.Current.Error("[TF4ALL] Persist settings failed: " + ex.Message); }
             RefreshAccountRow();
+        }
 
-            // Optional account: run sign-in AFTER the proceed commit, so a
-            // cancelled sign-in changes nothing (the Account tab remains).
-            if (welcome.SignInRequested)
+        /// <summary>The welcome's optional account. Run AFTER the proceed commit,
+        /// so a cancelled sign-in changes nothing (the Account tab remains).</summary>
+        private void RunWelcomeSignIn(Window owner)
+        {
+            if (_plugin.AuthIsSignedIn)
             {
-                if (_plugin.AuthIsSignedIn)
-                {
-                    // Already signed in (e.g. session restored from a prior
-                    // install): still run username bootstrap so the first
-                    // upload doesn't surface "set a username first".
-                    BootstrapUsernameAfterSignIn();
-                }
-                else
-                {
-                    var signIn = new SignInWindow(_plugin) { Owner = owner };
-                    bool? signedIn = signIn.ShowDialog();
-                    if (signedIn == true && _plugin.AuthIsSignedIn)
-                        BootstrapUsernameAfterSignIn();
-                }
-                RefreshAccountRow();
+                // Already signed in (e.g. session restored from a prior
+                // install): still run username bootstrap so the first
+                // upload doesn't surface "set a username first".
+                BootstrapUsernameAfterSignIn();
             }
+            else
+            {
+                var signIn = new SignInWindow(_plugin) { Owner = owner };
+                bool? signedIn = signIn.ShowDialog();
+                if (signedIn == true && _plugin.AuthIsSignedIn)
+                    BootstrapUsernameAfterSignIn();
+            }
+            RefreshAccountRow();
         }
 
         // Forza is the only UDP-telemetry game, so its config is always the

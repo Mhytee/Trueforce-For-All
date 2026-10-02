@@ -787,6 +787,11 @@ namespace TrueforceForAll.Plugin
 
         // Status surfaced to the SettingsControl.
         public string WheelStatus    { get; private set; } = "Not detected";
+        /// <summary>The detected wheel's model as people know it ("G PRO", "RS50",
+        /// "G923"), for sentences such as One time setup's wheel check. Set on
+        /// detection and left in place after a disconnect, so read WheelDetected
+        /// first.</summary>
+        public string WheelModelLabel { get; private set; }
 
         /// <summary>Which of the three things WheelStatus is saying, as a token
         /// instead of as words. The panel's status pill used to ask
@@ -4505,6 +4510,17 @@ namespace TrueforceForAll.Plugin
             // on a replug) and needs to know this PC had no settings file, so
             // first-run-only defaults can never reach an existing setup.
             _wasFreshInstall = wasFreshInstall;
+            // A first-timer opens the Effects tab in Simple mode and is owed One
+            // time setup on the first panel open. Fresh installs only: an existing
+            // settings file has neither field, reads the false defaults, and keeps
+            // the Advanced view it already knows with no setup popup. Persisted by
+            // the FirstInstalledVersion stamp just below, which always writes on a
+            // fresh install.
+            if (wasFreshInstall)
+            {
+                Settings.SimpleMode = true;
+                Settings.OneTimeSetupPending = true;
+            }
             // Stamped HERE, and nowhere else. It has to happen before the badge-seed
             // block below, which overwrites LastSeenVersion with the running build:
             // after that point an upgrader is indistinguishable from a fresh install,
@@ -5484,6 +5500,7 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info(
                     $"[TF4ALL] Product string '{match.ProductString}' identifies this as {modelLabel} behind PID 0x{match.Pid:X4}.");
             }
+            WheelModelLabel = modelLabel;
             WheelStatus = Loc.F("Plugin_VID0xPID0x_Fmt", modelLabel, match.Vid, match.Pid, (match.Unverified ? Loc.T("Plugin_UnconfirmedModel") : ""));
             WheelStatusState = WheelStatusKind.Detected;
             SimHub.Logging.Current.Info($"[TF4ALL] Found {WheelStatus}.");

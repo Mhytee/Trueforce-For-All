@@ -158,6 +158,8 @@ namespace TrueforceForAll.Plugin
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             // Trueforce EQ: a wheel/rig trait, global (not preset-scoped), travels.
             "TrueforceEqEnabled", "TrueforceEqBands", "TrueforceEqPresetId", "TrueforceEqUserPresets",
+            // Effects tab Simple/Advanced view: the user's preference, travels.
+            "SimpleMode",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
             "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb", "FfbSpikeTransientThresholdLsb",
             // Condition-render tuning (FXTEST bench): describes the wheel's
@@ -325,6 +327,8 @@ namespace TrueforceForAll.Plugin
             // them wholesale, which is the one path where it matters.)
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
+            // Per install: a restore must neither re-offer setup nor cancel it.
+            "OneTimeSetupPending",
             "IRacingTrueforceNoticeDismissed", "R3ETrueforceNoticeDismissed", "LmuTrueforceNoticeDismissed", "StandDownNoticeDismissedGames", "MairaTapNoticeDismissed", "HasSeenModeBIntro", "GameModeMapMigratedV1",
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",
