@@ -1,4 +1,4 @@
-# tools/loc/validate.ps1
+﻿# tools/loc/validate.ps1
 #
 # Purpose: the localization checks the test suite runs, printed for a
 #          translator or a reviewer without a build: no duplicate keys in any
@@ -208,6 +208,30 @@ function Get-LocPluralEnglishKey($Key, $En) {
     if ($form -eq 'one' -and $En.Contains($baseKey + '.one')) { return $baseKey + '.one' }
     return $baseKey + '.other'
 }
+
+# The placeholders a per-form row may use. English's own one-form spells the count
+# out ("One row is too wide"), so it carries no placeholder, but a language whose
+# one-form also covers 21, 31 and 101 has to show the number or it states the wrong
+# count. So a form other than '.other' is allowed any SUBSET of what the base's
+# '.other' offers: it may add the count English spelled out, or drop one it does not
+# need, but it can never invent a placeholder the string has no argument for.
+# '.other' itself, and every ordinary key, still has to match English exactly.
+function Get-LocPluralOtherKey($Key, $En) {
+    $dot = $Key.LastIndexOf('.')
+    if ($dot -le 0) { return $null }
+    $form = $Key.Substring($dot + 1)
+    if ($form -eq 'other' -or $pluralCats -notcontains $form) { return $null }
+    $otherKey = $Key.Substring(0, $dot) + '.other'
+    if (-not $En.Contains($otherKey)) { return $null }
+    return $otherKey
+}
+function Test-LocPlaceholderSubset([string]$Translation, [string]$EnglishOther) {
+    $have = Get-LocPlaceholders $Translation
+    if ($have -eq '') { return $true }
+    $allowed = @((Get-LocPlaceholders $EnglishOther) -split '\|')
+    foreach ($t in ($have -split '\|')) { if ($allowed -notcontains $t) { return $false } }
+    return $true
+}
 foreach ($culture in @($langs.Keys | Sort-Object)) {
     if ($culture -eq 'en') { continue }
     $d = $langs[$culture]
@@ -221,7 +245,11 @@ foreach ($culture in @($langs.Keys | Sort-Object)) {
         $ek = Get-LocPluralEnglishKey $k $en
         if ($null -eq $ek) { $unknown++; $fails.Add("$culture.json: '$k' is not an English key"); continue }
         if ($ek -ne $k) { $extraForms++ }
-        if ((Get-LocPlaceholders ([string]$d[$k])) -ne (Get-LocPlaceholders ([string]$en[$ek]))) { $bad++; $fails.Add("$culture.json: '$k' placeholders differ from English") }
+        $otherKey = Get-LocPluralOtherKey $k $en
+        if ($null -ne $otherKey) {
+            if (-not (Test-LocPlaceholderSubset ([string]$d[$k]) ([string]$en[$otherKey]))) { $bad++; $fails.Add("$culture.json: '$k' uses a placeholder '$otherKey' does not have") }
+        }
+        elseif ((Get-LocPlaceholders ([string]$d[$k])) -ne (Get-LocPlaceholders ([string]$en[$ek]))) { $bad++; $fails.Add("$culture.json: '$k' placeholders differ from English") }
         $want = Get-LocEdgeSpace ([string]$en[$ek])
         $got = Get-LocEdgeSpace ([string]$d[$k])
         if ($want -ne $got) { $space++; $fails.Add("$culture.json: '$k' leading and trailing whitespace differs from English (English $want, translation $got)") }
