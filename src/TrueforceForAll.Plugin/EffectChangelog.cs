@@ -679,7 +679,7 @@ namespace TrueforceForAll.Plugin
                     new ChangelogEntry {
                         Group = "New features",
                         Headline = "The plugin in your language",
-                        Description = "The panel speaks Spanish, as a machine translation to start from, and any other language can be started and translated from inside the plugin. Your corrections publish to everyone showing that language.",
+                        Description = "The panel speaks Spanish, German, Portuguese, Simplified Chinese and Russian, as machine translations to start from, and any other language can be started and translated from inside the plugin. Your corrections publish to everyone showing that language.",
                     },
                     new ChangelogEntry {
                         Group = "Improvements",
