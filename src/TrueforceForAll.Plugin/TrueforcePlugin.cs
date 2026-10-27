@@ -308,6 +308,14 @@ namespace TrueforceForAll.Plugin
         // wire while this is false. Reset per game. Written on the data thread,
         // read on the FFB thread; a stale read for one tick is harmless.
         private volatile bool _physicsSeenThisGame;
+        // The pause gate's wire-side "driver is active" signal for a game
+        // with no physics: the tap's sample counter, watched for advance.
+        // Read off the counter rather than the captured value, because
+        // the gate wipes that value on every tick while its resume
+        // candidate is pending and would otherwise erase the very signal
+        // it is waiting for.
+        private long _gateWireSamplesSeen;
+        private long _gateWireSampleTicks;
 
         // EXPERIMENTAL: the Dynamic OLED on the base of a G PRO / RS50. Shares
         // the rev lights' HID++ pipe and their Mode B + quiet-FFB gate, plus a
@@ -41556,7 +41564,14 @@ namespace TrueforceForAll.Plugin
             if (!driverActive && !_physicsSeenThisGame)
             {
                 var wireTap = _ffbTap;
-                driverActive = wireTap != null && wireTap.TryGetFreshFfbTarget(500).HasValue;
+                long samples = wireTap != null ? wireTap.FfbSamplesCaptured : 0;
+                long nowWire = System.Diagnostics.Stopwatch.GetTimestamp();
+                // Advance only: a recreated tap restarts its counter at zero,
+                // and that must re-baseline, not read as the game driving.
+                if (samples > _gateWireSamplesSeen) _gateWireSampleTicks = nowWire;
+                _gateWireSamplesSeen = samples;
+                driverActive = _gateWireSampleTicks != 0
+                    && (nowWire - _gateWireSampleTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency < 500;
             }
             if (!driverActive)
             {
