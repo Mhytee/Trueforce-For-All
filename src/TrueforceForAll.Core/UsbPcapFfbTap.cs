@@ -1859,6 +1859,19 @@ namespace TrueforceForAll.Core
             public int   K1, K2;     // per-side slope exponents (0..15)
             public bool  S1, S2;     // per-side invert (push away, not toward)
             public float Clip;       // torque saturation, 0..1
+
+            /// <summary>True for a spring that commands nothing at any
+            /// position: a dead band spanning the whole axis, or a zero
+            /// clip. The Windows driver downloads exactly this shape when a
+            /// game creates a spring effect it has not parameterized yet
+            /// (The Crew Motorfest keeps one playing for the whole session,
+            /// 2026-10-27 trace: 0b 00 ff ff e0 ff). It renders zero
+            /// either way; what it must NOT do is count as a playing spring,
+            /// because spring mode arms on "a spring plays and no scalar
+            /// flows", and that game streams scalars that merely pause
+            /// when the force pins, so the mode flapped every few seconds
+            /// with a jolt on each return.</summary>
+            public bool IsNull => Clip <= 0f || (D1 <= 0f && D2 >= 1f);
         }
 
         // Slot springs are parser-thread state, like the force arrays above.
@@ -2608,14 +2621,18 @@ namespace TrueforceForAll.Core
 
         private void PublishSpringSnapshot()
         {
+            // Null springs stay in the slot table (a later download into the
+            // slot replaces them, a STOP is still accounted) but never reach
+            // the snapshot: they render nothing, and a snapshot of nothing
+            // must read as no spring playing (see ClassicSpring.IsNull).
             int n = 0;
             for (int i = 0; i < ClassicSlotCount; i++)
-                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null) n++;
+                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null && !_classicSlotSpring[i].IsNull) n++;
             if (n == 0) { _playingSprings = null; return; }
             var arr = new ClassicSpring[n];
             int j = 0;
             for (int i = 0; i < ClassicSlotCount; i++)
-                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null) arr[j++] = _classicSlotSpring[i];
+                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null && !_classicSlotSpring[i].IsNull) arr[j++] = _classicSlotSpring[i];
             _playingSprings = arr;
         }
 

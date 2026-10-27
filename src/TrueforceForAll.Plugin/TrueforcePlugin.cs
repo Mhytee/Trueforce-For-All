@@ -300,6 +300,14 @@ namespace TrueforceForAll.Plugin
         // that took the bar every time the driver stalled would be a fault, not
         // a feature. Reset on game change.
         private bool _revDataSeen;
+        // True once the active game has reported any physics at all (speed, RPM
+        // or throttle above the IsSessionActive thresholds). A source that never
+        // does, such as a SimHub custom game that only detects the process, can
+        // never say "the car is live", so the paths that wait for that answer
+        // (the pause gate's resume, the saturated force hold) fall back to the
+        // wire while this is false. Reset per game. Written on the data thread,
+        // read on the FFB thread; a stale read for one tick is harmless.
+        private volatile bool _physicsSeenThisGame;
 
         // EXPERIMENTAL: the Dynamic OLED on the base of a G PRO / RS50. Shares
         // the rev lights' HID++ pipe and their Mode B + quiet-FFB gate, plus a
@@ -6140,7 +6148,18 @@ namespace TrueforceForAll.Plugin
                             if (held.HasValue
                                 && Math.Abs((int)held.Value) >= SaturatedFfbLsb
                                 && src != null
-                                && src.IsSessionActive
+                                // A source with no physics channels (a SimHub
+                                // custom game) never reports the car live, so
+                                // the hold would never engage there and the
+                                // clipped force died exactly as before the fix
+                                // (Motorfest tester, 2026-10-27). While no
+                                // physics has ever been seen on this game, the
+                                // frames still flowing stand in for it; the
+                                // focus release covers the alt-tab case this
+                                // guard exists for, and FfbTargetMaxAgeMs still
+                                // bounds the hold.
+                                && (src.IsSessionActive
+                                    || (!_physicsSeenThisGame && src.MeasuredHz > 0))
                                 && src.MsSinceLastFrame <= 250.0
                                 && !_gameNotDrivingState)
                             {
@@ -6326,6 +6345,31 @@ namespace TrueforceForAll.Plugin
                 // this same path and would otherwise un-pause a disabled
                 // plugin.
                 SyncDeviceToPluginEnabled("Bring-up");
+                // Same reconcile for the pause gate. Its "stream stopped" flag
+                // can still describe the device this one replaces: the G923
+                // startup re-attach lands one to two seconds after the gate's
+                // first pause whenever SimHub starts before the game, and the
+                // recovery watchdog re-attaches through this path too. The
+                // flag and the wire then disagreed for the whole session: the
+                // gate believed it was holding the stream out of Trueforce
+                // mode while the pump streamed, and its resume branch wiped the
+                // captured force on every tick until the car moved. Felt as a
+                // force chopped at the data rate, buzzing hard in loaded
+                // corners and dead whenever the game stopped resending it
+                // (Motorfest tester, 2026-10-27; every logged session). Drop
+                // the flag here so the gate re-judges from live state on its
+                // next tick: still paused re-pauses this device at once,
+                // anything else leaves it streaming.
+                lock (_enableDeviceLock)
+                {
+                    if (_stopStreamPauseActive)
+                    {
+                        _stopStreamPauseActive = false;
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] StopStreamOnPause: the wheel was re-attached while the gate held "
+                            + "the stream stopped; the gate re-evaluates on the next tick.");
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -8062,6 +8106,7 @@ namespace TrueforceForAll.Plugin
                 // so the next one gets to answer it for itself. Until it does,
                 // the audio meter may take the rev bar.
                 _revDataSeen = false;
+                _physicsSeenThisGame = false;
                 _standDownNoticeShownThisDemotion = false;
                 _mairaTapDegraded = false;
                 _mairaTapWarned = false;
@@ -8727,6 +8772,9 @@ namespace TrueforceForAll.Plugin
             _lastSpeedKmh = (float)frame.SpeedKmh;
             _lastThrottle01 = (float)frame.Throttle01;
             _lastRpms = (float)frame.Rpms;
+            if (!_physicsSeenThisGame
+                && (frame.SpeedKmh > 2.0 || frame.Rpms > 1.0 || frame.Throttle01 > 0.02))
+                _physicsSeenThisGame = true;
             // The grip re-learn request is consumed here rather than inside the learning block:
             // it must land in EVERY mode and on every source. The learning block
             // needs tire quads and Mode B, so leaving the consumption in there
@@ -41496,6 +41544,20 @@ namespace TrueforceForAll.Plugin
             bool driverActive = _lastSpeedKmh > 2f
                                 || _lastThrottle01 > 0.05f
                                 || Math.Abs(rpmNow - _gateRpmAtCandidate) > GateRpmMoveThreshold;
+            // A source with no physics channels at all (a SimHub custom game
+            // that only detects the process) can never clear this wait, and
+            // the wheel sat on native FFB with no plugin effects for the whole
+            // session (Motorfest tester, 2026-10-27). The game driving the
+            // wheel is the one thing such a setup does show: a force captured
+            // off the wire within the last half second is the driver being
+            // active. Only while no physics has ever been seen on this game,
+            // so a Forza pause menu, whose car idles with RPM, keeps the
+            // telemetry-only rule the 2026-09-13 rig fix needs.
+            if (!driverActive && !_physicsSeenThisGame)
+            {
+                var wireTap = _ffbTap;
+                driverActive = wireTap != null && wireTap.TryGetFreshFfbTarget(500).HasValue;
+            }
             if (!driverActive)
             {
                 _resumeCandidateSinceTicks = 0;
