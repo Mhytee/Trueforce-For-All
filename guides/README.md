@@ -29,6 +29,7 @@ drift from what you see in the app.
 
 - [Car facts](car-facts.md)
 - [Tuning the effects](tuning-effects.md)
+- [Trueforce EQ](trueforce-eq.md)
 - [Where your rev lights and screen work](force-and-lights.md)
 - [The wheel's screen](wheel-screen.md)
 - [Backup and sync](backup-sync.md)
@@ -37,6 +38,7 @@ drift from what you see in the app.
 - [TF4ALL Dash](dash.md)
 - [The Trueforce widget](home-tile.md)
 - [Bindings](bindings.md)
+- [Languages and translating](languages.md)
 - [Will this change or replace my normal force feedback?](normal-ffb.md)
 - [Do I need to pay for SimHub?](simhub-license.md)
 - [Why does it need USBPcap, and is that safe?](usbpcap.md)

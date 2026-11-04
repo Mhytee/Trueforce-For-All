@@ -232,6 +232,13 @@ namespace TrueforceForAll.Plugin
                     ActionLabel = Loc.T("Guides_OpenEffectsTab"),
                     Action = () => SelectTab(EffectsTab),
                 },
+                new GuideEntry
+                {
+                    Key = "trueforce-eq", Group = GroupAbout,
+                    Title = Loc.T("Guides_TrueforceEq"),
+                    ActionLabel = Loc.T("Guides_OpenTrueforceEq"),
+                    Action = JumpToTrueforceEq,
+                },
                 // Gated the same way the lights guide's own entry is not: the
                 // screen is G PRO / RS50 only, so on a detected wheel without one
                 // the entry would open a page about hardware the reader does not
@@ -315,6 +322,13 @@ namespace TrueforceForAll.Plugin
                     Title = Loc.T("Guides_Bindings"),
                     ActionLabel = Loc.T("Guides_OpenControlsTab"),
                     Action = () => SelectTab(ControlsTab),
+                },
+                new GuideEntry
+                {
+                    Key = "languages", Group = GroupAbout,
+                    Title = Loc.T("Guides_Languages"),
+                    ActionLabel = Loc.T("Guides_OpenLanguageSettings"),
+                    Action = JumpToLanguage,
                 },
                 new GuideEntry
                 {
@@ -459,6 +473,25 @@ namespace TrueforceForAll.Plugin
             if (CarFactsExpander == null) return;
             CarFactsExpander.IsExpanded = true;
             Dispatcher.BeginInvoke(new Action(() => CarFactsExpander.BringIntoView()),
+                DispatcherPriority.Background);
+        }
+
+        /// <summary>Effects tab, the Trueforce EQ open and scrolled to. It sits
+        /// outside the per-effect panels, so it is there in Simple mode too.</summary>
+        private void JumpToTrueforceEq()
+        {
+            SelectTab(EffectsTab);
+            if (TrueforceEqExpander != null) TrueforceEqExpander.IsExpanded = true;
+            Dispatcher.BeginInvoke(new Action(() => TrueforceEqExpander?.BringIntoView()),
+                DispatcherPriority.Background);
+        }
+
+        /// <summary>Settings tab, Language open and scrolled to.</summary>
+        private void JumpToLanguage()
+        {
+            SelectTab(SettingsTab);
+            if (LanguageExpander != null) LanguageExpander.IsExpanded = true;
+            Dispatcher.BeginInvoke(new Action(() => LanguageExpander?.BringIntoView()),
                 DispatcherPriority.Background);
         }
 

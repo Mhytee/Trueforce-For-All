@@ -1,5 +1,11 @@
 Every effect ships tuned, so gain is all you may want to move. Going through them one at a time is how you learn what each one feels like and find the few you want to change.
 
+## Simple and Advanced
+
+The switch at the top of the **Effects** tab sets how much of each effect you see. **Simple** shows each effect's on and off, its gain and its frequency, which is all most people move. **Advanced** shows every control below as well. A fresh install starts in Simple.
+
+Switching never changes how the wheel feels. A control you cannot see keeps its value and keeps applying, so anything tuned in Advanced stays exactly as it was.
+
 ## One at a time
 
 1. On the **Effects** tab, switch everything off except the one you are working on.
@@ -11,14 +17,15 @@ Turn them all back on at the end.
 
 ## The other controls
 
-Gain is how loud an effect is. The rest affect how it feels:
+Gain is how loud an effect is, and **Frequency** is its pitch: low feels like weight and thump, high feels like texture and buzz. Both are in Simple. The rest are in **Advanced**:
 
-- **Frequency** is the pitch. Low feels like weight and thump; high feels like texture and buzz.
 - **Waveform** is the character, and most effects have one. Sine is round and smooth, Square and Saw are hard edged and rasp, Triangle sits between them, and Noise is a rough churn with no pitch to it.
 - **Lowpass** cuts the high frequencies out, leaving the body of the effect.
 - **Highpass** cuts the low frequencies out.
 - **Pulse rate** is how fast the pulse opens and closes, and **Pulse length** is how much of each one is filled. Slow and short is punctuated; fast and full is a buzz.
 - **Duration** and **Amp**, on the effects that have them, set how long a one-shot lasts and how hard it hits.
+
+For a rattle or buzz that comes through every effect at once, the fix is in one place rather than in each effect: see [Trueforce EQ](guide:trueforce-eq).
 
 ## Engine pulse
 
@@ -26,7 +33,7 @@ Engine pulse is built from the car's firing order. Each cylinder fires at its ow
 
 That makes the engine layout the first thing to get right. It is set at the top of the plugin, in the active car's **Car Facts**, so it follows the car wherever you take it. Most cars arrive already known. The list runs from a single cylinder through parallel twins at 180 and 360 degrees, inline sixes, crossplane inline fours, boxers, even and odd fire V6s, V4s including the Panigale's Twin Pulse, cross and flat plane V8s, V10s, V12s, W engines, V-twins at three angles, and rotaries up to four rotors.
 
-Past the gain and the waveform:
+Past the gain and the waveform, all in **Advanced**:
 
 - **Pitch** is worked out from the cylinder count and the revs, so it needs no setting. The slider offsets it up or down if you want the engine higher or lower than life.
 - **Low-end body** adds a layer that helps the low end rumble stay present at high RPM.
@@ -37,7 +44,7 @@ Past the gain and the waveform:
 
 The buzz fires when you enter the redline, so it is only as right as the redline is. If it arrives early or late, the car's redline is set in the same **Car Facts** as the engine layout.
 
-**Redline offset** is the preference on top of that. Negative fires the buzz before the redline as an early shift cue, positive fires it after, and 0 sits right on it.
+**Redline offset**, in **Advanced**, is the preference on top of that. Negative fires the buzz before the redline as an early shift cue, positive fires it after, and 0 sits right on it.
 
 ## Presets and sharing
 

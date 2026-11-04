@@ -58,6 +58,7 @@ TITLES = [
     ("Good to know", [
         ("car-facts", "Car facts"),
         ("tuning-effects", "Tuning the effects"),
+        ("trueforce-eq", "Trueforce EQ"),
         ("force-and-lights", "Where your rev lights and screen work"),
         ("wheel-screen", "The wheel's screen"),
         ("backup-sync", "Backup and sync"),
@@ -66,6 +67,7 @@ TITLES = [
         ("dash", "TF4ALL Dash"),
         ("home-tile", "The Trueforce widget"),
         ("bindings", "Bindings"),
+        ("languages", "Languages and translating"),
         ("normal-ffb", "Will this change or replace my normal force feedback?"),
         ("simhub-license", "Do I need to pay for SimHub?"),
         ("usbpcap", "Why does it need USBPcap, and is that safe?"),
