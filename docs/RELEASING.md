@@ -74,6 +74,14 @@ For each release:
      translation against the controls that carry a fixed width, so a language that
      would clip a button fails here rather than on someone's wheel. See "Adding or changing UI text" in
      `.github/CONTRIBUTING.md`.
+   - If any UI string was added, changed or removed, run `tools/loc/push-english.ps1`
+     so the translation service holds the English this release ships. Without it the
+     service still holds the previous release's English, and a contributor correcting
+     any new string is refused with "This key is not in the English the server holds",
+     which looks to them like the feature is broken. The receipt prints added, changed,
+     retired and live; `live` must equal the key count the script read from `en.json`.
+     Skipping this once left the service 79 keys behind, which is every string the
+     setup wizard and Simple mode introduced.
 5. Commit the version bump (plus any README / changelog / guides changes) on
    `dev` and push it. Every recent bump was authored there and reached the
    other channels by promotion: `dev` to `beta` for the pre-release, then
