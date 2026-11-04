@@ -117,11 +117,16 @@ namespace TrueforceForAll.Core.Tests
         public void CleanBass_LiftsTheBass_NotchesTheMud()
         {
             var bands = EqCurves.CleanBass();
-            Assert.Equal(10, bands.Count);
-            double at30 = ParametricEq.ResponseDb(bands, 30, Fs);
+            Assert.Equal(6, bands.Count);
+            Assert.False(bands[0].IsParkedCut, "the low cut sits just above its park line, so it is on");
+            double at5 = ParametricEq.ResponseDb(bands, 5, Fs);
+            double at12 = ParametricEq.ResponseDb(bands, 12, Fs);
+            double at120 = ParametricEq.ResponseDb(bands, 120, Fs);
             double at200 = ParametricEq.ResponseDb(bands, 200, Fs);
             double at600 = ParametricEq.ResponseDb(bands, 600, Fs);
-            Assert.True(at30 > 9, $"bass lift {at30:F1} dB");
+            Assert.True(at5 < -15, $"sub cut {at5:F1} dB");
+            Assert.True(at12 > 5, $"corner bump {at12:F1} dB");
+            Assert.True(at120 > 2, $"bass lift {at120:F1} dB");
             Assert.True(at200 < -14, $"200 Hz notch {at200:F1} dB");
             Assert.True(at600 > 9, $"texture lift {at600:F1} dB");
 
@@ -142,7 +147,7 @@ namespace TrueforceForAll.Core.Tests
             Assert.False(ParametricEq.BandsEqual(a, EqCurves.Flat()));
 
             var edited = EqCurves.CleanBass();
-            edited[6].GainDb += 1.0;
+            edited[2].GainDb += 1.0;
             Assert.False(ParametricEq.BandsEqual(a, edited));
             var toggled = EqCurves.CleanBass();
             toggled[0].Enabled = false;
@@ -153,7 +158,7 @@ namespace TrueforceForAll.Core.Tests
 
             // A cut's gain is not part of its sound, so it does not count.
             var cutGain = EqCurves.CleanBass();
-            cutGain[9].GainDb = -29.0;
+            cutGain[5].GainDb = -29.0;
             Assert.True(ParametricEq.BandsEqual(a, cutGain));
         }
 
