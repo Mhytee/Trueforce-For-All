@@ -512,10 +512,8 @@ audio through Windows' own loopback. Switching off a game's native Trueforce is
 done by editing a config file or flipping an in-game setting before launch,
 never by touching the running game.
 
-Two games load a TF4ALL component the normal way they load any mod: the
-Assetto Corsa bridge is a Custom Shaders Patch script, and the Farming
-Simulator telemetry mod is a mod you tick in the game's own mod list. The game
-loads each one; the plugin never reaches into a running process.
+Assetto Corsa and Farming Simulator each load a TF4ALL mod, a Custom Shaders
+Patch script and a mod list entry. The game loads it, so nothing is injected.
 
 </details>
 
@@ -587,6 +585,16 @@ steps aside by itself. But you can switch off the game's native Trueforce
 and run the plugin instead, which lets you tune the feel yourself. See
 [Games with native Trueforce](#games-with-native-trueforce) for which titles
 allow this and how.
+
+</details>
+
+<details>
+<summary><b>Is it in my language?</b></summary>
+
+TF4ALL ships in several languages; pick yours in Settings. You can
+translate any language from inside the plugin, and your corrections reach
+everyone else using it. See
+[Languages and translating](https://mhytee.github.io/Trueforce-For-All/languages.html).
 
 </details>
 
