@@ -5556,9 +5556,9 @@ namespace TrueforceForAll.Plugin
                     ApplyWheelDefaults(target, shortModel);
 
                     // Trueforce master gain, FRESH INSTALLS ONLY: the wheel's
-                    // own starting level (the G923's belt renders the haptic
-                    // stream fainter than the direct drives, so it starts at
-                    // 1.5). Gated on the first-run signal AND on the gain still
+                    // own starting level, when its defaults carry one (none
+                    // does today; the G923's 1.5 was retired 2026-11-04, so
+                    // this never fires). Gated on the first-run signal AND on the gain still
                     // sitting exactly on the factory value, and it runs before
                     // the latch is stamped, so it happens at most once on a PC
                     // and an update never moves a level someone chose.
@@ -11699,8 +11699,9 @@ namespace TrueforceForAll.Plugin
         /// perceptible; the wheel now takes the same 0.05 as the others.
         /// Damping is the only thing still separating the G923 from the G PRO.
         ///
-        /// The table also carries the Trueforce master gain (1.5 on the G923,
-        /// the factory 1.0 elsewhere), but that field is read ONLY by the
+        /// The table may also carry a Trueforce master gain (no wheel sets one
+        /// today; the G923's 1.5 was retired 2026-11-04, so every wheel starts
+        /// at the factory 1.0), but that field is read ONLY by the
         /// fresh-install seed on first wheel detection. It is not in
         /// ModeBRecipeFields, so the defaults merge never moves it, and
         /// "Reset FFB tuning to defaults" does not copy it: an existing
@@ -11717,14 +11718,11 @@ namespace TrueforceForAll.Plugin
                     s.ModeBSatGain  = 0.60f;   // "Strength": RS50 defaults
                     break;
                 case "G923":
-                    // Trueforce master gain (owner call 2026-09-15): the belt
-                    // motor renders the haptic stream fainter than the direct
-                    // drives, so the G923 starts at 1.5 where every other
-                    // wheel starts at the factory 1.0. Global, not preset
-                    // scoped, so a built-in preset applied on a G923 inherits
-                    // it (presets never carry MasterGain). Read only by the
-                    // fresh-install seed; never merged onto an existing setup.
-                    s.MasterGain    = 1.5f;
+                    // Trueforce master gain is NOT set here any more (owner
+                    // call 2026-11-04): a new G923 install starts at the
+                    // factory 1.0 like every other wheel. The 1.5 it seeded
+                    // from 0.4.0 stays on the installs that got it, since
+                    // nothing ever rewrites a user's master gain.
                     s.ModeBSatGain  = 1.00f;   // "Strength": headroom on the weaker motor, retuned down from 1.25
                     s.ModeBDamper   = 0.09f;   // belt friction already damps; two clicks under the G PRO
                     // Min force is NOT set here any more: the G923 takes the
@@ -11896,7 +11894,7 @@ namespace TrueforceForAll.Plugin
         // per-field defaults merge, so a field added to the recipe only needs
         // listing here plus its initializer.
         // NOTE: MasterGain is deliberately NOT a recipe field. The wheel table
-        // carries a master gain (the G923's 1.5), but it is seeded on a FRESH
+        // can carry a master gain (none does today), but it is seeded on a FRESH
         // INSTALL only, never merged: master gain is the control users reach
         // for constantly, and 1.0 is a value plenty of people chose on purpose,
         // so the merge could not tell "untouched" from "deliberately 1.0".

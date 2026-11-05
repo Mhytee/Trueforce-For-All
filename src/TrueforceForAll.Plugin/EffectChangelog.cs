@@ -687,6 +687,11 @@ namespace TrueforceForAll.Plugin
                         Description = "Default FFB scale changed from 0.8 to 1, in every built-in preset and on a fresh install. Your own presets keep the strength you set.",
                     },
                     new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "G923 master gain default",
+                        Description = "G923 master gain default lowered from 1.5 to 1.",
+                    },
+                    new ChangelogEntry {
                         Group = "Bug fixes",
                         Headline = "No more mid-corner dropouts",
                         Description = "Force feedback no longer cuts out mid-corner when a game's force is clipped, such as Assetto Corsa with its in-game gain above 100%.",

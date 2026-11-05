@@ -713,9 +713,9 @@ namespace TrueforceForAll.Plugin
         public bool ManagerCommunityForCars    { get; set; } = false;
 
         // Trueforce master gain: the overall level of the haptic stream.
-        // Global (never preset-scoped) and auto-persisted. 1.0 is the G PRO
-        // and RS50 starting level; a G923 starts at 1.5 (ApplyWheelDefaults),
-        // seeded on a FRESH INSTALL only. Nothing ever rewrites this field
+        // Global (never preset-scoped) and auto-persisted. 1.0 is every
+        // wheel's starting level (a G923 was seeded 1.5 from 0.4.0 until
+        // 2026-11-04, and keeps it where it was). Nothing ever rewrites this field
         // afterwards: it is the user's own level, so no defaults generation,
         // preset or reset moves it (owner call 2026-09-15).
         public float MasterGain { get; set; } = 1.0f;
