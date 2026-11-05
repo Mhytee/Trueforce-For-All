@@ -17,7 +17,7 @@ Start SimHub before RaceRoom. If the lights or screen do nothing, that is the us
 
 Drive a couple of clean laps. When the **Apply** button beside **Car's max** on the force feedback tab shows a number, press it. Each car keeps its own number. Nudge **Car's max** down for heavier, up for lighter.
 
-From a wheel button: bind **AutoForce**, **IRacingMaxForceUp** and **IRacingMaxForceDown** in SimHub's Controls tab. They keep their iRacing names but work here too.
+To change it without opening the panel, bind **Auto force** and **Peak force up** and **down** to any control on the Controls tab. ([What you can bind](bindings.md).)
 
 ## A parked wheel
 

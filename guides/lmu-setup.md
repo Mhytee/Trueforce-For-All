@@ -18,7 +18,7 @@ SimHub has to be reading the game: on SimHub's Games page, Le Mans Ultimate must
 
 Drive a couple of clean laps. When the **Auto** button beside **Car's peak force** on the force feedback tab shows a number, press it. That is the peak the car pushed, in Nm, and each car keeps its own. Nudge it down to make the car feel heavier, up to make it lighter.
 
-From a wheel button: bind **AutoForce**, **IRacingMaxForceUp** and **IRacingMaxForceDown** in SimHub's Controls tab. They keep their iRacing names but work here too.
+To change it without opening the panel, bind **Auto force** and **Peak force up** and **down** to any control on the Controls tab. ([What you can bind](bindings.md).)
 
 ## Soft lock
 

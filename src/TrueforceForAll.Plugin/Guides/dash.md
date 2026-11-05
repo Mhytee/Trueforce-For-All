@@ -10,7 +10,7 @@ TF4ALL Dash puts the plugin on your phone or tablet, so effects, gains and prese
 - **Visualizer.** A live graph of what your wheel is being sent: the vibration and the steering force.
 - **Gains.** Master and audio gain on a page of their own, with the wheel's state above them. Off to begin with, since the Drive tab's gains box already covers it.
 
-Hide the ones you do not want and put the rest in your own order under **Settings** > **TF4ALL Dash** > **Tabs**; the dash updates straight away. **Dash tab next** and **back** can go on a wheel button, so the tab can be changed without reaching for the screen. ([What you can bind](guide:bindings))
+Hide the ones you do not want and put the rest in your own order under **Settings** > **TF4ALL Dash** > **Tabs**; the dash updates straight away. **Dash tab next** and **back** can be bound to any control, so the tab can be changed without reaching for the screen. ([What you can bind](guide:bindings))
 
 ## The Drive tab
 
