@@ -22,6 +22,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -40,7 +41,7 @@ namespace TrueforceForAll.Plugin
             {
                 panel.Children.Add(new TextBlock
                 {
-                    Text = "(No release notes published.)",
+                    Text = Loc.T("Markdown_NoReleaseNotesPublished"),
                     FontSize = 12 * scale,
                     Opacity = 0.7,
                 });
@@ -93,7 +94,7 @@ namespace TrueforceForAll.Plugin
                         imageNoteShown = true;
                         panel.Children.Add(new TextBlock
                         {
-                            Text = "(screenshots on the GitHub release page)",
+                            Text = Loc.T("Markdown_ScreenshotsGitHubReleasePage"),
                             FontSize = 11 * scale,
                             Opacity = 0.55,
                             Margin = new Thickness(0, 0, 0, 2),
@@ -290,11 +291,11 @@ namespace TrueforceForAll.Plugin
             {
                 switch (first.Substring(2, first.Length - 3).ToUpperInvariant())
                 {
-                    case "WARNING":   title = "Warning";   accent = Color.FromRgb(0xE5, 0xC0, 0x4A); break;
-                    case "CAUTION":   title = "Caution";   accent = Color.FromRgb(0xE0, 0x62, 0x5A); break;
-                    case "IMPORTANT": title = "Important"; accent = Color.FromRgb(0xB0, 0x87, 0xE8); break;
-                    case "NOTE":      title = "Note";      accent = Color.FromRgb(0x6C, 0xA0, 0xDD); break;
-                    case "TIP":       title = "Tip";       accent = Color.FromRgb(0x5F, 0xB8, 0x6A); break;
+                    case "WARNING":   title = Loc.T("Markdown_Warning");   accent = Color.FromRgb(0xE5, 0xC0, 0x4A); break;
+                    case "CAUTION":   title = Loc.T("Markdown_Caution");   accent = Color.FromRgb(0xE0, 0x62, 0x5A); break;
+                    case "IMPORTANT": title = Loc.T("Markdown_Important"); accent = Color.FromRgb(0xB0, 0x87, 0xE8); break;
+                    case "NOTE":      title = Loc.T("Markdown_Note");      accent = Color.FromRgb(0x6C, 0xA0, 0xDD); break;
+                    case "TIP":       title = Loc.T("Markdown_Tip");       accent = Color.FromRgb(0x5F, 0xB8, 0x6A); break;
                 }
                 if (title != null) start++;   // the marker line itself isn't content
             }

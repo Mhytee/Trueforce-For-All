@@ -47,6 +47,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using TrueforceForAll.Plugin.Effects;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -88,10 +89,11 @@ namespace TrueforceForAll.Plugin
 
     /// <summary>Snapshot of the community consensus for the car_name fact,
     /// pulled per (game, carId). Engine-blind on purpose (a car's name is
-    /// chassis-level, so every engine swap for one carId shares it), but keyed
-    /// per LANGUAGE: car_name's variant_signature carries "lang=en" etc. so
-    /// each language has its own consensus and an English plurality can't bury
-    /// a correct non-English name.</summary>
+    /// chassis-level, so every engine swap for one carId shares it). Its
+    /// variant_signature carries the constant "lang=en", a legacy bucket key
+    /// from a per-language design that was retired; it never took effect,
+    /// because SimHub pins the UI culture to en-US. One global consensus per
+    /// car.</summary>
     public sealed class CarNameConsensus
     {
         public string Name { get; set; }
@@ -240,9 +242,10 @@ namespace TrueforceForAll.Plugin
                 BuildSubmitBody(game, carId, "engine_layout", payload, variantSignature));
         }
 
-        /// <summary>Submit a User-source car-name fact. The official in-game
-        /// name, keyed per language so an English plurality can't bury the
-        /// correct name in another language.</summary>
+        /// <summary>Submit a User-source car-name fact: the official in-game
+        /// name, chassis-level, one global consensus per car.
+        /// variant_signature carries the legacy constant "lang=en" (see
+        /// CommunityNameLocaleSig); it is not a live per-language bucket.</summary>
         public void SubmitCarNameAsync(string game, string carId, string name,
             string variantSignature = "")
         {
@@ -252,10 +255,11 @@ namespace TrueforceForAll.Plugin
             name = name.Trim();
             if (name.Length < 2 || name.Length > 96) return;
 
-            // variant_signature carries the submitter's LANGUAGE ("lang=en") so
-            // each language forms its own consensus row. Still chassis-level
-            // otherwise (no cyl/engine in the key): one name per language across
-            // every engine swap on the car.
+            // variant_signature carries the constant "lang=en", a legacy bucket
+            // key from a per-language design that was retired (it never took
+            // effect: SimHub pins the UI culture to en-US). Chassis-level
+            // otherwise (no cyl/engine in the key): one global name per car
+            // across every engine swap.
             var payload = new { name };
             FireAndForgetRpc(url, anonKey, SubmitRpcPath,
                 BuildSubmitBody(game, carId, "car_name", payload, variantSignature));
@@ -423,11 +427,13 @@ namespace TrueforceForAll.Plugin
             if (!ShouldSubmit(out var url, out var anonKey)) return null;
             if (string.IsNullOrEmpty(game) || string.IsNullOrEmpty(carId)) return null;
 
-            // car_name is keyed per LANGUAGE in variant_signature ("lang=en").
-            // Pull every language's row for this car (a handful at most) and
-            // pick the user's own language if present, else the most-supported
-            // row of any language (English in practice; legacy unkeyed rows from
-            // before this split compete here on support too).
+            // car_name's variant_signature carries the constant "lang=en", a
+            // legacy bucket key from a per-language design that was retired (it
+            // never took effect: SimHub pins the UI culture to en-US), so there
+            // is one global consensus per car. Still pull every row for this car
+            // (a handful at most) and prefer the caller's signature ("lang=en")
+            // when present, else the most-supported row of any signature (legacy
+            // unkeyed rows from before the key existed compete here on support).
             string prefSig = preferredVariantSignature ?? "";
             string qs = "?game=eq."  + Uri.EscapeDataString(game)
                       + "&car_id=eq." + Uri.EscapeDataString(carId)
@@ -647,8 +653,12 @@ namespace TrueforceForAll.Plugin
                             var arr = JArray.Parse(body);
                             foreach (var t in arr)
                             {
-                                string text = (t?["body"]?.ToString() ?? "").Trim();
-                                if (text.Length == 0) continue;
+                                // "body" is the column name in the motd table, not text anyone reads. The
+                                // keying pass turned it into a lookup, which made this row
+                                // skip on every non-English install: Loc.T returned the
+                                // translated word and no such field exists.
+                                string motdBody = (t?["body"]?.ToString() ?? "").Trim();
+                                if (motdBody.Length == 0) continue;
                                 // Defense in depth: the DB already enforces https-only,
                                 // but never hand a non-https link to the launcher.
                                 string link = t?["link_url"]?.ToString();
@@ -661,7 +671,7 @@ namespace TrueforceForAll.Plugin
                                     Kind       = t?["kind"]?.ToString(),
                                     Importance = t?["importance"]?.ToString(),
                                     Category   = t?["category"]?.ToString(),
-                                    Body       = text,
+                                    Body       = motdBody,
                                     LinkUrl    = link,
                                     LinkLabel  = t?["link_label"]?.ToString(),
                                     Recurrence      = t?["recurrence"]?.ToString(),

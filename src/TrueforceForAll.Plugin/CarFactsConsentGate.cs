@@ -1,4 +1,5 @@
 using System.Windows;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -50,9 +51,9 @@ namespace TrueforceForAll.Plugin
             {
                 if (s.CommunityEnabled) return true;
                 if (!explicitAction) return false;
-                bool? go = TrueforceDialog.Show(owner, "Share car data",
-                    "Sharing car data needs community features (online) turned on. Turn them on and share?",
-                    DialogKind.Confirm, "Enable community features", "Not now");
+                bool? go = TrueforceDialog.Show(owner, Loc.T("CarFactsConsent_ShareCarData"),
+                    Loc.T("CarFactsConsent_SharingCarDataNeeds"),
+                    DialogKind.Confirm, Loc.T("PresetManager_CommunityGate"), Loc.T("SupportPrompt_NotNow"));
                 if (go != true) return false;
                 plugin.SetCommunityEnabled(true);
                 return true;
@@ -62,11 +63,11 @@ namespace TrueforceForAll.Plugin
 
             bool communityOn = s.CommunityEnabled;
             bool? ok = TrueforceDialog.Show(owner,
-                "Share car data with the community?",
-                "When you tune a redline or engine, it can be submitted anonymously to improve everyone's defaults.",
+                Loc.T("CarFactsConsent_ShareCarDataCommunity"),
+                Loc.T("CarFactsConsent_WhenTuneRedlineEngine"),
                 DialogKind.Confirm,
-                communityOn ? "Share anonymously" : "Enable community features",
-                "No thanks");
+                communityOn ? Loc.T("CarFactsConsent_ShareAnonymously") : Loc.T("PresetManager_CommunityGate"),
+                Loc.T("CarFactsConsent_NoThanks"));
             s.CarFactsConsentAsked = true;
             if (ok == true)
             {

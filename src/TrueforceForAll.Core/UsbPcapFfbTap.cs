@@ -139,6 +139,28 @@ namespace TrueforceForAll.Core
 
         // Status surfaced to the UI / logs. Populated by the reader thread.
         public string Status { get; private set; } = "Stopped";
+
+        /// <summary>What Status means, as a token. Set beside every Status
+        /// write so a caller never has to test the sentence's words: two
+        /// callers used to, the sentences are due to be translated, and the
+        /// plugin composes Status into FfbTapStatus behind a prefix, so a
+        /// prefix test there is wrong in Assetto Corsa even today.</summary>
+        public enum TapStatusKind
+        {
+            Stopped,
+            NotInstalled,
+            SimHubNotAdmin,
+            NoWheelFound,
+            NeedsAdmin,
+            Error,
+            Tapping,
+        }
+
+        /// <summary>Status as a token. See TapStatusKind.</summary>
+        public TapStatusKind StatusState { get; private set; } = TapStatusKind.Stopped;
+
+        /// <summary>Capturing, without reading the sentence.</summary>
+        public bool StatusIsTapping => StatusState == TapStatusKind.Tapping;
         public bool IsRunning => _proc != null && !_proc.HasExited;
         // Backed by an explicit field with Interlocked so the liveness watchdog
         // (a different thread) can't read a torn 64-bit value on the 32-bit host
@@ -907,6 +929,7 @@ namespace TrueforceForAll.Core
             if (_usbPcapCmdPath == null)
             {
                 Status = "USBPcap not installed (FFB pass-through disabled)";
+                StatusState = TapStatusKind.NotInstalled;
                 Log(Status);
                 return false;
             }
@@ -944,6 +967,7 @@ namespace TrueforceForAll.Core
             // keep the trace file locked against whatever replaces it.
             CloseRawLog();
             Status = "Stopped";
+            StatusState = TapStatusKind.Stopped;
         }
 
         public void Dispose() => Stop();
@@ -1253,6 +1277,7 @@ namespace TrueforceForAll.Core
                 if (!HostElevated)
                 {
                     Status = "SimHub is not running as administrator. Force-feedback pass-through needs it: turn on Run as administrator in SimHub's settings, then restart SimHub.";
+                    StatusState = TapStatusKind.SimHubNotAdmin;
                     if (!_loggedNotElevated)
                     {
                         Log("UsbPcapFfbTap: SimHub is not elevated; FFB pass-through is off until SimHub is restarted as administrator (not launching USBPcapCMD).");
@@ -1269,6 +1294,7 @@ namespace TrueforceForAll.Core
                     {
                         _forceRevalidate = false;
                         Status = "No supported wheel found on any USBPcap interface (FFB pass-through disabled). Retrying in 15s...";
+                        StatusState = TapStatusKind.NoWheelFound;
                         Log(Status);
                         if (SleepInterruptible(RediscoveryRetryMs)) break;
                         continue;
@@ -1289,6 +1315,7 @@ namespace TrueforceForAll.Core
                     // spinning a UAC loop. This does not touch the cached
                     // interface/address: re-discovery wouldn't fix elevation.
                     Status = "USBPcap needs administrator rights. Run SimHub as administrator to enable FFB pass-through.";
+                    StatusState = TapStatusKind.NeedsAdmin;
                     Log($"UsbPcapFfbTap: USBPcapCMD requires elevation (Win32 {w32.NativeErrorCode}); backing off {ElevationBackoffMs / 1000}s.");
                     try { _proc?.Kill(); } catch { }
                     try { _proc?.Dispose(); } catch { }
@@ -1299,6 +1326,7 @@ namespace TrueforceForAll.Core
                 catch (Exception ex)
                 {
                     Status = $"Error: {ex.Message}";
+                    StatusState = TapStatusKind.Error;
                     Log($"UsbPcapFfbTap: {ex.GetType().Name}: {ex.Message}");
                 }
                 finally
@@ -1410,6 +1438,7 @@ namespace TrueforceForAll.Core
             try { Interlocked.Exchange(ref _liveLastSends, _sendActivityProbe?.Invoke() ?? 0); } catch { }
             Interlocked.Exchange(ref _liveLastProgressTicks, _sw.ElapsedTicks);
             Status = $"Tapping {_usbPcapInterface} dev {_deviceAddress}{(_useBroadCapture ? " (whole-bus)" : "")}";
+            StatusState = TapStatusKind.Tapping;
             Log($"UsbPcapFfbTap started: {_usbPcapInterface} dev {_deviceAddress}{(_useBroadCapture ? " (whole-bus capture)" : "")}");
 
             // Drain stderr so it doesn't fill its pipe buffer and stall the child.
@@ -1830,6 +1859,19 @@ namespace TrueforceForAll.Core
             public int   K1, K2;     // per-side slope exponents (0..15)
             public bool  S1, S2;     // per-side invert (push away, not toward)
             public float Clip;       // torque saturation, 0..1
+
+            /// <summary>True for a spring that commands nothing at any
+            /// position: a dead band spanning the whole axis, or a zero
+            /// clip. The Windows driver downloads exactly this shape when a
+            /// game creates a spring effect it has not parameterized yet
+            /// (The Crew Motorfest keeps one playing for the whole session,
+            /// 2026-10-27 trace: 0b 00 ff ff e0 ff). It renders zero
+            /// either way; what it must NOT do is count as a playing spring,
+            /// because spring mode arms on "a spring plays and no scalar
+            /// flows", and that game streams scalars that merely pause
+            /// when the force pins, so the mode flapped every few seconds
+            /// with a jolt on each return.</summary>
+            public bool IsNull => Clip <= 0f || (D1 <= 0f && D2 >= 1f);
         }
 
         // Slot springs are parser-thread state, like the force arrays above.
@@ -2579,14 +2621,18 @@ namespace TrueforceForAll.Core
 
         private void PublishSpringSnapshot()
         {
+            // Null springs stay in the slot table (a later download into the
+            // slot replaces them, a STOP is still accounted) but never reach
+            // the snapshot: they render nothing, and a snapshot of nothing
+            // must read as no spring playing (see ClassicSpring.IsNull).
             int n = 0;
             for (int i = 0; i < ClassicSlotCount; i++)
-                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null) n++;
+                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null && !_classicSlotSpring[i].IsNull) n++;
             if (n == 0) { _playingSprings = null; return; }
             var arr = new ClassicSpring[n];
             int j = 0;
             for (int i = 0; i < ClassicSlotCount; i++)
-                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null) arr[j++] = _classicSlotSpring[i];
+                if (_classicSlotPlaying[i] && _classicSlotSpring[i] != null && !_classicSlotSpring[i].IsNull) arr[j++] = _classicSlotSpring[i];
             _playingSprings = arr;
         }
 

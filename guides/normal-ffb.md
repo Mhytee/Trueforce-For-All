@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# How the force reaches your wheel
+# Will this change or replace my normal force feedback?
 
 Not unless you ask it to. By default your wheel's own force feedback comes through exactly as it did, with your settings intact, and the plugin's effects are layered on top of it.
 
@@ -9,4 +9,4 @@ The exception is **Telemetry Based FFB**, which deliberately builds the steering
 - In the **Forza** titles it stays off until you turn it on.
 - In **Farming Simulator** it runs by itself, because the centering spring it replaces is all the game offers.
 
-In **iRacing**, and in **Assetto Corsa** with the TF4ALL CSP Bridge, the force is the sim's own, handed to the plugin directly and carried to the wheel, so it feels exactly as you tuned it. ([iRacing setup](iracing-setup.md), [the bridge](assetto-corsa-setup.md).)
+In **iRacing**, and in **Assetto Corsa** with the TF4ALL CSP Bridge, the force is the sim's own, handed to the plugin directly and carried to the wheel, so it feels exactly as you tuned it. **RaceRoom** and **Le Mans Ultimate** hand theirs over the same way, but what they publish is the force before their own strength setting, so the weight is set on the plugin's side instead. ([How the handover works](force-handover.md).)

@@ -1,5 +1,13 @@
 # Copy trim proposal (2026-08-16)
 
+APPLIED 2026-08-17 in 99181a8 ("docs: the panels say less and the tooltips carry
+the rest"). 90 of the items below were approved and are in the shipped copy. Five
+were deferred for individual review and were left alone: the Farming Simulator
+minimum force help, the header subtitle, the iRacing Advanced intro, the Plain
+feel rung, and the Forza tab intro. What follows is kept as the record of what was
+trimmed and why; the "Now" quotes and the file:line citations are the
+pre-application snapshot and no longer match the tree.
+
 A re-audit of the 2026-08-13 sweep after roughly 60 commits of copy churn (the
 iRacing rework, the Feel ladder, the OLED "Nothing" screen, the new tooltips on
 the force rows). Every old item was re-checked against the current tree and
@@ -30,8 +38,7 @@ the Forza numbered setup steps, troubleshooting content, and empty-state text.
 
 How to read: **Now** is the exact current text. **Trim** is the proposed visible
 text ("delete" = the line goes away). **Tip** is what moves into a ToolTip, on
-the control named. Braces in code-built strings are runtime values. Reply with
-group letters and numbers, e.g. "A all, B except 4, C 2 and 5".
+the control named. Braces in code-built strings are runtime values.
 
 ---
 
@@ -566,11 +573,12 @@ candidate that was proposed this round and then rejected.
 
 ---
 
-Implementation note (for whichever items you approve): several elements have
-code-built text variants that overwrite the XAML default (the tab intro, the
-wheel-lights note, the offline-edit hint, the badges, the community browser
-help). Where both are listed above they are listed together; where only one is,
-grep for other writers of that element before editing so no variant is missed.
+Implementation note (followed when the approved items were applied): several
+elements have code-built text variants that overwrite the XAML default (the
+tab intro, the wheel-lights note, the offline-edit hint, the badges, the
+community browser help). Where both are listed above they are listed
+together; where only one is, grep for other writers of that element before
+editing so no variant is missed.
 Two defaults are dead copy that never reaches the screen (the tab enable note
 and the offline-edit banner), so trim them for tidiness but expect no visible
 change.

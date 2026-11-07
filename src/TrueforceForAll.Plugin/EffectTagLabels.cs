@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -13,27 +14,31 @@ namespace TrueforceForAll.Plugin
         private static readonly Dictionary<string, string> Map =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            { "engine",       "Engine pulse" },
-            { "revlimiter",   "Redline buzz" },
-            { "roadbumps",    "Road bumps" },
-            { "tractionloss", "Traction loss" },
-            { "axleslip",     "Axle slip" },
-            { "kerbthump",    "Curb thump" },
-            { "lockupjudder", "Lockup judder" },
-            { "gearshift",    "Gear shift" },
-            { "abs",          "ABS click" },
-            { "pitlimiter",   "Pit limiter" },
-            { "drs",          "DRS" },
-            { "collision",    "Collision" },
-            { "audio",        "Audio rumble" },
-            { "airborne",     "Airborne ducking" },
+            { "engine",       "EffectTag_EnginePulse" },
+            { "revlimiter",   "EffectTag_RedlineBuzz" },
+            { "roadbumps",    "EffectTag_RoadBumps" },
+            { "tractionloss", "EffectTag_TractionLoss" },
+            { "axleslip",     "EffectTag_AxleSlip" },
+            { "kerbthump",    "EffectTag_CurbThump" },
+            { "lockupjudder", "EffectTag_LockupJudder" },
+            { "gearshift",    "EffectTag_GearShift" },
+            { "abs",          "EffectTag_AbsClick" },
+            { "pitlimiter",   "EffectTag_PitLimiter" },
+            { "drs",          "EffectTag_Drs" },
+            { "collision",    "EffectTag_Collision" },
+            { "audio",        "EffectTag_AudioRumble" },
+            { "airborne",     "EffectTag_AirborneDucking" },
         };
 
         // Unknown tag -> pass the raw string through so a newer server/plugin tag
         // still renders something rather than silently vanishing.
+        // The map holds KEY NAMES, not labels. Resolving here rather than in the
+        // initializer means a language change reaches these labels, and it keeps
+        // the table out of a static initializer that would run before the
+        // language table exists.
         public static string Label(string tag)
             => string.IsNullOrEmpty(tag) ? null
-             : (Map.TryGetValue(tag, out var l) ? l : tag);
+             : (Map.TryGetValue(tag, out var k) ? Loc.T(k) : tag);
 
         public static string JoinLabels(IEnumerable<string> tags)
         {

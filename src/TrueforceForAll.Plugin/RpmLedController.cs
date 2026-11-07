@@ -17,6 +17,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -451,7 +452,7 @@ namespace TrueforceForAll.Plugin
                     }
                     if (!opened)
                     {
-                        _testStatus = "could not open the LED channel (see log)";
+                        _testStatus = Loc.T("RevLights_CouldNotOpenLED");
                         _log("[RPM-LED] Test: could not open the LED channel. " +
                              "Check the log above for which interfaces were probed.");
                         return;
@@ -464,20 +465,20 @@ namespace TrueforceForAll.Plugin
                     {
                         for (int lvl = 0; lvl <= steps && _channel.IsReady && _testGen == testGen; lvl++)
                         {
-                            _testStatus = $"▶ rev sweep - level {lvl}/{steps}";
+                            _testStatus = Loc.F("RevLights_RevSweepLevel_Fmt", lvl, steps);
                             _channel.SetLevel(lvl);
                             Thread.Sleep(stepMs);
                         }
                         for (int lvl = steps - 1; lvl >= 0 && _channel.IsReady && _testGen == testGen; lvl--)
                         {
-                            _testStatus = $"▶ rev sweep - level {lvl}/{steps}";
+                            _testStatus = Loc.F("RevLights_RevSweepLevel_Fmt", lvl, steps);
                             _channel.SetLevel(lvl);
                             Thread.Sleep(stepMs);
                         }
                     }
                     if (_channel.IsReady && _testGen == testGen)
                     {
-                        _testStatus = "▶ redline (all LEDs)";
+                        _testStatus = Loc.T("RevLights_RedlineAllLEDs");
                         _log($"[RPM-LED] Test: redline hold (level {steps})");
                         _channel.SetLevel(steps);
                         Thread.Sleep(redlineMs);
@@ -495,7 +496,7 @@ namespace TrueforceForAll.Plugin
                     {
                         try { _channel.TurnOff(); } catch { }
                         _lastBucket = -1;
-                        _testStatus = "test finished - LEDs off";
+                        _testStatus = Loc.T("RevLights_TestFinishedLEDsOff");
                         _log("[RPM-LED] Test: finished, LEDs off (level 0).");
                     }
                     if (_testGen == testGen) DropStrip();
@@ -614,7 +615,7 @@ namespace TrueforceForAll.Plugin
                     }
                     if (!opened)
                     {
-                        _testStatus = "could not open the LED channel (see log)";
+                        _testStatus = Loc.T("RevLights_CouldNotOpenLED");
                         return;
                     }
 
@@ -627,7 +628,7 @@ namespace TrueforceForAll.Plugin
                     int steps = _channel.StripLength;
                     for (int lvl = 0; lvl <= steps && _channel.IsReady && _previewGen == gen; lvl++)
                     {
-                        _testStatus = $"▶ pattern preview - level {lvl}/{steps}";
+                        _testStatus = Loc.F("RevLights_PatternPreviewLevel_Fmt", lvl, steps);
                         _channel.SetLevel(lvl);
                         Thread.Sleep(stepMs);
                     }

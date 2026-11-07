@@ -21,6 +21,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -76,7 +77,7 @@ namespace TrueforceForAll.Plugin
 
         public DashPhoneWindow()
         {
-            Title         = "TF4ALL Dash";
+            Title         = Loc.T("Guides_TF4ALLDash");
             Width         = 420;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -89,12 +90,12 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "TF4ALL Dash",
+                Text = Loc.T("Guides_TF4ALLDash"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "Control effects, gains, and presets from your phone or tablet while driving.",
+                Text = Loc.T("Settings_RemoteDashControlEffectsGainsAnd"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
                 TextWrapping = TextWrapping.Wrap,
@@ -106,7 +107,7 @@ namespace TrueforceForAll.Plugin
                 // No usable network: a QR/URL would point nowhere. Say so
                 // instead of rendering a dead code.
                 root.Children.Add(new TextBlock {
-                    Text = "No network connection detected. Connect this PC to your network, then reopen this window.",
+                    Text = Loc.T("DashPhone_NoNetworkConnectionDetected"),
                     Foreground = TextFg, FontSize = 12,
                     Margin = new Thickness(0, 6, 0, 12),
                     TextWrapping = TextWrapping.Wrap,
@@ -135,7 +136,7 @@ namespace TrueforceForAll.Plugin
                     Margin = new Thickness(0, 0, 0, 8),
                 });
                 root.Children.Add(new TextBlock {
-                    Text = "Scan with your phone's camera, or type the link into its browser.",
+                    Text = Loc.T("DashPhone_ScanPhoneSCamera"),
                     Foreground = MutedFg, FontSize = 11,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Margin = new Thickness(0, 0, 0, 10),
@@ -145,7 +146,7 @@ namespace TrueforceForAll.Plugin
             else
             {
                 root.Children.Add(new TextBlock {
-                    Text = "Type the link below into your phone's browser.",
+                    Text = Loc.T("DashPhone_TypeLinkBelowInto"),
                     Foreground = MutedFg, FontSize = 11,
                     Margin = new Thickness(0, 0, 0, 10),
                     TextWrapping = TextWrapping.Wrap,
@@ -167,7 +168,7 @@ namespace TrueforceForAll.Plugin
             Grid.SetColumn(linkBox, 0);
             linkRow.Children.Add(linkBox);
             var copyBtn = new Button {
-                Content = "Copy", Padding = new Thickness(12, 4, 12, 4),
+                Content = Loc.T("Lightsync_PatternCopy"), Padding = new Thickness(12, 4, 12, 4),
                 Margin = new Thickness(8, 0, 0, 0), MinWidth = 64,
                 Style = PrimaryButtonStyle,
             };
@@ -178,9 +179,9 @@ namespace TrueforceForAll.Plugin
                 // "Copied" confirmation is the honest signal.
                 try { Clipboard.SetText(url); }
                 catch { return; }
-                copyBtn.Content = "Copied";
+                copyBtn.Content = Loc.T("DashPhone_Copied");
                 var revert = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.4) };
-                revert.Tick += (s2, e2) => { revert.Stop(); copyBtn.Content = "Copy"; };
+                revert.Tick += (s2, e2) => { revert.Stop(); copyBtn.Content = Loc.T("Lightsync_PatternCopy"); };
                 revert.Start();
             };
             Grid.SetColumn(copyBtn, 1);
@@ -188,22 +189,22 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(linkRow);
 
             root.Children.Add(new TextBlock {
-                Text = "Phone and PC must be on the same network.",
+                Text = Loc.T("DashPhone_PhonePCMustSame"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 2),
                 TextWrapping = TextWrapping.Wrap,
             });
             root.Children.Add(new TextBlock {
-                Text = "To keep the dash like an app, tap your browser's share icon and choose Add to Home Screen.",
+                Text = Loc.T("DashPhone_KeepDashLikeApp"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
                 TextWrapping = TextWrapping.Wrap,
             });
 
             var openBtn = new Button {
-                Content = "Open on this PC", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("DashPhone_OpenPC"), Padding = new Thickness(12, 5, 12, 5),
                 Style = NeutralButtonStyle,
-                ToolTip = "Opens the dash in this PC's browser to check it's being served.",
+                ToolTip = Loc.T("DashPhone_OpensDashPCS"),
             };
             openBtn.Click += (s, e) =>
             {
@@ -230,7 +231,7 @@ namespace TrueforceForAll.Plugin
                 row.Children.Add(openButton);
             }
             var closeBtn = new Button {
-                Content = "Close", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Settings_Close"), Padding = new Thickness(12, 5, 12, 5),
                 Style = NeutralButtonStyle,
                 IsCancel = true, IsDefault = true,
             };

@@ -1,0 +1,43 @@
+﻿src/TrueforceForAll.Plugin/SettingsControl.xaml:5590  Header="Account"  ->  {loc:T Account_AccountTab_Header}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5603  Text="Not signed in. Sign in to use community features."  ->  {loc:T Account_AccountStatus}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5604  Content="Sign in"  ->  {loc:T Account_AccountAuth}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5607  ToolTip="Sign in with email (one-time code, no password) to use community features."  ->  {loc:T Account_AccountAuth_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5616  Text="Supporter"  ->  {loc:T Account_SupporterBadge}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5621  Text="Username:"  ->  {loc:T Account_Username}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5623  Text="(anonymous)"  ->  {loc:T Account_AccountUsernameDisplay}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5624  Content="Change…"  ->  {loc:T Account_AccountChangeUsername}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5627  ToolTip="Pick a new username. Checked against the community for uniqueness."  ->  {loc:T Account_AccountChangeUsername_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5634  Text="Sign in to claim a username."  ->  {loc:T Account_AccountUsername}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5637  Text="Email:"  ->  {loc:T Account_AccountChangeEmailRowEmail}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5639  Content="Change…"  ->  {loc:T Account_AccountChangeEmail}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5642  ToolTip="Send a confirmation link to a new address. The current address keeps working until you confirm the new one."  ->  {loc:T Account_AccountChangeEmail_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5653  Text="Connections"  ->  {loc:T Account_Connections}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5656  Content="Join Discord"  ->  {loc:T Account_LinkDiscord}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5659  ToolTip="Opens Discord in your browser to link your account and add you to the Trueforce For All community server, where your contributions earn roles."  ->  {loc:T Account_LinkDiscord_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5660  Content="Unlink"  ->  {loc:T Account_UnlinkDiscord}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5663  ToolTip="Remove the link between your TF4ALL account and your Discord account."  ->  {loc:T Account_UnlinkDiscord_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5666  Text="Sign in to join Discord."  ->  {loc:T Account_DiscordLinkStatus}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5672  Content="Link Patreon"  ->  {loc:T Account_LinkPatreon}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5675  ToolTip="Unlock the supporter badge and cloud backup from your Patreon pledge. If your Patreon has Discord connected and you're already in the community server, it links Discord too."  ->  {loc:T Account_LinkPatreon_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5676  Content="Unlink"  ->  {loc:T Account_UnlinkPatreon}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5679  ToolTip="Remove the link between your TF4ALL account and your Patreon account."  ->  {loc:T Account_UnlinkPatreon_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5682  Text="Sign in to link Patreon."  ->  {loc:T Account_PatreonLinkStatus}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5687  Header="Account Settings"  ->  {loc:T Account_AccountDetails_Header}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5691  Text="Your stats"  ->  {loc:T Account_AccountDetailsYourStats}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5709  Text="Active sessions"  ->  {loc:T Account_AccountSessionsActiveSessions}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5710  Content="Refresh"  ->  {loc:T Common_Refresh}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5713  ToolTip="Re-check which devices are signed in to your account."  ->  {loc:T Account_AccountSessionsRefresh_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5718  Content="Sign out everywhere else"  ->  {loc:T Account_AccountSignOutOthers}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5722  ToolTip="Revoke every other device's session. This device stays signed in."  ->  {loc:T Account_AccountSignOutOthers_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5724  Text="Revoking signs the other device out within a few minutes while it's running. A device that's offline or asleep signs out the next time it comes online."  ->  {loc:T Account_AccountSessionsRevokingSignsTheOther}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5731  Content="Export my data"  ->  {loc:T Account_AccountExport}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5734  ToolTip="Save a JSON file with the data your account holds: email, profile, uploads, votes, car-fact submissions, download history, sign-in sessions, linked accounts, supporter status, reports you have filed, and any moderation notices."  ->  {loc:T Account_AccountExport_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5735  Content="Delete account"  ->  {loc:T Account_AccountDelete}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5739  ToolTip="Permanently remove your account. Presets you uploaded stay available for people who downloaded them but lose your name. Your cloud backup is deleted too."  ->  {loc:T Account_AccountDelete_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5744  ToolTip="Opens PRIVACY.md on GitHub."  ->  {loc:T Account_AccountDetailsOpensPrivacyMdOn_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5744  #text="Privacy policy"  ->  {loc:T Account_AccountDetailsPrivacyPolicy}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5744  Text=": what's stored, why, and how to remove it."  ->  {loc:T Account_AccountDetailsWhatSStoredWhyAnd}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:scopes  tab:AccountTab
+
+39 replacements in 1 file(s); en.json: +39 new key(s), 0 already present -> src/TrueforceForAll.Plugin/Languages/en.json
+Dry run: nothing written.

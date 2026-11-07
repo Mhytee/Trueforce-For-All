@@ -19,6 +19,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -44,7 +45,7 @@ namespace TrueforceForAll.Plugin
         {
             _plugin = plugin;
 
-            Title         = "Sign in to access community features";
+            Title         = Loc.T("SignIn_Title");
             Width         = 440;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -85,12 +86,12 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Sign in or create your account",
+                Text = Loc.T("SignIn_Heading"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "New here? Enter your email and we'll send a 6-digit code that signs you in, or creates your account if you're new. No password. You can then browse and share presets, vote, and help fill in car data.",
+                Text = Loc.T("SignIn_Intro"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 6),
                 TextWrapping = TextWrapping.Wrap,
@@ -103,10 +104,10 @@ namespace TrueforceForAll.Plugin
                 TextWrapping = TextWrapping.Wrap,
             };
             privacyLine.Inlines.Add(new System.Windows.Documents.Run(
-                "Your email is used to sign you in and for occasional account notices, nothing else. ")
+                Loc.T("SignIn_PrivacyLead"))
             { Foreground = MutedFg });
             var privacyLink = new System.Windows.Documents.Hyperlink(
-                new System.Windows.Documents.Run("Privacy policy"))
+                new System.Windows.Documents.Run(Loc.T("Common_PrivacyPolicy")))
             { Foreground = HeaderFg };
             privacyLink.Click += (s, e) =>
             {
@@ -122,7 +123,7 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(privacyLine);
 
             root.Children.Add(new TextBlock {
-                Text = "Email", Foreground = MutedFg, FontSize = 11,
+                Text = Loc.T("SignIn_EmailLabel"), Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 2),
             });
             // Prefill: an explicit value (e.g. "Use a different email" restart)
@@ -141,7 +142,7 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(emailInput);
 
             var rememberCheck = new CheckBox {
-                Content = "Remember my email",
+                Content = Loc.T("SignIn_RememberEmail"),
                 IsChecked = _plugin.Settings.RememberSignInEmail,
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 12),
@@ -162,7 +163,7 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
             var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 IsCancel = true,
             };
@@ -171,7 +172,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(cancelBtn);
 
             var sendBtn = new Button {
-                Content = "Email me a sign-in code", Padding = new Thickness(16, 5, 16, 5),
+                Content = Loc.T("SignIn_SendCode"), Padding = new Thickness(16, 5, 16, 5),
                 FontWeight = FontWeights.SemiBold, IsDefault = true,
             };
             ModalButtonTheme.Primary(sendBtn);
@@ -184,7 +185,7 @@ namespace TrueforceForAll.Plugin
                 if (!IsLikelyEmail(email))
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Enter a valid email address.";
+                    statusText.Text = Loc.T("SignIn_EmailInvalid");
                     return;
                 }
                 // Persist the "remember my email" choice at send time (like most
@@ -199,14 +200,14 @@ namespace TrueforceForAll.Plugin
                 sendBtn.IsEnabled = false;
                 cancelBtn.IsEnabled = false;
                 statusText.Foreground = InfoFg;
-                statusText.Text = "Sending a sign-in code to your inbox...";
+                statusText.Text = Loc.T("SignIn_Sending");
                 AuthCallResult result;
                 try { result = await _plugin.AuthSendOtpAsync(email); }
                 catch (Exception ex)
                 {
                     if (_closed) return;
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Couldn't reach the sign-in server. Check your internet and try again.";
+                    statusText.Text = Loc.T("SignIn_ServerUnreachable");
                     TrueforceDialog.LogError("Sign-in send", ex);
                     sendBtn.IsEnabled = true;
                     cancelBtn.IsEnabled = true;
@@ -233,19 +234,19 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Enter your code",
+                Text = Loc.T("SignIn_CodeHeading"),
                 Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 15,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock {
-                Text = "We sent a 6-digit code to " + email + ". Enter the code below.",
+                Text = Loc.F("SignIn_CodeSentTo_Fmt", email),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,
             });
 
             root.Children.Add(new TextBlock {
-                Text = "6-digit code", Foreground = MutedFg, FontSize = 11,
+                Text = Loc.T("SignIn_CodeLabel"), Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 2),
             });
             var codeInput = new TextBox {
@@ -285,7 +286,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 0, 12),
             };
             resendRow.Children.Add(new TextBlock {
-                Text = "Didn't get it? ", Foreground = MutedFg, FontSize = 11,
+                Text = Loc.T("SignIn_DidntGetIt"), Foreground = MutedFg, FontSize = 11,
                 VerticalAlignment = VerticalAlignment.Center,
             });
             var resendBtn = new Button {
@@ -313,7 +314,7 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
             var restartBtn = new Button {
-                Content = "Use a different email", Padding = new Thickness(10, 5, 10, 5),
+                Content = Loc.T("SignIn_DifferentEmail"), Padding = new Thickness(10, 5, 10, 5),
                 Margin = new Thickness(0, 0, 8, 0),
             };
             ModalButtonTheme.Secondary(restartBtn);
@@ -324,7 +325,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(restartBtn);
 
             var signInBtn = new Button {
-                Content = "Sign in", Padding = new Thickness(16, 5, 16, 5),
+                Content = Loc.T("SignIn_Verify"), Padding = new Thickness(16, 5, 16, 5),
                 FontWeight = FontWeights.SemiBold, IsDefault = true,
             };
             ModalButtonTheme.Primary(signInBtn);
@@ -337,13 +338,13 @@ namespace TrueforceForAll.Plugin
                 if (!System.Text.RegularExpressions.Regex.IsMatch(code, "^[0-9]{6}$"))  // regex already enforces exactly 6 digits
                 {
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Enter the 6-digit code from your email.";
+                    statusText.Text = Loc.T("SignIn_CodeMissing");
                     return;
                 }
                 signInBtn.IsEnabled = false;
                 restartBtn.IsEnabled = false;
                 statusText.Foreground = InfoFg;
-                statusText.Text = "Verifying...";
+                statusText.Text = Loc.T("SignIn_Verifying");
 
                 AuthCallResult result;
                 try { result = await _plugin.AuthVerifyOtpAsync(email, code); }
@@ -351,7 +352,7 @@ namespace TrueforceForAll.Plugin
                 {
                     if (_closed) return;
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Couldn't reach the sign-in server. Check your internet and try again.";
+                    statusText.Text = Loc.T("SignIn_ServerUnreachable");
                     TrueforceDialog.LogError("Sign-in verify", ex);
                     signInBtn.IsEnabled = true;
                     restartBtn.IsEnabled = true;
@@ -361,7 +362,7 @@ namespace TrueforceForAll.Plugin
                 if (result == AuthCallResult.Ok)
                 {
                     statusText.Foreground = OkFg;
-                    statusText.Text = "Signed in.";
+                    statusText.Text = Loc.T("SignIn_Done");
                     DialogResult = true;  // setting DialogResult closes the dialog
                     return;
                 }
@@ -375,7 +376,7 @@ namespace TrueforceForAll.Plugin
             {
                 resendBtn.IsEnabled = false;
                 statusText.Foreground = InfoFg;
-                statusText.Text = "Sending a new code...";
+                statusText.Text = Loc.T("SignIn_ResendSending");
 
                 AuthCallResult result;
                 try { result = await _plugin.AuthSendOtpAsync(email); }
@@ -383,7 +384,7 @@ namespace TrueforceForAll.Plugin
                 {
                     if (_closed) return;
                     statusText.Foreground = ErrFg;
-                    statusText.Text = "Couldn't reach the sign-in server. Check your internet and try again.";
+                    statusText.Text = Loc.T("SignIn_ServerUnreachable");
                     TrueforceDialog.LogError("Sign-in resend", ex);
                     SetResendIdle(resendBtn);
                     return;
@@ -393,7 +394,7 @@ namespace TrueforceForAll.Plugin
                 {
                     // Classic resend: confirm and leave the link available.
                     statusText.Foreground = OkFg;
-                    statusText.Text = "New code sent to " + email + ".";
+                    statusText.Text = Loc.F("SignIn_ResendSent_Fmt", email);
                     SetResendIdle(resendBtn);
                 }
                 else if (result == AuthCallResult.RateLimited)
@@ -407,7 +408,7 @@ namespace TrueforceForAll.Plugin
                     int? serverWait = _plugin.AuthLastSendRetryAfterSeconds;
                     int wait = serverWait.HasValue ? serverWait.Value + 1 : ResendCooldownSeconds;
                     statusText.Foreground = InfoFg;
-                    statusText.Text = "You just requested a code.";
+                    statusText.Text = Loc.T("SignIn_ResendTooSoon");
                     StartResendCooldown(resendBtn, wait, "Try again in {0}s");
                 }
                 else
@@ -441,7 +442,7 @@ namespace TrueforceForAll.Plugin
             StopResendTimer();
             resendBtn.IsEnabled = true;
             resendBtn.Content = new TextBlock {
-                Text = "Resend code",
+                Text = Loc.T("SignIn_ResendLink"),
                 Foreground = MutedFg, FontSize = 11,
                 TextDecorations = TextDecorations.Underline,
             };
@@ -502,16 +503,16 @@ namespace TrueforceForAll.Plugin
             switch (r)
             {
                 case AuthCallResult.RateLimited:
-                    return "Slow down a moment, then try again.";
+                    return Loc.T("SignIn_ErrorRateLimited");
                 case AuthCallResult.InvalidInput:
-                    return "Enter a valid email address.";
+                    return Loc.T("SignIn_EmailInvalid");
                 case AuthCallResult.NetworkFailure:
-                    return "Could not reach the sign-in server. Check your internet and try again.";
+                    return Loc.T("SignIn_ErrorNetwork");
                 // Generic (and the verify-only Expired/BadCode, which the send
                 // path never returns) share the same fallback copy.
                 case AuthCallResult.Generic:
                 default:
-                    return "Could not send the code. Try again in a moment.";
+                    return Loc.T("SignIn_SendErrorGeneric");
             }
         }
 
@@ -520,18 +521,18 @@ namespace TrueforceForAll.Plugin
             switch (r)
             {
                 case AuthCallResult.Expired:
-                    return "That code expired. Tap 'Resend code' to get a fresh one.";
+                    return Loc.T("SignIn_VerifyErrorExpired");
                 case AuthCallResult.BadCode:
-                    return "That code didn't match. Double-check or request a new one.";
+                    return Loc.T("SignIn_VerifyErrorBadCode");
                 case AuthCallResult.RateLimited:
-                    return "Slow down a moment, then try again.";
+                    return Loc.T("SignIn_ErrorRateLimited");
                 case AuthCallResult.InvalidInput:
-                    return "Enter the 6-digit code from your email.";
+                    return Loc.T("SignIn_CodeMissing");
                 case AuthCallResult.NetworkFailure:
-                    return "Could not reach the sign-in server. Check your internet and try again.";
+                    return Loc.T("SignIn_ErrorNetwork");
                 case AuthCallResult.Generic:
                 default:
-                    return "Could not verify the code. Try again.";
+                    return Loc.T("SignIn_VerifyErrorGeneric");
             }
         }
 

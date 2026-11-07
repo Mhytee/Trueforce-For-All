@@ -8,6 +8,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -43,8 +44,8 @@ namespace TrueforceForAll.Plugin
             sp.Children.Add(new TextBlock
             {
                 Text = includePackName
-                    ? $"Info for the {subjectKind}. Pack name is required; the rest is optional."
-                    : $"Optional info for the {subjectKind}. Leave anything blank to omit it.",
+                    ? Loc.F("PresetMetadata_InfoPackNameRequired_Fmt", subjectKind)
+                    : Loc.F("PresetMetadata_OptionalInfoLeaveAnything_Fmt", subjectKind),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
                 Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
@@ -53,20 +54,20 @@ namespace TrueforceForAll.Plugin
             TextBox tbPackName = null;
             if (includePackName)
             {
-                sp.Children.Add(BuildLabel("Pack name (required)"));
+                sp.Children.Add(BuildLabel(Loc.T("PresetMetadata_PackNameRequired")));
                 tbPackName = BuildInputTextBox(defaultPackName, multiline: false);
                 sp.Children.Add(tbPackName);
             }
 
-            sp.Children.Add(BuildLabel("Author"));
+            sp.Children.Add(BuildLabel(Loc.T("PresetMetadata_Author")));
             var tbAuthor = BuildInputTextBox(defaultAuthor, multiline: false);
             sp.Children.Add(tbAuthor);
 
-            sp.Children.Add(BuildLabel("Version"));
+            sp.Children.Add(BuildLabel(Loc.T("PresetManager_PacksListVersion_Header")));
             var tbVersion = BuildInputTextBox(defaultAuthorVersion, multiline: false);
             sp.Children.Add(tbVersion);
 
-            sp.Children.Add(BuildLabel("Description"));
+            sp.Children.Add(BuildLabel(Loc.T("EditCommunity_DescriptionLabel")));
             var tbDesc = BuildInputTextBox(defaultDescription, multiline: true);
             sp.Children.Add(tbDesc);
 
@@ -76,7 +77,7 @@ namespace TrueforceForAll.Plugin
             // a community downloader would.
             var cbAllow = new CheckBox
             {
-                Content = "Let others re-bundle this in their packs",
+                Content = Loc.T("PresetMetadata_LetOthersReBundle"),
                 IsChecked = defaultAllowInPacks,
                 Foreground = new SolidColorBrush(Color.FromRgb(0xEA, 0xEA, 0xEA)),
                 Margin = new Thickness(0, 0, 0, 10),
@@ -89,8 +90,8 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
             // Cancel left, affirmative (default) right, matching every other dialog.
-            var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
-            var ok = new Button { Content = "Save & export", Width = 130, Height = 28, IsDefault = true };
+            var cancel = new Button { Content = Loc.T("Common_Cancel"), Width = 90, Height = 28, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+            var ok = new Button { Content = Loc.T("PresetMetadata_SaveExport"), Width = 130, Height = 28, IsDefault = true };
             btnRow.Children.Add(cancel);
             btnRow.Children.Add(ok);
             sp.Children.Add(btnRow);
@@ -103,7 +104,7 @@ namespace TrueforceForAll.Plugin
                     if (string.IsNullOrEmpty(name))
                     {
                         TrueforceDialog.Show(this, "Trueforce For All",
-                            "Pack name is required when bundling as a pack.", DialogKind.Info);
+                            Loc.T("PresetMetadata_PackNameRequiredWhen"), DialogKind.Info);
                         tbPackName?.Focus();
                         return;
                     }

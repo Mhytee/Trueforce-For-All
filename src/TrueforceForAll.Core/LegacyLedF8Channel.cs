@@ -285,7 +285,7 @@ namespace TrueforceForAll.Core
         // resend the current value every _resendMs ms (set ~16 to mimic
         // forza-wheel-leds' every-frame spam). Same sweep either way, so flicker
         // that shows up ONLY in fast mode pins the cause on write rate, not the
-        // command. _resendMs is volatile, so F8FAST/F8SLOW switch it live.
+        // command. _resendMs is volatile, so 'F8SWEEP FAST' / 'F8SWEEP SLOW' switch it live.
         private void SweepLoop()
         {
             const int tickMs = 8;

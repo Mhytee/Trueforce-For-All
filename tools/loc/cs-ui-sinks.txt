@@ -1,0 +1,399 @@
+# tools/loc/cs-ui-sinks.txt
+#
+# What counts as a UI sink in C#: the one list that sweep-cs.ps1 and
+# LocCsLiteralBudget in src/TrueforceForAll.Core.Tests/LocalizationTests.cs both
+# read, so the PowerShell sweep and the test that enforces the budget can never
+# disagree about which writes are UI. The two walkers are separate code (the
+# same arrangement as Get-LocInventory and LocXamlWalker for XAML), but the
+# rules themselves live here.
+#
+# A sink is a place where a string becomes something a user reads. A literal
+# that reaches one and is not routed through Loc.T/F/N is untranslatable, which
+# is what the sweep counts. Everything else a C# string can be (a log line, a
+# JSON field, a file path, an access-code reply, a persisted identifier) is not
+# a sink and never enters the count.
+#
+# Directives, one per line; '#' starts a comment line; fields are whitespace
+# separated and an <args> field never contains a space.
+#
+#   prop <Name>              An assignment to this property name is a sink:
+#                            both "label.Text = ..." and a "Text = ..." entry
+#                            inside an object initializer. '+=' counts too.
+#   ctor <Type> <args>       "new <Type>(...)": the listed arguments are UI text.
+#                            An optional namespace qualifier is allowed
+#                            ("new System.Windows.Documents.Run(...)").
+#   call <Name.Method> <args>  A call by that exact dotted name. A name with no
+#                            dot matches the method on any receiver, so
+#                            "SetValue" covers "btn.SetValue(...)" too.
+#   callre <regex> <args>    A call whose method name matches this regex, on any
+#                            receiver or none. The regex body carries no
+#                            anchors; the reader wraps it.
+#   skipcall <Name>          A call whose own literals never reach a user, even
+#                            inside a sink expression. The whole call, arguments
+#                            and all, is stepped over. A leading '.' means any
+#                            receiver.
+#   textcall <Name>          The opposite: a call that composes the text it is
+#                            handed, so a literal inside it does reach the user.
+#                            Every other call and indexer inside a sink
+#                            expression is stepped over, and so is every "new
+#                            ..." (whatever text it holds has its own sink site
+#                            inside it, which is where it gets counted).
+#   watch <Receiver>         Every "<Receiver>.<Method>(" in the plugin must be
+#                            listed below as a call sink or as a nonsink, so a
+#                            new overload cannot quietly become a blind spot.
+#   nonsink <Name.Method>    Named under a watch, and deliberately not a sink.
+#
+# <args> selects the UI-text arguments of a call: a comma-separated list of
+# zero-based positions and C# parameter names. A name matches a named argument
+# ("okLabel: \"Got it\""), a position matches by order. Selecting an argument
+# that is never a literal costs nothing, so an overload set is covered by the
+# union of its text positions.
+
+# ---------------------------------------------------------------- properties
+# Every one of these is a WPF display property. Watermark and PlaceholderText
+# have no assignment in the tree today and are listed so the first one is caught
+# rather than discovered.
+prop Text
+prop Content
+prop Header
+prop ToolTip
+prop Title
+prop Watermark
+prop PlaceholderText
+
+
+# Names that hold display text on its way somewhere else. The assignment is the
+# only place the text exists as a literal: a wheel-write outcome that ends up in a
+# result record, a dialog body built over several branches, a controller's status
+# line read by the panel every tick. A sentence parked in one of these is exactly
+# as visible to a user as one written straight to a TextBlock.
+prop message
+prop msg
+prop body
+prop bodyText
+prop text
+prop copy
+prop label
+prop outcome
+prop _testStatus
+prop _status
+# The wheel status the panel's pill reads. Its own initializer is the default.
+prop WheelStatus
+
+# Eight more names holding a sentence on its way somewhere: the FFB self-test
+# checklist, the community browser's two empty-state lines, a mod card's status,
+# a popover's affirmative label, the G HUB advice, and the two spike-set errors.
+prop checklist
+prop emptyMsg
+prop foundMsg
+prop status
+prop error
+prop affirmText
+prop loadLabel
+prop autoLabel
+prop hint
+prop GHubQuietDiagnosticMessage
+
+# A dialog's title, a confirmation's first line, the two save-popover tips and the
+# arcade mod card's status. Seven of the eight "title" locals in the plugin are a
+# dialog title; the eighth was a GitHub issue title and is named issueTitle now.
+prop title
+prop head
+prop presetTip
+prop carTip
+prop arcStatus
+# A file dialog's filter. The words before each pipe are read by whoever opens the
+# dialog; the patterns after them are not, but they share the string, so a
+# translator keeps them as they are.
+prop Filter
+
+# ---------------------------------------------------------------- constructors
+# TextBlock, Button and the rest take their text through a property, so Run is
+# the only WPF control the plugin builds with text in the constructor. The
+# plugin's own windows are further down, under the indirect sinks.
+ctor Run 0
+
+
+# Both OAuth flows document their exception as the user-facing failure, and the
+# link clients copy its Message into the result a caller shows.
+ctor DiscordOAuthException 0
+ctor PatreonOAuthException 0
+# ---------------------------------------------------------------- calls
+# TrueforceDialog is the plugin's MessageBox. Parameter names are listed beside
+# the positions because okLabel and cancelLabel are usually passed by name.
+# The label arguments are selected both by position and by name, because the
+# same overload is called both ways: "Show(owner, title, body, kind, "Delete",
+# "Cancel")" and "Show(owner, title, body, kind, okLabel: "Delete")".
+call TrueforceDialog.Show 1,2,4,5,okLabel,cancelLabel
+call TrueforceDialog.ShowError 1,friendly
+call TrueforceDialog.ShowChoice 1,2,3,4,5
+call TrueforceDialog.ShowConfirmWithCheckbox 1,2,3,6,7,okLabel,cancelLabel
+# System.Windows.MessageBox has no call site left in the plugin. Both overload
+# shapes are covered at once: MessageBox.Show(text) puts the text at 0,
+# MessageBox.Show(owner, text, caption) at 1 and 2, and the arguments that are
+# neither (an owner, a MessageBoxButton) are never string literals.
+call MessageBox.Show 0,1,2
+# DependencyObject.SetValue(TextBlock.TextProperty, "Delete"): the value is the
+# second argument. Only a UI dependency property is ever set this way here.
+call SetValue 1
+# The status-label helpers, by shape rather than one by one, so a new one is
+# covered the day it is written: SetBackupStatus, SetPatternStatus,
+# SetSessionsStatus, SetDevStatus, SetIRacingMaxNmStatus, SetChangeEmailStatus,
+# SetDiscordStatus/-Raw, SetPatreonStatus/-Raw. The Func<string> flavors take a
+# lambda, whose body is still inside argument 0.
+callre Set[A-Za-z]*Status[A-Za-z]* 0
+
+
+# Composers: each is handed the text it will show. Fail's second argument becomes
+# BackupOutcome.Message, which the backup and restore flows put on screen, and the
+# two builders are handed a card's or a row's own labels.
+call Fail 1
+call MakeRow 1
+# A StringBuilder line is display text when the builder is a panel readout, which
+# is most of them. The loggers are skipped below so a builder that ends up in the
+# log is not counted twice over.
+call AppendLine 0
+call Append 0
+
+# The USB picker's per-row notes, and the auto-tune callback the panel prints.
+call notes.Add 0
+call status 0
+
+# The delete-engine confirmation lists what the engine is used by.
+call usedBy.Add 0
+# ---------------------------------------------------------------- indirect sinks
+# A helper that takes text and writes it to a label is a sink at its call site,
+# which is where the literal lives. Without these lines a label routed through a
+# helper is invisible to the sweep, and the count could be lowered by moving a
+# string one call deeper instead of giving it a key. The list below was derived
+# mechanically (every method with a string parameter whose body assigns that
+# parameter to a sink property) and the argument selectors are the union across
+# that name's overloads, so a name used in two windows needs one line.
+#
+# Three families were found the same way and deliberately left out:
+#   - ApplyCommunityEmptyText(kind): its string parameter picks a message, it is
+#     not the message.
+#   - Label(t) and Input(text) in ModerationNoticesWindow: one-word names that
+#     would match anything spelled the same anywhere in the plugin.
+#   - BuildChrome, ShowChoice and the TrueforceDialog constructors: the text
+#     reaches them from the public entry points above, and a second rule on the
+#     same call would count every dialog literal twice.
+call ShowSavedStatus 1,message
+call FlashSaveStatus 1,msg
+call SetLib 1,msg
+call SetBetaUpdatesNote 0,msg
+call SetCloudBackupMessage 0,msg
+call SetBodyContent 1,shown
+call SetPerGearBoxText 2,text
+call MirrorPerGearBox 1,text
+call ShowCommunityGate 0,1,2
+call PromptForName 0,1,2
+call PromptForCarPresetName 0,1,2
+call PickFromList 0,1
+call PickMultipleFromList 0,1
+call MakeSectionHeader 0,text
+call MakeShareRow 0,label
+call MakeFactLine 0,1
+call MakeGameItem 0,gameName
+call MakeBullet 0,1
+call MakeChoiceButton 0,1
+call MakeRadio 1,2
+call MakeToggle 0,1
+call MakeIneligibleRow 0,label
+call MakeLink 0,text
+call MakeButton 0,content
+call MakeColumn 0,header
+call BuildGroupHeader 0,title
+call BuildPanelHeader 0,text
+# title, description and status. The version argument is "v1.2.3" and is not
+# prose, and the two Action arguments hold no text.
+call BuildModCard 0,1,5,title
+call BuildLabel 0,text
+call BuildInputTextBox 0,text
+call BuildPackEntryRow 2,title
+call RenderGroup 1,headerLabel
+call AddDetailRow 0,1
+call AddSection 3,label
+call EntryLine 1,subtitle
+call EqHeaderLabel 0,text
+call EqNumberBox 2,tip
+
+# The code-built windows and dialogs whose constructor takes its own chrome.
+ctor TwoLineEditWindow 0,1,2
+ctor UpdateVsNewChooserWindow 0,1
+ctor PresetMetadataDialog 0,title
+ctor EditCommunityPresetWindow 0,1
+
+
+# Helpers that compose a line for the panel out of what they are handed.
+call DashToast 0
+call MutedLine 0
+call AppendEffectLine 1
+call AppendOverrideSection 1
+# ---------------------------------------------------------------- skipped calls
+# A key is not display text.
+skipcall Loc.T
+skipcall Loc.F
+skipcall Loc.N
+# A format specifier is not display text ("F1", "N0", "HH:mm"). Localized number
+# and date display is deferred by the plan and would be a formatting helper, not
+# a language key, so these stay out of the count rather than being allowlisted
+# one value at a time.
+skipcall .ToString
+
+
+# The loggers. Nothing they are handed is display text, and with AppendLine a sink
+# the [TF4ALL] lines assembled into a builder would otherwise be counted as UI.
+skipcall .Warn
+skipcall .Info
+skipcall .Error
+skipcall .Debug
+skipcall LogError
+# ---------------------------------------------------------------- text calls
+# The two composers whose first argument is the sentence the user reads. A
+# sentence assembled by a helper of the plugin's own ("Fmt(...)", an
+# AppendLine chain three methods away) is not visible to this sweep; see the
+# blind spots in tools/loc/README.md.
+textcall string.Format
+textcall string.Concat
+
+
+# The plugin's status and advice layer: every one of these returns a sentence the
+# panel shows. WheelQuietDiagnostic is the "why is nothing happening" chain, the
+# three NoticeBody members are the native-Trueforce dialogs, and the Start/Install
+# families return the reason a button could not do what it was asked.
+textmember WheelQuietDiagnostic
+textmember StreamStatus
+textmember IracingNoticeBody
+textmember R3ENoticeBody
+textmember LmuNoticeBody
+textmember DescribeKeepaliveReason
+textmember ArcadeRouteLabel
+textmember StartAutoTune
+textmember StartFxTest
+textmember StartDamperCalibration
+textmember StartDiDamperSpike
+textmember RunActiveDeviceProbe
+textmember InstallAcCspBridge
+textmember UninstallAcCspBridge
+textmember RestoreAcPostProcessScript
+textmember InstallFsMod
+textmember UninstallFsMod
+textmember InstallArcadeMod
+textmember UninstallArcadeMod
+textmember RequestGripCalReset
+textmember SetR3EStationaryDamper
+textmember SetArcadeIniValue
+textmember ProbeLedSlotFeature
+textmember ToggleF8LedSweep
+textmember SnapshotLogitechProcesses
+textmember HintCopy
+textmember Heading
+textmember TypeLabel
+textmember FriendlyDetectSourceSuffix
+textmember LoadRaw
+textmember FormatSetDefaultsSummary
+textmember ComputeTierBadge
+textmember LiveTelemetryRateLine
+textmember DescribePinnedEngine
+textmember FxGainFamilyLabel
+recordprop StandDownCopy.Lead
+recordprop StandDownCopy.Before
+recordprop StandDownCopy.Link
+recordprop StandDownCopy.After
+recordprop ImportCandidate.FailureMessage
+recordprop EngineOption.Display
+recordprop LightCycleStop.Label
+# Four tables are deliberately NOT listed here: EffectTagLabels.Map, AllSections
+# in CommunitySectionPickerWindow, Categories in ReportDialog and Directions in
+# the pattern editor. Each pairs an id with a label, and the walker sees two
+# quoted strings in one initializer with no way to tell which is which, so it
+# would ask for a key for "engine" as well as for "Engine pulse". Those tables
+# hold key names instead and resolve through Loc.T where the label is used, which
+# also means a language change reaches them.
+
+# The link clients' result tuples. Both carry a message the Account tab shows
+# exactly as returned, so every literal these members return is display text; the
+# other tuple elements are a config object and a bool.
+textmember GetConfigAsync
+textmember ExchangeAsync
+textmember AuthorizeAsync
+recordprop Row.Description
+recordprop Row.Notes
+
+# The MAIRA notice, in the three parts the panel needs to make the middle a link.
+textmember MairaTapDegradedLead
+textmember MairaTapDegradedTailBeforeLink
+textmember MairaTapDegradedLinkText
+# ---------------------------------------------------------------- watches
+watch TrueforceDialog
+nonsink TrueforceDialog.LogError
+
+# ---------------------------------------------------------------------------
+# Added 2026-09-26, after a review measured what the rules above cannot see.
+# Three shapes are regions rather than assignments, so each needs a directive:
+#
+#   labels <Identifier>      every entry of that declared collection is a label
+#   textmember <Name>        every literal that member RETURNS is display text.
+#                            Return position only: a member that returns display
+#                            text may still switch on string case labels, and a
+#                            case label is an identifier, not copy.
+#   recordprop <Type>.<Prop> an initializer entry on one of our own records,
+#                            counted only inside that type's initializer
+#
+# Chosen from a mechanical enumeration of every string collection and every
+# display-returning member in the plugin, not from a list: a parallel key or
+# value array (IdleStyleKeys, FieldKeys, IdleFontValues, IdleColorHex,
+# DashDriveContentKeys, GaugeFieldKeys) is deliberately absent, and so are the
+# OLED wheel-screen short names, which cannot carry a translation at all
+# (docs/localization-plan.md, out of scope).
+#
+# Adding a rule here is the one legitimate reason a budget number goes up. The
+# set grows as more shapes are found: re-run with -WriteBudget in that commit.
+
+# Panel pickers and lists.
+labels IdleStyleLabels
+labels IdleFontLabels
+labels IdleColorNames
+labels RemoteDashTabNames
+labels AmbientLedModeLabels
+labels RevLightEffectLabels
+labels WheelBuiltinEffects
+labels DashDriveContentLabels
+
+# The parametric EQ card. EqSlopeLabels is deliberately absent: its entries are
+# "12 dB" through "48 dB", a number and an SI-adjacent unit that reads the same
+# in every language we ship.
+labels EqTypeLabels
+
+# The OLED panel's own labels. The plan puts these in scope and keeps the
+# wheel-screen short names and the field keys out.
+labels ScreenOrderLabels
+labels GaugeFieldLabels
+labels FieldLabels
+labels LayoutLabels
+
+# The support prompt's bullet list.
+labels Bullets
+
+# Members whose literals are display text wherever they are used. Added as each
+# file is keyed, so a file's budget reaching zero means the file is really done
+# rather than done except for the part the rules cannot see.
+textmember EffectLabel
+textmember DescribeLastUploadError
+textmember SendErrorCopy
+textmember VerifyErrorCopy
+# Added with the settings code-behind. FormatRemoval returns a duration phrase
+# ("less than a day", "about 2 months") and RedlineSourceFriendly returns the
+# parenthetical that says where a redline came from; both are read by a user
+# wherever they are used. NotePresetComboContents is deliberately absent: its
+# strings go to the log, not to a label.
+textmember FormatRemoval
+textmember RedlineSourceFriendly
+
+# Display fields on our own records, which are spelled like data and read like
+# labels. GameNames.Display is deliberately absent: those are product names.
+recordprop GuideEntry.ActionLabel
+recordprop DiscordLinkResult.Message
+recordprop PatreonLinkResult.Message
+recordprop BackupOutcome.Message

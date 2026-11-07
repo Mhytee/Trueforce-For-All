@@ -18,7 +18,7 @@ Whatever is up, the screen steps aside for things worth catching:
 
 It reports the plugin too: a preset loading, a gain nudged from a bound button, Auto strength settling on a car. Each takes the screen for a moment and hands it straight back.
 
-**Wheel OLED next** and **back** step through the pages from a wheel button. ([What you can bind](guide:bindings))
+**Wheel OLED next** and **back** step through the pages from any control you bind them to. ([What you can bind](guide:bindings))
 
 ## Where it works
 

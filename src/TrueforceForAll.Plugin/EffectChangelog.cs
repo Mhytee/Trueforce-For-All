@@ -6,10 +6,12 @@
 //     On fresh install (or first run on a pre-feature settings file) the
 //     plugin pre-marks every one as already seen, so existing users don't
 //     get a wall of badges for effects they've already been tuning.
-//   - Versions is an append-only, chronologically-ordered list. The banner
-//     shows everything strictly newer than the user's LastSeenVersion;
-//     dismissing stamps LastSeenVersion to the running build so the same
-//     entries don't pop up twice.
+//   - Versions is an append-only list. File order is not significant (the
+//     0.1.x block is not in version order); the what's-new modal sorts by
+//     version before it draws, and shows everything strictly newer than the
+//     user's LastSeenVersion; dismissing stamps LastSeenVersion to the running
+//     build so the same entries don't pop up twice. The banner's own
+//     visibility comes from HasUnseenChangelog.
 //
 // To ship a new effect:
 //   1. Add its stable ID string to KnownEffectIds.
@@ -59,7 +61,8 @@ namespace TrueforceForAll.Plugin
             "ImplementThud", "TrueforceEq",
         };
 
-        // Ordered oldest -> newest. Append-only.
+        // Append-only: add new versions at the tail. File order otherwise
+        // isn't significant, the what's-new modal sorts by version.
         public static readonly IReadOnlyList<ChangelogVersion> Versions = new ChangelogVersion[]
         {
             new ChangelogVersion {
@@ -654,8 +657,16 @@ namespace TrueforceForAll.Plugin
                 },
             },
             new ChangelogVersion {
-                // 0.4.0 shipped 2026-09-23; the EQ rides the next release.
-                Version = new Version(0, 4, 1),
+                // File a block at the version it will SHIP in, checked against the
+                // tags rather than the build props: 0.4.1 went out as a hotfix cut
+                // from main on 2026-09-28 and is not in dev's history, so the build
+                // props here sat behind the public release. An entry left at a
+                // number that already shipped is skipped by EntriesNewerThan (which
+                // is STRICTLY newer) for everyone who ran it. That costs nothing in
+                // the normal path, where the modal prefers the GitHub release body,
+                // and shows up in the OFFLINE fallback, which is also how a dev
+                // build previews changelog copy before the release exists.
+                Version = new Version(0, 5, 0),
                 Title = "Trueforce EQ",
                 Entries = new List<ChangelogEntry>
                 {
@@ -663,7 +674,27 @@ namespace TrueforceForAll.Plugin
                         Group = "New features",
                         EffectId = "TrueforceEq",
                         Headline = "Trueforce EQ",
-                        Description = "Cut the frequencies that make your wheel or rig rattle, or lift the ones it barely renders. Drag points on a curve, add bands, set their width, and audition a tone to check the cut. Applies in every game and preset; starts flat.",
+                        Description = "Cut the frequencies that make your wheel or rig rattle, or lift the ones it barely renders. Drag points on a curve, add bands and set their width, or start from a preset and save your own. Applies in every game and preset; starts flat.",
+                    },
+                    new ChangelogEntry {
+                        Group = "New features",
+                        Headline = "The plugin in your language",
+                        Description = "The panel speaks Spanish, German, Portuguese, Simplified Chinese and Russian, as machine translations to start from, and any other language can be started and translated from inside the plugin. Your corrections publish to everyone showing that language.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "Full strength by default",
+                        Description = "Default FFB scale changed from 0.8 to 1, in every built-in preset and on a fresh install. Your own presets keep the strength you set.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Improvements",
+                        Headline = "G923 master gain default",
+                        Description = "G923 master gain default lowered from 1.5 to 1.",
+                    },
+                    new ChangelogEntry {
+                        Group = "Bug fixes",
+                        Headline = "No more mid-corner dropouts",
+                        Description = "Force feedback no longer cuts out mid-corner when a game's force is clipped, such as Assetto Corsa with its in-game gain above 100%.",
                     },
                 },
             },

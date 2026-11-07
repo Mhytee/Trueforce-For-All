@@ -8,6 +8,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -23,7 +24,7 @@ namespace TrueforceForAll.Plugin
 
         public BackupConflictWindow(string cloudDeviceLabel, string cloudWhenLocal)
         {
-            Title = "Backup conflict";
+            Title = Loc.T("BackupConflict_BackupConflict");
             Width = 500;
             SizeToContent = SizeToContent.Height;
             Background = WindowBg;
@@ -36,47 +37,50 @@ namespace TrueforceForAll.Plugin
 
             root.Children.Add(new TextBlock
             {
-                Text = "The cloud backup changed since this PC last synced.",
+                Text = Loc.T("BackupConflict_CloudBackupChangedSince"),
                 Foreground = FgText, FontSize = 14, FontWeight = FontWeights.SemiBold,
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6),
             });
 
-            string src  = string.IsNullOrEmpty(cloudDeviceLabel) ? "another PC" : cloudDeviceLabel;
-            string when = string.IsNullOrEmpty(cloudWhenLocal) ? "" : (" on " + cloudWhenLocal);
+            string src = string.IsNullOrEmpty(cloudDeviceLabel) ? Loc.T("BackupConflict_AnotherPc") : cloudDeviceLabel;
             root.Children.Add(new TextBlock
             {
-                Text = "The cloud copy was last backed up by " + src + when + ".",
+                // Two whole sentences rather than one glued to " on ": a
+                // translator can put the date where their language wants it.
+                Text = string.IsNullOrEmpty(cloudWhenLocal)
+                    ? Loc.F("BackupConflict_CloudLastBackedUpBy_Fmt", src)
+                    : Loc.F("BackupConflict_CloudLastBackedUpByOn_Fmt", src, cloudWhenLocal),
                 Foreground = DimText, FontSize = 12, TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
             });
 
             var keepCloud = new CheckBox
             {
-                Content = "On merge, keep the cloud's global settings (instead of this PC's)",
+                Content = Loc.T("BackupConflict_MergeKeepCloudS"),
                 Foreground = FgText, Margin = new Thickness(0, 0, 0, 12), IsChecked = false,
             };
             root.Children.Add(keepCloud);
 
             var smartBtn = MakeChoiceButton(
-                "Smart merge (recommended)",
-                "Keep every preset (the newest version of each wins) and pick one side's global settings.",
+                Loc.T("BackupConflict_SmartMergeRecommended"),
+                Loc.T("BackupConflict_KeepEveryPresetNewest"),
                 () => { KeepCloudSettings = keepCloud.IsChecked == true; Choice = BackupConflictChoice.SmartMerge; });
             smartBtn.IsDefault = true;   // Enter = the recommended, non-destructive choice
             root.Children.Add(smartBtn);
 
             root.Children.Add(MakeChoiceButton(
-                "Use this PC (overwrite cloud)",
-                "Replace the cloud backup with this PC's setup. The other PC's unsynced presets are lost.",
+                Loc.T("BackupConflict_UsePCOverwriteCloud"),
+                Loc.T("BackupConflict_ReplaceCloudBackupPC"),
                 () => { Choice = BackupConflictChoice.UseThisPc; }));
 
             root.Children.Add(MakeChoiceButton(
-                "Use cloud (apply to this PC)",
-                "Pull the cloud setup onto this PC. Your local-only presets are kept (restore is additive).",
+                Loc.T("BackupConflict_UseCloudApplyPC"),
+                Loc.T("BackupConflict_PullCloudSetupOnto"),
                 () => { Choice = BackupConflictChoice.UseCloud; }));
 
             var cancel = new Button
             {
-                Content = "Cancel", Width = 90, HorizontalAlignment = HorizontalAlignment.Right,
+                Content = Loc.T("Common_Cancel"), Width = 90, HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 6, 0, 0), Padding = new Thickness(10, 4, 10, 4),
                 Background = PanelBg, Foreground = FgText, IsCancel = true,
             };

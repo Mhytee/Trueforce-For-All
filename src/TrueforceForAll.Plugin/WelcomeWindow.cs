@@ -15,6 +15,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -46,7 +47,7 @@ namespace TrueforceForAll.Plugin
 
         public WelcomeWindow()
         {
-            Title         = "Trueforce For All: community features";
+            Title         = Loc.T("Welcome_Title");
             Width         = 500;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -57,51 +58,7 @@ namespace TrueforceForAll.Plugin
 
             var root = new StackPanel { Margin = new Thickness(22, 20, 22, 18) };
             Content = root;
-
-            root.Children.Add(new TextBlock {
-                Text = "Introducing: community presets and car data",
-                Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 17,
-                Margin = new Thickness(0, 0, 0, 6),
-            });
-            root.Children.Add(new TextBlock {
-                Text = "This update adds a community preset browser, crowd-sourced car data, and per-car corrections. "
-                     + "Community features are on: car data you tune (redlines, engine types, car names) is shared "
-                     + "anonymously and improves everyone's defaults. You can turn any of this off in Settings. "
-                     + "An account is only needed for the preset browser (free email sign-in).",
-                Foreground = MutedFg, FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 18),
-                TextWrapping = TextWrapping.Wrap,
-            });
-
-            root.Children.Add(MakePrereleaseNotice());
-
-            root.Children.Add(MakeBullet(
-                "Crowd-sourced car data",
-                "Effects like the engine pulse and rev limiter feel best when they know a car's engine and redline. Games don't always report that data in telemetry, and a few don't even give the car a real name, just a code like \"car_123\". Now, drivers can fill in the gaps, building a shared pool everyone benefits from. Saved per tune, so a swapped engine keeps its own redline."));
-            root.Children.Add(MakeBullet(
-                "Community presets",
-                "Browse and download presets other drivers have shared, for the car you're driving or the game you're playing. Vote on the ones you've tried so the best rise to the top."));
-            root.Children.Add(MakeBullet(
-                "It gets better as it grows",
-                "The more drivers take part, the more often the right setup is already waiting when you load in. What you add helps the next person the same way."));
-            root.Children.Add(MakeBullet(
-                "Earn achievements",
-                "Earn achievements for things like sharing presets, confirming car data, and supporting the project. Link your Discord account to get a matching role in the community server."));
-            root.Children.Add(MakeBullet(
-                "Privacy by default",
-                "Car data you contribute is anonymous. Sign-in (only needed for presets) takes just your email and a one-time code. No password, no signup form. The privacy policy spells out what's stored and how to remove it."));
-
-            // Policy link, indented to align with the bullet bodies.
-            var policyLine = new TextBlock {
-                FontSize = 11, Margin = new Thickness(18, 0, 0, 0),
-                TextWrapping = TextWrapping.Wrap,
-            };
-            var policyLink = new System.Windows.Documents.Hyperlink(
-                new System.Windows.Documents.Run("Read the privacy policy"))
-            { Foreground = HeaderFg };
-            policyLink.Click += (s, e) => OpenUrl(SettingsControl.PrivacyPolicyUrl);
-            policyLine.Inlines.Add(policyLink);
-            root.Children.Add(policyLine);
+            root.Children.Add(BuildBody());
 
             var btnRow = new StackPanel {
                 Orientation = Orientation.Horizontal,
@@ -109,7 +66,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 20, 0, 0),
             };
             var continueBtn = new Button {
-                Content = "Continue without an account", Padding = new Thickness(14, 6, 14, 6),
+                Content = Loc.T("Welcome_ContinueWithout"), Padding = new Thickness(14, 6, 14, 6),
                 Margin = new Thickness(0, 0, 10, 0),
                 Foreground = TextFg, IsCancel = true,
                 Style = MakeFilledButtonStyle(
@@ -122,7 +79,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(continueBtn);
 
             var signInBtn = new Button {
-                Content = "Sign in / create account", Padding = new Thickness(16, 6, 16, 6),
+                Content = Loc.T("Welcome_SignIn"), Padding = new Thickness(16, 6, 16, 6),
                 Foreground = WindowBg,
                 FontWeight = FontWeights.SemiBold, IsDefault = true,
                 Style = MakeFilledButtonStyle(
@@ -141,11 +98,59 @@ namespace TrueforceForAll.Plugin
             root.Children.Add(btnRow);
         }
 
+        /// <summary>Everything above the buttons: the heading, the five
+        /// bullets and the privacy-policy link. Shared with One
+        /// time setup, whose first page is this disclosure with its own buttons.</summary>
+        internal static StackPanel BuildBody()
+        {
+            var body = new StackPanel();
+            body.Children.Add(new TextBlock {
+                Text = Loc.T("Welcome_Heading"),
+                Foreground = HeaderFg, FontWeight = FontWeights.SemiBold, FontSize = 17,
+                Margin = new Thickness(0, 0, 0, 6),
+            });
+            body.Children.Add(new TextBlock {
+                Text = Loc.T("Welcome_Intro"),
+                Foreground = MutedFg, FontSize = 12,
+                Margin = new Thickness(0, 0, 0, 18),
+                TextWrapping = TextWrapping.Wrap,
+            });
+
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_CarDataTitle"),
+                Loc.T("Welcome_CarDataBody")));
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_PresetsTitle"),
+                Loc.T("Welcome_PresetsBody")));
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_GrowsTitle"),
+                Loc.T("Welcome_GrowsBody")));
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_AchievementsTitle"),
+                Loc.T("Welcome_AchievementsBody")));
+            body.Children.Add(MakeBullet(
+                Loc.T("Welcome_PrivacyTitle"),
+                Loc.T("Welcome_PrivacyBody")));
+
+            // Policy link, indented to align with the bullet bodies.
+            var policyLine = new TextBlock {
+                FontSize = 11, Margin = new Thickness(18, 0, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            var policyLink = new System.Windows.Documents.Hyperlink(
+                new System.Windows.Documents.Run(Loc.T("Welcome_ReadPrivacyPolicy")))
+            { Foreground = HeaderFg };
+            policyLink.Click += (s, e) => OpenUrl(SettingsControl.PrivacyPolicyUrl);
+            policyLine.Inlines.Add(policyLink);
+            body.Children.Add(policyLine);
+            return body;
+        }
+
         // Filled button with an explicit hover/pressed template. Without a
         // custom template WPF's default Button chrome ignores our Background on
         // mouse-over and paints the stock light-gray hover brush, which made the
         // gold "Get started" button turn gray instead of lightening.
-        private static Style MakeFilledButtonStyle(Brush fg, Color normal, Color hover, Color pressed)
+        internal static Style MakeFilledButtonStyle(Brush fg, Color normal, Color hover, Color pressed)
         {
             var template = new ControlTemplate(typeof(Button));
 
@@ -174,35 +179,6 @@ namespace TrueforceForAll.Plugin
             return style;
         }
 
-        // A distinct callout (not one of the green marketing bullets) so the
-        // pre-release state of the community backend is unmissable at first
-        // contact. The reassurance in the last sentence holds only if the
-        // eventual data cleanup stays selective: keep accounts, achievements,
-        // and car facts; reset only the shared preset/pack marketplace.
-        private FrameworkElement MakePrereleaseNotice()
-        {
-            var border = new Border {
-                Background      = new SolidColorBrush(Color.FromRgb(0x39, 0x33, 0x22)),
-                BorderBrush     = HeaderFg,
-                BorderThickness = new Thickness(3, 0, 0, 0),
-                CornerRadius    = new CornerRadius(2),
-                Padding         = new Thickness(12, 10, 12, 10),
-                Margin          = new Thickness(0, 0, 0, 16),
-            };
-            var stack = new StackPanel();
-            stack.Children.Add(new TextBlock {
-                Text = "Pre-release test backend",
-                Foreground = HeaderFg, FontSize = 12, FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 3),
-            });
-            stack.Children.Add(new TextBlock {
-                Text = "The community backend is still in testing. Shared presets and packs here are test data and may be reset before the public launch. Your account, achievements, and any car data you contribute are kept.",
-                Foreground = TextFg, FontSize = 11, TextWrapping = TextWrapping.Wrap,
-            });
-            border.Child = stack;
-            return border;
-        }
-
         private static void OpenUrl(string url)
         {
             try
@@ -215,7 +191,7 @@ namespace TrueforceForAll.Plugin
             catch { }
         }
 
-        private FrameworkElement MakeBullet(string title, string body)
+        private static FrameworkElement MakeBullet(string title, string body)
         {
             var grid = new Grid { Margin = new Thickness(0, 0, 0, 12) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });

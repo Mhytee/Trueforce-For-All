@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -20,8 +21,8 @@ namespace TrueforceForAll.Plugin
             if (plugin.Settings.CommunityEnabled != true)
             {
                 bool? go = TrueforceDialog.Show(owner, title,
-                    "Sharing presets needs community features (online) turned on and an account. Sign up or sign in to get started?",
-                    DialogKind.Confirm, "Sign up / Sign in", "Not now");
+                    Loc.T("ShareGate_SharingPresetsNeedsCommunity"),
+                    DialogKind.Confirm, Loc.T("ShareGate_SignUpSign"), Loc.T("SupportPrompt_NotNow"));
                 if (go != true) return false;
                 // Persisted + raises CommunityEnabledChanged so every surface
                 // (and the Settings checkbox) refreshes consistently.

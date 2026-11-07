@@ -16,7 +16,7 @@ If the Settings tab says USBPcap is missing entirely, the **Reinstall** button b
 
 Then the force is ours to build, and telemetry is what we build it from. If that telemetry is not reaching the plugin there is nothing to send, and the wheel goes light along with the effects.
 
-When telemetry stops reaching the plugin, the FFB tab says so and offers a **Set up** button. Either point the game's telemetry at the plugin, or turn Telemetry Based FFB off for that game and let the game's own force feedback through.
+When telemetry stops reaching the plugin, the force feedback tab says so and offers a **Set up** button. Either point the game's telemetry at the plugin, or turn Telemetry Based FFB off for that game and let the game's own force feedback through.
 
 ## You feel nothing at all
 

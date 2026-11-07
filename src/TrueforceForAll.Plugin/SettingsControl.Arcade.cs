@@ -49,11 +49,39 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Controls;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
     public partial class SettingsControl
     {
+        /// <summary>The card's heading, which names the cabinet when TeknoParrot
+        /// has a profile for it. Its own method because the write detaches the
+        /// XAML binding for good, so the language relabel has to come back
+        /// through here rather than re-apply the key: RefreshArcadePanel would
+        /// otherwise put the old language back on its next pass. The cabinet's
+        /// display name is runtime data and stays as the profile spells it.
+        ///
+        /// ActiveArcadeTarget reads TeknoParrot's profiles from disk, the same
+        /// lookup RefreshArcadePanel already does on every refresh, and returns
+        /// null without touching anything when the arcade path is locked. No
+        /// network, no store load, and nothing that raises LanguageChanged.</summary>
+        private void ApplyArcadeTuningHeader()
+        {
+            if (ArcadeTuningHeader == null || _plugin == null) return;
+            ApplyArcadeTuningHeader(_plugin.ActiveArcadeTarget());
+        }
+
+        // The overload RefreshArcadePanel uses, so one refresh resolves the
+        // cabinet once instead of reading the profiles twice.
+        private void ApplyArcadeTuningHeader(TrueforcePlugin.ArcadeModTarget target)
+        {
+            if (ArcadeTuningHeader == null) return;
+            ArcadeTuningHeader.Text = target != null
+                ? Loc.F("TelemetryFfb_ArcadeCabinetNamed_Fmt", target.DisplayName)
+                : Loc.T("TelemetryFfb_ArcadeTuning");
+        }
+
         /// <summary>Show or hide the panel and fill it in. Called from
         /// RefreshFromPlugin, which has already set _suppressEvents, so writing
         /// into these controls cannot fire their handlers back at us.</summary>
@@ -71,22 +99,18 @@ namespace TrueforceForAll.Plugin
 
             var target = _plugin.ActiveArcadeTarget();
 
-            if (ArcadeTuningHeader != null)
-                ArcadeTuningHeader.Text = target != null
-                    ? "Arcade cabinet: " + target.DisplayName
-                    : "Arcade cabinet";
+            ApplyArcadeTuningHeader(target);
 
             if (ArcadeTuningStatus != null)
             {
                 string route = _plugin.ArcadeRouteLabel();
                 ArcadeTuningStatus.Text = target == null
-                    ? "Running, but this cabinet is not one TeknoParrot has a profile for."
+                    ? Loc.T("Arcade_RunningButCabinetNot")
                     : !target.IniFound
-                        ? "The arcade plugin's settings file is not beside this game, so the "
-                          + "linger setting below has nothing to write to."
+                        ? Loc.T("Arcade_ArcadePluginSSettings")
                         : route == null
-                            ? "Waiting for force from this cabinet."
-                            : "Force is arriving from " + route + ".";
+                            ? Loc.T("Arcade_WaitingForceCabinet")
+                            : Loc.F("Arcade_ForceArriving_Fmt", route);
 
                 // Power mode has no control here any more, so a cabinet that
                 // already has it switched on would carry it with nothing on
@@ -95,10 +119,7 @@ namespace TrueforceForAll.Plugin
                     && _plugin.ArcadeIniGetInt("PowerMode", 0) != 0)
                 {
                     ArcadeTuningStatus.Text +=
-                        " Note: Power mode is on in this game's FFBPlugin.ini. It lifts the smallest "
-                        + "forces about tenfold and can set a strong wheel oscillating around centre. "
-                        + "Minimum force below does the same job without that. Set PowerMode=0 in that "
-                        + "file, or in the arcade plugin's own settings screen.";
+                        " " + Loc.T("Arcade_NotePowerModeGame");
                 }
             }
 
@@ -165,7 +186,7 @@ namespace TrueforceForAll.Plugin
             if (_plugin == null) return;
             string err = _plugin.ArcadeIniSet(key, value);
             if (err != null && ArcadeTuningStatus != null)
-                ArcadeTuningStatus.Text = "Could not save that: " + err + ".";
+                ArcadeTuningStatus.Text = Loc.F("Arcade_CouldNotSave_Fmt", err);
         }
 
         /// <summary>The slider is the primary control and the box beside it is the exact value, the
@@ -548,7 +569,7 @@ namespace TrueforceForAll.Plugin
             {
                 ArcadeShopSourceRow.IsEnabled = !ladder;
                 ArcadeShopSourceRow.ToolTip = ladder
-                    ? "Ladder climb ranks you against everyone, so it takes the shop board over."
+                    ? Loc.T("Arcade_LadderClimbRanksAgainst")
                     : null;
             }
         }

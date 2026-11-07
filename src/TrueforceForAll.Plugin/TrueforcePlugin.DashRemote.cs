@@ -43,6 +43,7 @@ using System.Threading.Tasks;
 using SimHub.Plugins;
 using TrueforceForAll.Core;
 using TrueforceForAll.Plugin.Effects;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -155,10 +156,10 @@ namespace TrueforceForAll.Plugin
               "Inputs", "Delta", "Presets", "Radar", "Relative",
               "TyreTemps", "TyreWear", "Scope", "None" };
         // Friendly labels for the Settings-tab pickers, index-matched above.
-        internal static readonly string[] DashDriveContentLabels =
-            { "Car facts", "Damage", "Friction circle", "Fuel", "G circle",
-              "Gains", "Inputs", "Lap times", "Presets", "Radar",
-              "Relative", "Tire temps", "Tire wear", "Visualizer", "Empty" };
+        internal static string[] DashDriveContentLabels =>
+            new[]{ Loc.T("Settings_CarFacts"), Loc.T("DashRemote_Damage"), Loc.T("DashRemote_FrictionCircle"), Loc.T("DashRemote_Fuel"), Loc.T("DashRemote_GCircle"),
+                  Loc.T("Settings_Gains"), Loc.T("DashRemote_Inputs"), Loc.T("DashRemote_LapTimes"), Loc.T("Presets_PresetsTab_Header"), Loc.T("DashRemote_Radar"),
+                  Loc.T("DashRemote_Relative"), Loc.T("DashRemote_TireTemps"), Loc.T("DashRemote_TireWear"), Loc.T("Settings_Visualizer"), Loc.T("DashRemote_Empty") };
         // Slot order: top-left, top-right, bottom-left, bottom-right. The
         // bottom pair is what a phone sees when two-row layout is off, so the
         // two most useful boxes live there.
@@ -1274,12 +1275,12 @@ namespace TrueforceForAll.Plugin
         {
             if (string.IsNullOrEmpty(_activeGame))
             {
-                DashToast("NO GAME RUNNING - START DRIVING FIRST");
+                DashToast(Loc.T("DashRemote_NOGAMERUNNINGSTART"));
                 return false;
             }
             if (string.IsNullOrEmpty(_activeCarId))
             {
-                DashToast("NO CAR DETECTED - GET IN A CAR FIRST");
+                DashToast(Loc.T("DashRemote_NOCARDETECTEDGET"));
                 return false;
             }
             return true;
@@ -2639,14 +2640,14 @@ namespace TrueforceForAll.Plugin
                     if (!IRacingPeakSettled)
                     {
                         DashToast(IRacingObservedPeakNm <= 0.5
-                            ? "DRIVE A LAP FIRST"
-                            : "STILL LEARNING THIS CAR - KEEP DRIVING");
+                            ? Loc.T("DashRemote_DRIVELAPFIRST")
+                            : Loc.T("DashRemote_STILLLEARNINGCARKEEP"));
                         return;
                     }
                     double applied = ApplyIRacingAutoMaxForce();
                     DashToast(applied > 0.5
-                        ? "PEAK FORCE SET TO " + applied.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " NM"
-                        : "NOTHING LEARNED YET");
+                        ? Loc.F("DashRemote_PEAKFORCESETNM_Fmt", applied.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))
+                        : Loc.T("DashRemote_NOTHINGLEARNEDYET"));
                     RaiseDashRemoteChanged();
                     return;
                 }
@@ -2656,14 +2657,14 @@ namespace TrueforceForAll.Plugin
                     if (!R3EPeakSettled)
                     {
                         DashToast(R3EObservedPeak <= 0.02f
-                            ? "DRIVE A LAP FIRST"
-                            : "STILL LEARNING THIS CAR - KEEP DRIVING");
+                            ? Loc.T("DashRemote_DRIVELAPFIRST")
+                            : Loc.T("DashRemote_STILLLEARNINGCARKEEP"));
                         return;
                     }
                     float appliedR3e = ApplyR3EAutoStrength();
                     DashToast(appliedR3e > 0.01f
-                        ? "CAR MAX SET TO " + appliedR3e.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
-                        : "NOTHING LEARNED YET");
+                        ? Loc.F("DashRemote_CARMAXSET_Fmt", appliedR3e.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))
+                        : Loc.T("DashRemote_NOTHINGLEARNEDYET"));
                     RaiseDashRemoteChanged();
                     return;
                 }
@@ -2673,14 +2674,14 @@ namespace TrueforceForAll.Plugin
                     // The queue path answers "no car variant loaded yet" with a
                     // sentence rather than a wipe, so it has to say which one.
                     DashToast(status != null && status.StartsWith("No car", StringComparison.OrdinalIgnoreCase)
-                        ? "NO CAR LOADED YET - DRIVE FIRST"
-                        : "RE-LEARNING THIS CAR FROM SCRATCH");
+                        ? Loc.T("DashRemote_NOCARLOADEDYET")
+                        : Loc.T("DashRemote_RELEARNINGCARSCRATCH"));
                     RaiseDashRemoteChanged();
                     return;
                 }
                 DashToast(string.IsNullOrEmpty(_activeGame)
-                    ? "NO GAME RUNNING - START DRIVING FIRST"
-                    : "NOTHING TO CALIBRATE IN THIS GAME");
+                    ? Loc.T("DashRemote_NOGAMERUNNINGSTART")
+                    : Loc.T("DashRemote_NOTHINGCALIBRATEGAME"));
             });
 
             this.AddAction("DashModeBToggle", (a, b) =>
@@ -2690,8 +2691,8 @@ namespace TrueforceForAll.Plugin
                 if (!ActiveGameSupportsModeB)
                 {
                     DashToast(string.IsNullOrEmpty(_activeGame)
-                        ? "NO GAME RUNNING - START DRIVING FIRST"
-                        : "TELEMETRY FFB IS NOT AVAILABLE FOR THIS GAME");
+                        ? Loc.T("DashRemote_NOGAMERUNNINGSTART")
+                        : Loc.T("DashRemote_TELEMETRYFFBNOTAVAILABLE"));
                     return;
                 }
                 // Applies live + persists; per-game flag, deliberately not
@@ -2758,7 +2759,7 @@ namespace TrueforceForAll.Plugin
                     PersistSettings();
                     RefreshDashTabSlots();
                     _dashOverlay = "";
-                    DashToast("BOX SET TO " + DashDriveContentLabels[idx].ToUpperInvariant());
+                    DashToast(Loc.F("DashRemote_BOXSET_Fmt", DashDriveContentLabels[idx].ToUpperInvariant()));
                     RaiseDashRemoteChanged();
                 });
             }
@@ -2774,8 +2775,8 @@ namespace TrueforceForAll.Plugin
                 Settings.DashRevStripCentered = !Settings.DashRevStripCentered;
                 PersistSettings();
                 DashToast(Settings.DashRevStripCentered
-                    ? "REV STRIP OVER THE GEAR"
-                    : "REV STRIP FULL WIDTH");
+                    ? Loc.T("DashRemote_REVSTRIPOVERGEAR")
+                    : Loc.T("DashRemote_REVSTRIPFULLWIDTH"));
                 RaiseDashRemoteChanged();
             });
             foreach (var kb in _dashModeB)
@@ -2951,8 +2952,8 @@ namespace TrueforceForAll.Plugin
                 // Checked here so the reason can be said out loud. The save
                 // itself just returns on a name it will not take, which from
                 // the dash looks like the button did nothing.
-                if (name.Length < 2)  { DashToast("NAME IS TOO SHORT"); return; }
-                if (name.Length > 96) { DashToast("NAME IS TOO LONG"); return; }
+                if (name.Length < 2)  { DashToast(Loc.T("DashRemote_NAMETOOSHORT")); return; }
+                if (name.Length > 96) { DashToast(Loc.T("DashRemote_NAMETOOLONG")); return; }
                 // The SAME call the desktop makes. A second save path would be
                 // a second set of rules about what a name is, what gets
                 // shared and what gets deduped, and they would drift.
@@ -2962,7 +2963,7 @@ namespace TrueforceForAll.Plugin
                 _dashKbdTarget = "";
                 _dashSnapValid = false;   // the header shows the new name at once
                 RaiseDashRemoteChanged();
-                DashToast("CAR RENAMED");
+                DashToast(Loc.T("DashRemote_CARRENAMED"));
             });
 
             this.AddAction("DashKeypadCancel", (a, b) => { _dashOverlay = ""; _dashKeypadEntry = ""; _dashKeypadTarget = ""; });
@@ -3017,10 +3018,10 @@ namespace TrueforceForAll.Plugin
                 DashNoteActivity();
                 if (IsOfflineEditing || IsOfflineEditingCar)
                 {
-                    DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                    DashToast(Loc.T("DashRemote_BLOCKEDFINISHPRESETEDIT"));
                     return;
                 }
-                if (!DashHasDirty()) { DashToast("NO UNSAVED TUNING"); return; }
+                if (!DashHasDirty()) { DashToast(Loc.T("DashRemote_NOUNSAVEDTUNING")); return; }
                 if (string.IsNullOrEmpty(_activeCarId)) { DashSaveTuningToGame(); return; }
                 _dashOverlay = "savescope";
             });
@@ -3036,12 +3037,12 @@ namespace TrueforceForAll.Plugin
                 DashNoteActivity();
                 if (IsOfflineEditing || IsOfflineEditingCar)
                 {
-                    DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                    DashToast(Loc.T("DashRemote_BLOCKEDFINISHPRESETEDIT"));
                     return;
                 }
                 var dirty = DashDirtySections();
                 if (dirty.Length == 0 && DashCarDrift()) dirty = DashAllCarScopeSections();
-                if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
+                if (dirty.Length == 0) { DashToast(Loc.T("DashRemote_NOUNSAVEDTUNING")); return; }
                 bool anyReverted = false;
                 foreach (var k in dirty)
                 {
@@ -3064,12 +3065,12 @@ namespace TrueforceForAll.Plugin
                     // anchor-less edit with no active preset). Don't clear the
                     // bar or persist over an edit we never undid, and don't
                     // claim success.
-                    DashToast("NOTHING TO REVERT");
+                    DashToast(Loc.T("DashRemote_NOTHINGREVERT"));
                     return;
                 }
                 DashClearDirty();
                 PersistSettings();
-                DashToast("REVERTED TO SAVED");
+                DashToast(Loc.T("DashRemote_REVERTEDSAVED"));
                 RaiseDashRemoteChanged();
             });
 
@@ -3202,7 +3203,7 @@ namespace TrueforceForAll.Plugin
             // no telemetry has been observed for this car.
             if (!SaveActiveVariantUserEngine(layout, null))
             {
-                DashToast("NOT SAVED - DRIVE THE CAR A MOMENT FIRST");
+                DashToast(Loc.T("DashRemote_NOTSAVEDDRIVECAR"));
                 return;
             }
             _dashSnapValid = false;   // show the new pin immediately
@@ -3221,7 +3222,7 @@ namespace TrueforceForAll.Plugin
             int baseRpm = GetActiveVariantUserRedline() ?? (RevLimiter?.EffectiveRedlineRpm ?? 0);
             if (baseRpm < 500)
             {
-                DashToast("NO REDLINE KNOWN YET - TAP THE VALUE TO TYPE ONE");
+                DashToast(Loc.T("DashRemote_NOREDLINEKNOWNYET"));
                 return;
             }
             int next = baseRpm + delta;
@@ -3386,10 +3387,10 @@ namespace TrueforceForAll.Plugin
             DashNoteActivity();
             if (IsOfflineEditing || IsOfflineEditingCar)
             {
-                DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                DashToast(Loc.T("DashRemote_BLOCKEDFINISHPRESETEDIT"));
                 return;
             }
-            if (string.IsNullOrEmpty(_activeCarId)) { DashToast("NO CAR DETECTED"); return; }
+            if (string.IsNullOrEmpty(_activeCarId)) { DashToast(Loc.T("DashRemote_NOCARDETECTED")); return; }
             var dirty = DashDirtySections();
             // Car-level drift with no per-section hit: patch every car-scope
             // section, which is a whole-override save through the same path.
@@ -3410,8 +3411,8 @@ namespace TrueforceForAll.Plugin
             if (carScoped.Count == 0)
             {
                 DashToast(dirty.Length > 0
-                    ? "THOSE CHANGES ARE GAME-WIDE - USE GAME PRESET"
-                    : "NO UNSAVED TUNING");
+                    ? Loc.T("DashRemote_THOSECHANGESGAMEWIDE")
+                    : Loc.T("DashRemote_NOUNSAVEDTUNING"));
                 return;
             }
             string carPresetName = GetActiveCarPresetName(_activeCarId);
@@ -3440,11 +3441,11 @@ namespace TrueforceForAll.Plugin
                     {
                         bool committed;
                         lock (_carFactsLock) { committed = PersistActiveCarOverride(); }
-                        if (!committed) { DashToast("SAVE FAILED (see the SimHub log)"); return; }
+                        if (!committed) { DashToast(Loc.T("DashRemote_SAVEFAILEDSeeSimHub")); return; }
                         ApplyActiveCarOverride();
                         DashClearDirty();
                         _dashSnapValid = false;
-                        DashToast("SAVED TO THIS CAR");
+                        DashToast(Loc.T("DashRemote_SAVEDCAR"));
                         RaiseDashRemoteChanged();
                         return;
                     }
@@ -3457,26 +3458,26 @@ namespace TrueforceForAll.Plugin
                     lock (_carFactsLock) { forked = SaveActiveCarPresetAs(name); }
                     if (!forked)
                     {
-                        DashToast("SAVE FAILED (see the SimHub log)");
+                        DashToast(Loc.T("DashRemote_SAVEFAILEDSeeSimHub"));
                         return;
                     }
                     DashClearDirty();
                     _dashSnapValid = false;
-                    DashToast("SAVED AS NEW CAR PRESET: " + name.ToUpperInvariant());
+                    DashToast(Loc.F("DashRemote_SAVEDASNEWCAR_Fmt", name.ToUpperInvariant()));
                     RaiseDashRemoteChanged();
                     return;
                 }
                 DashClearDirty();
                 _dashSnapValid = false;
                 DashToast(globalLeftover
-                    ? "SAVED TO THIS CAR (GAME-WIDE CHANGES NEED GAME PRESET)"
-                    : "SAVED TO THIS CAR");
+                    ? Loc.T("DashRemote_SAVEDCARGAMEWIDE")
+                    : Loc.T("DashRemote_SAVEDCAR"));
                 RaiseDashRemoteChanged();
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Error("[TF4ALL] Dash car save failed: " + ex.Message);
-                DashToast("SAVE FAILED (see the SimHub log)");
+                DashToast(Loc.T("DashRemote_SAVEFAILEDSeeSimHub"));
             }
         }
 
@@ -3495,11 +3496,11 @@ namespace TrueforceForAll.Plugin
                 // to the preset UNDER EDIT; a dash save here would write the
                 // half-finished edit baseline into it behind the desktop
                 // session's back.
-                DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                DashToast(Loc.T("DashRemote_BLOCKEDFINISHPRESETEDIT"));
                 return;
             }
             var dirty = DashDirtySections();
-            if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
+            if (dirty.Length == 0) { DashToast(Loc.T("DashRemote_NOUNSAVEDTUNING")); return; }
             string preset = _activePresetName;
             bool fork = string.IsNullOrEmpty(preset) || (IsBuiltinPreset(preset) && !DevMode);
             try
@@ -3528,7 +3529,7 @@ namespace TrueforceForAll.Plugin
                         string dup = LastLocalDuplicateName;
                         if (string.IsNullOrEmpty(dup))
                         {
-                            DashToast("SAVE FAILED (see the SimHub log)");
+                            DashToast(Loc.T("DashRemote_SAVEFAILEDSeeSimHub"));
                             return;
                         }
                         newName = dup;
@@ -3553,8 +3554,9 @@ namespace TrueforceForAll.Plugin
                     PersistSettings();
                     DashClearDirty();
                     _dashSnapValid = false;
-                    DashToast((reused ? "SAME AS EXISTING PRESET: " : "SAVED AS NEW PRESET: ")
-                        + newName.ToUpperInvariant());
+                    DashToast(reused
+                        ? Loc.F("DashRemote_SameAsExistingPreset_Fmt", newName.ToUpperInvariant())
+                        : Loc.F("DashRemote_SavedAsNewPreset_Fmt", newName.ToUpperInvariant()));
                     RaiseDashRemoteChanged();
                     return;
                 }
@@ -3573,14 +3575,14 @@ namespace TrueforceForAll.Plugin
                 DashClearDirty();
                 _dashSnapValid = false;
                 DashToast(allSectionsOk
-                    ? "SAVED TO PRESET: " + preset.ToUpperInvariant()
-                    : "PARTLY SAVED TO PRESET (see the SimHub log)");
+                    ? Loc.F("DashRemote_SAVEDPRESET_Fmt", preset.ToUpperInvariant())
+                    : Loc.T("DashRemote_PARTLYSAVEDPRESETSee"));
                 RaiseDashRemoteChanged();
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Error("[TF4ALL] Dash game-preset save failed: " + ex.Message);
-                DashToast("SAVE FAILED (see the SimHub log)");
+                DashToast(Loc.T("DashRemote_SAVEFAILEDSeeSimHub"));
             }
         }
 
@@ -3613,11 +3615,11 @@ namespace TrueforceForAll.Plugin
             DashNoteActivity();
             if (IsOfflineEditing || IsOfflineEditingCar)
             {
-                DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                DashToast(Loc.T("DashRemote_BLOCKEDFINISHPRESETEDIT"));
                 return;
             }
             var dirty = DashDirtySections();
-            if (dirty.Length == 0) { DashToast("NO UNSAVED TUNING"); return; }
+            if (dirty.Length == 0) { DashToast(Loc.T("DashRemote_NOUNSAVEDTUNING")); return; }
             if (string.IsNullOrEmpty(_activeCarId)) { DashSaveTuningToGame(); return; }
             string preset = _activePresetName;
             bool forkPreset = string.IsNullOrEmpty(preset) || (IsBuiltinPreset(preset) && !DevMode);
@@ -3654,7 +3656,7 @@ namespace TrueforceForAll.Plugin
                         string dup = LastLocalDuplicateName;
                         if (string.IsNullOrEmpty(dup))
                         {
-                            DashToast("SAVE FAILED (see the SimHub log)");
+                            DashToast(Loc.T("DashRemote_SAVEFAILEDSeeSimHub"));
                             return;
                         }
                         forkName = dup;
@@ -3726,7 +3728,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Error("[TF4ALL] Dash save-to-both failed: " + ex.Message);
-                DashToast("SAVE FAILED (see the SimHub log)");
+                DashToast(Loc.T("DashRemote_SAVEFAILEDSeeSimHub"));
             }
         }
 
@@ -3788,7 +3790,7 @@ namespace TrueforceForAll.Plugin
                     if (current.Length == 0) current = DashCarPresetNoneRow;
                     // Key the empty-library title off the REAL entries; the
                     // sentinel row alone doesn't count as having presets.
-                    title = names.Length > 0 ? "CAR PRESETS" : "CAR PRESETS  (none for this car)";
+                    title = names.Length > 0 ? Loc.T("DashRemote_CARPRESETS") : Loc.T("DashRemote_CARPRESETSNoneCar");
                 }
                 else
                 {
@@ -3798,7 +3800,7 @@ namespace TrueforceForAll.Plugin
                         .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
                         .ToArray();
                     current = _activePresetName ?? "";
-                    title = list.Length > 0 ? "GAME PRESETS" : "GAME PRESETS  (library empty)";
+                    title = list.Length > 0 ? Loc.T("DashRemote_GAMEPRESETS") : Loc.T("DashRemote_GAMEPRESETSLibraryEmpty");
                 }
                 _dashPresetList = list;
                 _dashPresetCurrent = current;
@@ -3838,7 +3840,7 @@ namespace TrueforceForAll.Plugin
             // the plugin apply methods do NOT guard this themselves.
             if (IsOfflineEditing || IsOfflineEditingCar)
             {
-                DashToast("BLOCKED - FINISH THE PRESET EDIT OPEN IN SIMHUB FIRST");
+                DashToast(Loc.T("DashRemote_BLOCKEDFINISHPRESETEDIT"));
                 SimHub.Logging.Current.Info("[TF4ALL] Dash preset apply skipped: an offline preset edit is in progress.");
                 return;
             }
