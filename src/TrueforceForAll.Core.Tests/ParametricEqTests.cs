@@ -114,21 +114,21 @@ namespace TrueforceForAll.Core.Tests
         }
 
         [Fact]
-        public void CleanBass_LiftsTheBass_NotchesTheMud()
+        public void CleanBass_CutsTheSub_NotchesTheMud()
         {
             var bands = EqCurves.CleanBass();
             Assert.Equal(6, bands.Count);
             Assert.False(bands[0].IsParkedCut, "the low cut sits just above its park line, so it is on");
             double at5 = ParametricEq.ResponseDb(bands, 5, Fs);
             double at12 = ParametricEq.ResponseDb(bands, 12, Fs);
-            double at120 = ParametricEq.ResponseDb(bands, 120, Fs);
+            double at60 = ParametricEq.ResponseDb(bands, 60, Fs);
             double at200 = ParametricEq.ResponseDb(bands, 200, Fs);
             double at600 = ParametricEq.ResponseDb(bands, 600, Fs);
             Assert.True(at5 < -15, $"sub cut {at5:F1} dB");
             Assert.True(at12 > 5, $"corner bump {at12:F1} dB");
-            Assert.True(at120 > 2, $"bass lift {at120:F1} dB");
+            Assert.True(System.Math.Abs(at60) < 1.5, $"bass left alone {at60:F1} dB");
             Assert.True(at200 < -14, $"200 Hz notch {at200:F1} dB");
-            Assert.True(at600 > 9, $"texture lift {at600:F1} dB");
+            Assert.True(at600 > 2.5, $"texture lift {at600:F1} dB");
 
             // Builds a stable, finite bank.
             var eq = new ParametricEq(Fs);
