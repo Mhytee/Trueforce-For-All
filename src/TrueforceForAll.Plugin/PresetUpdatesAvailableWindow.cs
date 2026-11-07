@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -43,7 +44,7 @@ namespace TrueforceForAll.Plugin
             List<(PresetSummary Server, DownloadedPresetRecord Local)> updates)
         {
             updates = updates ?? new List<(PresetSummary Server, DownloadedPresetRecord Local)>();
-            Title         = "Community preset updates";
+            Title         = Loc.T("Settings_CommunityPresetUpdates");
             Width         = 540;
             Height        = 460;
             MinWidth      = 440;
@@ -63,14 +64,14 @@ namespace TrueforceForAll.Plugin
             var header = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
             header.Children.Add(new TextBlock {
                 Text = updates.Count == 1
-                    ? "A community preset you downloaded has been updated."
-                    : updates.Count + " community presets you downloaded have updates.",
+                    ? Loc.T("PresetUpdates_CommunityPresetDownloadedHas")
+                    : Loc.F("PresetUpdates_CommunityPresetsDownloadedHave_Fmt", updates.Count),
                 Foreground = HeaderFg, FontSize = 15, FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 4),
                 TextWrapping = TextWrapping.Wrap,
             });
             header.Children.Add(new TextBlock {
-                Text = "Update to replace your local copy with the new version, or Skip to keep what you have. Skipped rows won't reappear until the next edit.",
+                Text = Loc.T("PresetUpdates_UpdateReplaceLocalCopy"),
                 Foreground = MutedFg, FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
             });
@@ -107,14 +108,14 @@ namespace TrueforceForAll.Plugin
             // row outcome. ShowDialog returns false so the caller skips
             // the apply loop. Escape also fires this via IsCancel=true.
             var cancelBtn = new Button {
-                Content = "Cancel", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
             };
             cancelBtn.Click += (s, e) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancelBtn);
             var skipAllBtn = new Button {
-                Content = "Skip all", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("PresetUpdates_SkipAll"), Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg,
             };
@@ -127,7 +128,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(skipAllBtn);
 
             var updateAllBtn = new Button {
-                Content = "Update all", Padding = new Thickness(12, 5, 12, 5),
+                Content = Loc.T("PresetUpdates_UpdateAll"), Padding = new Thickness(12, 5, 12, 5),
                 Foreground = TextFg, Background = PanelBg, IsDefault = true,
             };
             updateAllBtn.Click += (s, e) =>
@@ -159,7 +160,7 @@ namespace TrueforceForAll.Plugin
 
             var info = new StackPanel();
             info.Children.Add(new TextBlock {
-                Text = UiContentSanitizer.SafeDisplayText(server.Name, 128) ?? "(unnamed)", Foreground = TextFg, FontSize = 13, FontWeight = FontWeights.SemiBold,
+                Text = UiContentSanitizer.SafeDisplayText(server.Name, 128) ?? Loc.T("PresetPreview_Unnamed"), Foreground = TextFg, FontSize = 13, FontWeight = FontWeights.SemiBold,
             });
             string by = string.IsNullOrEmpty(server.Author) ? "(anonymous)" : "by " + UiContentSanitizer.SafeDisplayText(server.Author, 96);
             string ver = "v" + local.SeenContentVersion + " → v" + server.ContentVersion;
@@ -169,7 +170,7 @@ namespace TrueforceForAll.Plugin
                 TextWrapping = TextWrapping.Wrap,
             });
             info.Children.Add(new TextBlock {
-                Text = "Local name: " + (local.LocalPresetName ?? "(unknown)"),
+                Text = Loc.F("PresetUpdates_LocalName_Fmt", local.LocalPresetName ?? Loc.T("Settings_Unknown")),
                 Foreground = MutedFg, FontSize = 11, Margin = new Thickness(0, 2, 0, 0),
             });
             Grid.SetColumn(info, 0);
@@ -181,24 +182,24 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 0, 8, 0), Text = "",
             };
             var updateBtn = new Button {
-                Content = "Update", Padding = new Thickness(10, 4, 10, 4),
+                Content = Loc.T("Settings_Update"), Padding = new Thickness(10, 4, 10, 4),
                 Foreground = TextFg, Background = PanelBg, Margin = new Thickness(0, 0, 6, 0),
             };
             var skipBtn = new Button {
-                Content = "Skip", Padding = new Thickness(10, 4, 10, 4),
+                Content = Loc.T("PresetUpdates_Skip"), Padding = new Thickness(10, 4, 10, 4),
                 Foreground = TextFg, Background = PanelBg,
             };
             updateBtn.Click += (s, e) =>
             {
                 outcome.Action = RowAction.Update;
-                status.Text = "Will update";
+                status.Text = Loc.T("PresetUpdates_WillUpdate");
                 updateBtn.IsEnabled = false;
                 skipBtn.IsEnabled   = true;
             };
             skipBtn.Click += (s, e) =>
             {
                 outcome.Action = RowAction.Skip;
-                status.Text = "Will skip";
+                status.Text = Loc.T("PresetUpdates_WillSkip");
                 updateBtn.IsEnabled = true;
                 skipBtn.IsEnabled   = false;
             };

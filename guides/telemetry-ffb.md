@@ -16,4 +16,4 @@ It also frees your wheel's rev lights and screen. [Why](force-and-lights.md).
 Set that game's own force feedback and vibration to **0**, so the plugin is the only force on the wheel.
 
 > [!WARNING]
-> Two force streams fighting each other feels jumpy and buzzy. The FFB tab warns you when it detects the fight, but the problem is easier to avoid than to diagnose.
+> Two force streams fighting each other feels jumpy and buzzy. The force feedback tab warns you when it detects the fight, but the problem is easier to avoid than to diagnose.

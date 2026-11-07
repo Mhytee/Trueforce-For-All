@@ -1,0 +1,4 @@
+"key","file","line","xName","attribute","value","reviewFlag","siblingNames","helpText","ownToolTip"
+"Lightsync_PatternChannelRed","src/TrueforceForAll.Plugin/SettingsControl.xaml","4304","PatternMakerExpander/StackPanel[1]/Grid[1]/StackPanel[2]/Border[1]/Grid[1]/StackPanel[2]/Grid[1]/TextBlock[1]","Text","R","","","",""
+"Lightsync_PatternChannelGreen","src/TrueforceForAll.Plugin/SettingsControl.xaml","4311","PatternMakerExpander/StackPanel[1]/Grid[1]/StackPanel[2]/Border[1]/Grid[1]/StackPanel[2]/Grid[2]/TextBlock[1]","Text","G","","","",""
+"Lightsync_PatternChannelBlue","src/TrueforceForAll.Plugin/SettingsControl.xaml","4318","PatternMakerExpander/StackPanel[1]/Grid[1]/StackPanel[2]/Border[1]/Grid[1]/StackPanel[2]/Grid[3]/TextBlock[1]","Text","B","","","",""

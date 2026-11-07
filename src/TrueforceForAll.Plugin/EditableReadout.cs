@@ -19,9 +19,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -91,7 +93,27 @@ namespace TrueforceForAll.Plugin
             box.TextAlignment = TextAlignment.Right;
             box.HorizontalContentAlignment = HorizontalAlignment.Right;
             box.Cursor = Cursors.IBeam;
-            if (box.ToolTip == null) box.ToolTip = "Click to type an exact value.";
+
+            // A Binding rather than an assignment. Attach runs once per box at
+            // wire time from the owner's constructor, and this class keeps no
+            // list of the boxes it wired, so a string written here would hold
+            // the language it was read in for the life of the panel and no
+            // relabel pass could reach it. The shape is TExtension's, the one
+            // {loc:T} produces: a one-way Binding to the store's indexer, which
+            // raises PropertyChanged for "Item[]" when the language changes, so
+            // every readout repaints with the rest of the panel.
+            //
+            // The guard still asks what it asked before, "is there no tooltip
+            // here yet", so a box whose XAML gave it one keeps it. Reading
+            // ToolTip back after this returns the bound text and not null, so a
+            // second Attach on the same box leaves the binding in place instead
+            // of stacking another. Before Loc.Initialize there is no store to
+            // bind to (the designer, a test harness) and the readout goes
+            // without a tooltip rather than showing a bare key.
+            var store = Loc.Instance;
+            if (box.ToolTip == null && store != null)
+                BindingOperations.SetBinding(box, FrameworkElement.ToolTipProperty,
+                    new Binding("[Common_ClickToTypeAnExactValue]") { Source = store, Mode = BindingMode.OneWay });
 
             box.GotKeyboardFocus += (s, e) =>
             {

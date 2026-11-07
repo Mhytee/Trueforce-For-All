@@ -1,4 +1,4 @@
-﻿// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
+// Phase 2 backup/sync, milestone M1: the portable projection of TrueforceSettings.
 //
 // A backup must reproduce a user's setup on a SECOND PC. The live settings blob
 // mixes three kinds of field:
@@ -66,6 +66,14 @@ namespace TrueforceForAll.Plugin
             // is a property of the material being played rather than of one
             // machine's sound card.
             "IdleLedMode", "NoRevLedMode", "LedSweepPeriodMs",
+            // The panel's language. Travels: it describes the person reading it,
+            // not this PC, the same reasoning as the rev-light and OLED
+            // preferences above. An empty value on the other machine means
+            // "follow SimHub", which is what a fresh install does anyway.
+            "UiLanguage",
+            // Whether community translations apply. Travels for the same reason as
+            // the language itself: it is about the person reading the panel.
+            "UseCommunityTranslations",
             // iRacing reshape strength. Travels: it is normalized against the
             // sim's own max force, so it carries no wheel-specific meaning.
             "IRacingForceGain", "IRacingUse360Hz",
@@ -148,6 +156,10 @@ namespace TrueforceForAll.Plugin
             "AcShmFfbEnabled", "CspBridgeFfbEnabled", "CspBridgeFfbField", "CspBridgeMaxNm",
             // Global feel / FFB shaping.
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
+            // Trueforce EQ: a wheel/rig trait, global (not preset-scoped), travels.
+            "TrueforceEqEnabled", "TrueforceEqBands", "TrueforceEqPresetId", "TrueforceEqUserPresets",
+            // Effects tab Simple/Advanced view: the user's preference, travels.
+            "SimpleMode",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
             "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb", "FfbSpikeTransientThresholdLsb",
             // Condition-render tuning (FXTEST bench): describes the wheel's
@@ -278,6 +290,9 @@ namespace TrueforceForAll.Plugin
             // per-install bookkeeping that goes with it. PC2 mints its own.
             "AnalyticsAnonId", "LastTelemetryPingDay", "LastTelemetrySettingsHash",
             "TelemetryGameDays", "TelemetryGamePresetHashes",
+            // Same reasoning: it describes THIS install's history, so a restore must
+            // not let a second machine inherit the first one's first-installed stamp.
+            "FirstInstalledVersion",
             // Cross-wheel FFB policy + the "apply anyway" stash. The policy governs
             // THIS device's wheel, and the stash holds ANOTHER wheel's withheld
             // tuning until the user acts, so neither may arrive from elsewhere.
@@ -306,11 +321,14 @@ namespace TrueforceForAll.Plugin
             "CarPresetOrdinalNamesMigratedV1", "CarPresetOrdinalNamesMigratedV2", "ForzaCarIdsNormalizedV1",
             "CommunityDefaultOnRepitchedV1", "EngineChoiceMovedToCarFactsV1", "EngineOnlyOverridesPrunedV1",
             "MasterModeMigratedV1", "FfbConditionInertiaSpecMigrated", "FfbConditionDefaultsGeneration",
+            "TrueforceEqSeededV1",
             // (Backend config and the two testing gates moved to MachineLocal: being
             // Excluded kept them out of the cloud envelope but let a file import adopt
             // them wholesale, which is the one path where it matters.)
             // Nag / learned / diagnostic state (re-learns or re-shows harmlessly on PC2).
             "HasSeenNetworkedWelcome", "WelcomeDeclineCount", "WelcomeNextShowAt",
+            // Per install: a restore must neither re-offer setup nor cancel it.
+            "OneTimeSetupPending",
             "IRacingTrueforceNoticeDismissed", "R3ETrueforceNoticeDismissed", "LmuTrueforceNoticeDismissed", "StandDownNoticeDismissedGames", "MairaTapNoticeDismissed", "HasSeenModeBIntro", "GameModeMapMigratedV1",
             "LastVoteNudgeUtc", "ConsecutiveVoteNudgeDismissals", "SeenEffects",
             "NewEffectViewCount", "NewEffectBadgeUnseenBaseline",

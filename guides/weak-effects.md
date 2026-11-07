@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# When the effects feel weak
+# Effects feel weak
 
 The dial on the wheel stops doing anything while the plugin is driving Trueforce. Once we take that stream over, the wheel's own intensity scaling is out of the loop, so turning it up changes nothing and turning it down changes nothing either.
 

@@ -1,4 +1,4 @@
-﻿// Persisted plugin settings. SimHub serializes this to JSON via
+// Persisted plugin settings. SimHub serializes this to JSON via
 // PluginManager.GetCommonSettings / SaveCommonSettings.
 //
 // The same shape is also written/read by the Export / Import buttons in the
@@ -650,9 +650,28 @@ namespace TrueforceForAll.Plugin
         // own and counts as a second install, which is the right trade.
         public string AnalyticsAnonId { get; set; } = "";
 
+        // The version this INSTALL started on, stamped once and never rewritten.
+        // Exists because AnalyticsAnonId is minted per install and only from 0.4.0,
+        // so every 0.4.0 install looked brand new to the backend whether it was a
+        // first-timer or an upgrade from 0.3.0. That made "how many of these are new
+        // users" unanswerable: the best available proxy was "did a ships-false
+        // setting arrive already true on the first ping", which bounded it at 43%
+        // and no better.
+        //
+        // Three shapes, and the shape itself carries the meaning:
+        //   "0.4.1"    a genuinely fresh install of that version
+        //   "<=0.4.0"  already present, and LastSeenVersion said it last ran 0.4.0,
+        //              so it first installed at or before that
+        //   "pre-0.4.1" already present but never stamped a LastSeenVersion either,
+        //              so all that is known is that it predates this build
+        // Per-install, like the anon id: Excluded from backup and preserved across
+        // an import, or a restore would make PC2 claim PC1's history.
+        public string FirstInstalledVersion { get; set; } = "";
+
         // Master switch for the anonymous usage statistics: the once-a-day
-        // telemetry ping (plugin version, wheel, current game, and a scalar
-        // settings snapshot). Default on; off means nothing is ever sent.
+        // telemetry ping (plugin version, wheel, current game, a scalar
+        // settings snapshot, games played, per-game presets, and two language
+        // codes). Default on; off means nothing is ever sent.
         // Independent of CommunityEnabled. Travels in backups (a privacy choice,
         // like the community toggles).
         public bool ShareUsageStats { get; set; } = true;
@@ -694,9 +713,9 @@ namespace TrueforceForAll.Plugin
         public bool ManagerCommunityForCars    { get; set; } = false;
 
         // Trueforce master gain: the overall level of the haptic stream.
-        // Global (never preset-scoped) and auto-persisted. 1.0 is the G PRO
-        // and RS50 starting level; a G923 starts at 1.5 (ApplyWheelDefaults),
-        // seeded on a FRESH INSTALL only. Nothing ever rewrites this field
+        // Global (never preset-scoped) and auto-persisted. 1.0 is every
+        // wheel's starting level (a G923 was seeded 1.5 from 0.4.0 until
+        // 2026-11-04, and keeps it where it was). Nothing ever rewrites this field
         // afterwards: it is the user's own level, so no defaults generation,
         // preset or reset moves it (owner call 2026-09-15).
         public float MasterGain { get; set; } = 1.0f;
@@ -705,6 +724,44 @@ namespace TrueforceForAll.Plugin
         // (master gain up / down). Per-machine, not preset-saved. Defaults to
         // the master-gain slider's small step (0.05).
         public float MasterGainStep { get; set; } = 0.05f;
+
+        // Trueforce EQ: boosts or cuts the summed haptic stream at chosen
+        // frequencies (rig resonance control). Global like master gain, never
+        // preset-scoped: a resonance is a trait of the wheel and rig, not of a
+        // car. Travels in cloud backup (BackupProjection Portable).
+        //
+        // TrueforceEqBands MUST default EMPTY: SimHub's settings loader appends
+        // a stored array onto a non-empty initializer (see DashTabOrder). The
+        // factory eight-band flat layout is seeded once by the plugin behind
+        // TrueforceEqSeededV1 (a latch, Excluded from backup).
+        public bool TrueforceEqEnabled { get; set; } = true;
+        public List<EqBand> TrueforceEqBands { get; set; } = new List<EqBand>();
+        public bool TrueforceEqSeededV1 { get; set; } = false;
+
+        // The EQ preset the curve was last picked or saved from: a built-in id
+        // ("builtin:flat", "builtin:cleanbass") or "user:" + a saved preset's
+        // name. Empty = untracked; the preset list then matches the curve
+        // against the presets and shows Custom when none fits. An edit keeps
+        // the id, and the list shows the preset as edited until it is saved
+        // or picked again.
+        public string TrueforceEqPresetId { get; set; } = "";
+        // Curves the user saved from the EQ editor, shown in its preset list
+        // after the built-ins. MUST default EMPTY (the append landmine above).
+        public List<EqPreset> TrueforceEqUserPresets { get; set; } = new List<EqPreset>();
+
+        // Effects tab Simple mode: hides the fine tuning and leaves each
+        // effect's on/off, gain and frequency (SettingsControl.SimpleMode.cs).
+        // Display only: hidden settings keep their values and keep applying.
+        // Defaults false so an existing install, whose settings file predates
+        // the field, stays in Advanced; TrueforcePlugin.Init turns it on for a
+        // fresh install only. Global, Portable in backup.
+        public bool SimpleMode { get; set; } = false;
+
+        // One time setup (OneTimeSetupWindow) still owed to this install: set by
+        // TrueforcePlugin.Init on a FRESH install only, cleared when the user
+        // finishes or skips it. An existing install never has it set, so it only
+        // ever meets setup through the Settings tab button. Excluded from backup.
+        public bool OneTimeSetupPending { get; set; } = false;
 
         // Inject a Trueforce quick-gain box into SimHub's home-screen "Feedback"
         // section, next to Motors/Wind. That section is hardcoded in SimHubWPF
@@ -718,6 +775,25 @@ namespace TrueforceForAll.Plugin
         // once, when they update to the build that made the home tile default-on,
         // without overriding a later user opt-out.
         public bool FeedbackBoxDefaultedOn { get; set; } = false;
+
+        // The language the panel, its dialogs and the wheel notices are drawn in,
+        // as a culture tag: "es", "de-DE". Empty, the default, means follow
+        // SimHub's own language setting and Windows when SimHub has none, so an
+        // install that never opens the picker tracks whatever the rest of the
+        // machine does. A tag with no language file resolves through its parent
+        // and then English, so a stale tag cannot leave the panel blank.
+        public string UiLanguage { get; set; } = "";
+
+        // Apply the fixes other translators have sent for the active language.
+        // Default on, which is an exception to the default-off baseline granted on
+        // one condition: an English install must not notice. It does not, and the
+        // gate is what guarantees that rather than this default's wording. With "en"
+        // active the fetch makes no request, writes no file and adds no layer, so on
+        // an English install this setting is inert and its row is hidden. Community
+        // features off switches it off too, since it is a network read.
+        // The user's own file in the languages folder always wins over what this
+        // brings down, so turning it on cannot overwrite anyone's wording.
+        public bool UseCommunityTranslations { get; set; } = true;
 
         // Show the per-gear redline editor in the Car facts panel. Default off:
         // community data showed nobody shares per-gear values, so the editor is
@@ -921,7 +997,18 @@ namespace TrueforceForAll.Plugin
         // convention disagrees with ep3 cur (default true matches AC). Smooth
         // converts AC's 7ms-staircase FFB target into a ramp by IIR low-pass
         // (0 ms = no smoothing).
-        public float FfbScale                 { get; set; } = 0.80f;
+        //
+        // 1.0, and nothing we ship starts under it (owner, 2026-09-29): every
+        // built-in preset that carried 0.8 has been raised to match. The 0.8
+        // was read as headroom and is not: the haptic window rides its own
+        // bytes in the ep3 packet and cur (bytes 6-9) carries the torque
+        // alone, so this is a pure strength control and 0.8 simply handed the
+        // driver four fifths of the force the game asked for. Users who found
+        // the wheel weak raised the in-game gain instead, which clipped the
+        // game's output, and a clipped force stops being resent (see the
+        // saturated hold in TrueforcePlugin's FFB pipeline). An existing
+        // settings file keeps whatever it has; this only moves fresh installs.
+        public float FfbScale                 { get; set; } = 1.00f;
         // Sign of the FFB target sent to the motor. Defaults true (inverted),
         // which is correct on every wheel we've tested in the common games,
         // but NOT universal: RaceRoom (and possibly other games/wheels) report
@@ -944,7 +1031,8 @@ namespace TrueforceForAll.Plugin
         // read heavy (0.15 first, 0.10 on 2026-09-20). FfbConditionDefaultsGeneration brings EVERY
         // stored file to these once, bench-tuned or not: one right tuning per
         // wheel, the bench finds it, nobody keeps a tune of their own.
-        public double FfbConditionDamperGain   { get; set; } = 1.0;
+        // Damper 0.5, down from generation 1's 1.0 (owner's call, 2026-09-30).
+        public double FfbConditionDamperGain   { get; set; } = 0.5;
         public bool   FfbConditionSignInverted { get; set; } = false;
         public double FfbConditionLpfHz        { get; set; } = 200;
         // Per-effect condition low-pass, the filter counterpart of the per-effect
@@ -999,7 +1087,8 @@ namespace TrueforceForAll.Plugin
         // gain. Anything the user sets afterward stands.
         public bool   FfbConditionInertiaSpecMigrated { get; set; } = false;
         // Which generation of the shipped condition gains and filters this file
-        // has been brought up to. 0 = written before the 2026-09-19 retune.
+        // has been brought up to. 0 = written before the 2026-09-19 retune,
+        // 1 = that retune, 2 = the damper at 0.5 (2026-09-30).
         // Machine-local: a migration marker, not a preference.
         public int    FfbConditionDefaultsGeneration { get; set; } = 0;
         // Reveals the effect test bench at the bottom of the FFB tab. Off by
@@ -1763,22 +1852,25 @@ namespace TrueforceForAll.Plugin
         // are called is a property of this machine, not of the user's tuning.
         public ArcadeSettings Arcade { get; set; } = new ArcadeSettings();
 
-        // Built-in preset source folder. Blank = use the shipped default next
-        // to the plugin DLL (<dll>\TrueforceForAll-Presets). A user can point this at
-        // a moved folder (repair) or a shared "preset pack" to swap the seed
-        // set. Machine-local, survives preset switches. See BuiltinPresets.
+        // Built-in preset source folder. Blank = use the shipped default, the
+        // factory subfolder of the shared root
+        // (<SimHub>\PluginsData\Common\TrueforceForAll\factory). A user can
+        // point this at a moved folder (repair) or a shared "preset pack" to
+        // swap the seed set. Machine-local, survives preset switches. See
+        // BuiltinPresets.
         public string BuiltinPresetsFolder { get; set; } = "";
 
         // User-imports folder. Drop community / shared preset files here and
         // they get auto-imported into the library as USER presets on next
         // plugin start, then moved to an 'imported' archive subfolder. Blank =
-        // default beside the plugin DLL (<dll>\TrueforceForAll-Imports).
+        // default inside the user folder
+        // (<SimHub>\PluginsData\Common\TrueforceForAll\user\import).
         public string UserImportsFolder { get; set; } = "";
 
         // User-library folder. Holds the user's own (non-builtin) presets as
         // files, mirroring the built-in folder layout (games/, cars/<game>/,
         // game-defaults.json, car-defaults.json). Blank = default at
-        // <SimHub>\PluginsData\Common\TrueforceForAll-Library. The previous
+        // <SimHub>\PluginsData\Common\TrueforceForAll\user. The previous
         // model kept user presets inside the Presets dict below; this folder
         // replaces that, with a one-time migration on first launch.
         public string UserLibraryFolder { get; set; } = "";
@@ -2654,7 +2746,7 @@ namespace TrueforceForAll.Plugin
         // setting (top-level TrueforceSettings.MasterGain, auto-persisted),
         // not preset-scoped. Old preset JSON may still carry a "MasterGain"
         // key; it is ignored on load.
-        public float FfbScale                  { get; set; } = 0.80f;
+        public float FfbScale                  { get; set; } = 1.00f;
         public bool  FfbInvertSign             { get; set; } = true;
         public float FfbSmoothTimeConstantMs   { get; set; } = 0.0f;
         public bool  FfbSpikeTamingEnabled     { get; set; } = true;

@@ -16,6 +16,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -239,7 +240,7 @@ namespace TrueforceForAll.Plugin
 
             var cancel = new Button
             {
-                Content = string.IsNullOrEmpty(cancelLabel) ? "Not now" : cancelLabel,
+                Content = string.IsNullOrEmpty(cancelLabel) ? Loc.T("SupportPrompt_NotNow") : cancelLabel,
                 Padding = new Thickness(14, 5, 14, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
@@ -289,7 +290,7 @@ namespace TrueforceForAll.Plugin
 
             var cancel = new Button
             {
-                Content = string.IsNullOrEmpty(cancelLabel) ? "No" : cancelLabel,
+                Content = string.IsNullOrEmpty(cancelLabel) ? Loc.T("Dialog_No") : cancelLabel,
                 Padding = new Thickness(14, 5, 14, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg, IsCancel = true,
@@ -299,7 +300,7 @@ namespace TrueforceForAll.Plugin
 
             var ok = new Button
             {
-                Content = string.IsNullOrEmpty(okLabel) ? "Yes" : okLabel,
+                Content = string.IsNullOrEmpty(okLabel) ? Loc.T("Dialog_Yes") : okLabel,
                 Padding = new Thickness(14, 5, 14, 5),
                 Foreground = TextFg, Background = PanelBg, IsDefault = true,
             };
@@ -345,7 +346,7 @@ namespace TrueforceForAll.Plugin
             {
                 var cancel = new Button
                 {
-                    Content = string.IsNullOrEmpty(cancelLabel) ? "No" : cancelLabel,
+                    Content = string.IsNullOrEmpty(cancelLabel) ? Loc.T("Dialog_No") : cancelLabel,
                     Padding = new Thickness(14, 5, 14, 5),
                     Margin = new Thickness(0, 0, 8, 0),
                     Foreground = TextFg, Background = PanelBg, IsCancel = true,
@@ -380,7 +381,7 @@ namespace TrueforceForAll.Plugin
             var ok = new Button
             {
                 Content = string.IsNullOrEmpty(okLabel)
-                    ? (hasCancel ? "Yes" : "OK")
+                    ? (hasCancel ? Loc.T("Dialog_Yes") : Loc.T("PresetManager_OK"))
                     : okLabel,
                 Padding = new Thickness(14, 5, 14, 5),
                 Foreground = TextFg,

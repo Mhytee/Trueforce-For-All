@@ -1,9 +1,12 @@
 # TF4ALL FFB Bridge (Assetto Corsa, CSP)
 
-Status: groundwork. The plugin does not consume this bridge yet; the
-tap-free AC force feedback shipped first via vanilla shared memory
-(`finalFF`, the ACFFB access code) and needs no CSP at all. This script is
-the validated Phase 2 path for data vanilla AC does not publish.
+Status: shipped. The plugin reads `TF4All.ACBridge.v1` automatically
+whenever the script is installed, and it ships the script and updates an
+installed copy by itself (one-click install from Settings > Game mods, the
+on-screen prompt, or the in-app guide). With no script installed the plugin
+falls back to the USB capture; vanilla `finalFF` is reachable only through a
+dev access code, not on the shipped path. The bridge is still the only route to what vanilla
+AC does not publish: the pre-gain force, and the car's own light data.
 
 ## What it does
 
@@ -30,13 +33,13 @@ memory section, `TF4All.ACBridge.v1`, readable from any local process via
   does not control.
 
 - `acLedCount`, `acLedRpm[12]`, `acLedBlinkRpm`, `acLedBlinkHz` (v4): the
-  CAR's own shift lights, read from its `digital_instruments.ini` `[LED_n]`
+  CAR's own rev lights, read from its `digital_instruments.ini` `[LED_n]`
   sections via `ac.INIConfig.carData`, which reads `data.acd` too (nearly
   every car is packed, and doing this from outside the game would mean
   implementing AC's container format). Each `RPM_SWITCH` becomes one entry in
   `acLedRpm`, so the wheel's bar can light where the car's own dash lights
   instead of at a percentage of the rev range. Optional data: cars that model
-  no shift lights report a count of 0, which readers must treat as "no
+  no rev lights report a count of 0, which readers must treat as "no
   opinion" rather than "no lights".
 
 - `acLedRgb[36]` (v5): the same LEDs' `EMISSIVE` colors, three floats each,
@@ -51,7 +54,10 @@ re-read until it is even and unchanged across the read. `magic` is
 earlier offset holds and a reader takes the tail only from a writer new
 enough to have written it.
 
-## Install (manual, for testing)
+## Install (manual)
+
+The plugin installs and selects the script for you. These are the steps if
+you would rather do it by hand.
 
 1. Copy the `tf4all` folder to
    `<assettocorsa>\extension\lua\ffb-postprocess\tf4all`
@@ -63,8 +69,10 @@ enough to have written it.
 
 Caution: CSP allows exactly ONE active post-processing script. Selecting
 this one displaces any other FFB script the user runs (for example custom
-soft-lock or FFB-shaping scripts). Any future auto-install in the plugin
-must detect an existing enabled script and ask, never silently replace it.
+soft-lock or FFB-shaping scripts). The plugin's own install refuses while
+another script is ENABLED, and names it. A script that is selected but
+switched off counts as a free slot, so the install does take that one; it
+records the section first, and Remove puts it back.
 
 ## Notes
 

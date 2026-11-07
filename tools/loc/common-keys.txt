@@ -1,0 +1,45 @@
+# Values that share ONE key (Common_<Slug>) wherever they appear verbatim in XAML.
+# Opt-in only, after a sense check that every occurrence means the same thing.
+# "Strength:" is deliberately absent: it appears four times with four meanings.
+# A value listed here counts as a real string whatever its length ("NEW", "OK").
+# One value per line, verbatim, including trailing colons and the ellipsis
+# character. Lines starting with '#' are comments.
+Save…
+Save
+Test
+Gain:
+Waveform:
+Frequency (Hz):
+Sine
+Square
+Saw
+Triangle
+Noise
+NEW
+Cancel
+OK
+Close
+Apply
+Reset
+Refresh
+# approved 2026-09-24 after a sense check of the rehearsal slice
+Delete
+Edit
+Edit…
+Share
+Filter:
+Rename…
+Duplicate…
+Preset name
+Source
+Shared by
+Car ID
+Game
+Name
+# approved 2026-09-25 during the Settings slice. Both already exist under
+# Account_ and Settings_ keys from the Account and Settings conversions, which
+# ran before this list carried them; a future converter pass that can repoint a
+# binding consolidates those. Listing them now caps the count where it is
+# rather than letting the next slice mint a fourth.
+Privacy policy
+Opens PRIVACY.md on GitHub.

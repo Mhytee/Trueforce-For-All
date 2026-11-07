@@ -268,5 +268,62 @@ namespace TrueforceForAll.Core.Tests
             Assert.True(f.HasValue);
             Assert.True(f.Value < 0, $"expected an inverted (negative) force, got {f.Value}");
         }
+
+        // ---- Null springs (The Crew Motorfest, PS G923, 2026-10-27 trace) ----
+        //
+        // The Windows driver downloads a spring with a dead band spanning the
+        // whole axis when a game creates a spring effect it has not set up:
+        //   41 0b 00 ff ff e0 ff   slot 3, d1=0, d2=2047, k=15 both, clip 0xff
+        // Motorfest leaves it playing all session while streaming its real
+        // force as a variable force. Such a spring commands nothing, and it
+        // must not read as "a spring is playing" or spring mode arms every
+        // time the scalar pauses.
+        private static readonly byte[] MotorfestNullSpring = { 0x41, 0x0b, 0x00, 0xff, 0xff, 0xe0, 0xff };
+
+        [Fact]
+        public void NullSpring_FullDeadBand_IsNotAPlayingSpring()
+        {
+            var tap = Run(Record(MotorfestNullSpring));
+            Assert.False(tap.AnyClassicSpringPlaying);
+            Assert.Null(tap.TryEvaluateClassicSprings(0.8f));
+            Assert.Null(tap.TryEvaluateClassicSprings(-0.8f));
+        }
+
+        [Fact]
+        public void NullSpring_ZeroClip_IsNotAPlayingSpring()
+        {
+            // The FS25 band with its clip at zero: a real band that can never
+            // push.
+            var tap = Run(Record(new byte[] { 0x21, 0x0b, 0x87, 0x94, 0x00, 0xae, 0x00 }));
+            Assert.False(tap.AnyClassicSpringPlaying);
+            Assert.Null(tap.TryEvaluateClassicSprings(0.8f));
+        }
+
+        [Fact]
+        public void NullSpring_ReplacedByRealSpring_SameSlot_Plays()
+        {
+            // Motorfest's shutdown shape: the placeholder is re-parameterized
+            // into a centered spring (80 80 22 00 ff) in the same slot.
+            var tap = Run(Record(MotorfestNullSpring),
+                          Record(new byte[] { 0x41, 0x0b, 0x80, 0x80, 0x22, 0x00, 0xff }));
+            Assert.True(tap.AnyClassicSpringPlaying);
+            short? f = tap.TryEvaluateClassicSprings(0.8f);
+            Assert.True(f.HasValue);
+            Assert.True(f.Value > 0);
+        }
+
+        [Fact]
+        public void NullSpring_BesideVariableForce_ScalarStillFlows()
+        {
+            // The Motorfest bus: the placeholder spring plus the game's real
+            // force on slot 1 (11 08 level 80). The scalar must publish and the
+            // spring must stay invisible, so spring mode has nothing to arm on.
+            var tap = Run(Record(MotorfestNullSpring),
+                          Record(new byte[] { 0x11, 0x08, 0x90, 0x80, 0x00, 0x00, 0x00 }));
+            short? v = tap.TryGetFreshFfbTarget(1000);
+            Assert.True(v.HasValue);
+            Assert.Equal((short)(0x10 << 8), v.Value);
+            Assert.False(tap.AnyClassicSpringPlaying);
+        }
     }
 }

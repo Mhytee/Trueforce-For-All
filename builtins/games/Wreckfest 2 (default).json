@@ -1,5 +1,5 @@
 {
-  "FfbScale": 0.8008723,
+  "FfbScale": 1.0,
   "FfbInvertSign": true,
   "FfbSmoothTimeConstantMs": 0.0,
   "FfbSpikeTamingEnabled": true,

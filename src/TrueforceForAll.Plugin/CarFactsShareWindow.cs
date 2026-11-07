@@ -18,6 +18,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -67,7 +68,7 @@ namespace TrueforceForAll.Plugin
             ShareState state, string consensusLayoutDisplay, int supportingSubmissions,
             bool offerAlways = true, string valueLabel = null)
         {
-            Title         = "Help the community";
+            Title         = Loc.T("CarFactsShare_HelpCommunity");
             Width         = 460;
             SizeToContent = SizeToContent.Height;
             Background    = WindowBg;
@@ -86,27 +87,29 @@ namespace TrueforceForAll.Plugin
             string leadHeader;
             Brush  leadColor;
             string bodyText;
-            string driverWord = supportingSubmissions == 1 ? "driver" : "drivers";
             switch (state)
             {
                 case ShareState.First:
-                    leadHeader = "You're the first";
+                    leadHeader = Loc.T("CarFactsShare_YoureTheFirst");
                     leadColor  = PioneerFg;
-                    bodyText   = "Yours starts the record for this car.";
+                    bodyText   = Loc.T("CarFactsShare_YoursStartsRecordCar");
                     break;
                 case ShareState.Confirming:
                     leadHeader = supportingSubmissions > 0
-                                 ? $"Confirm with {supportingSubmissions} {driverWord}"
-                                 : "Confirm community data";
+                                 ? Loc.N("CarFactsShare_ConfirmWithDrivers", supportingSubmissions, supportingSubmissions)
+                                 : Loc.T("CarFactsShare_ConfirmCommunityData");
                     leadColor  = ConfirmFg;
-                    bodyText   = "Yours strengthens the existing record.";
+                    bodyText   = Loc.T("CarFactsShare_YoursStrengthensExistingRecord");
                     break;
                 default: // Alternative
-                    leadHeader = "Share a different value?";
+                    leadHeader = Loc.T("CarFactsShare_ShareDifferentValue");
                     leadColor  = AlternativeFg;
-                    bodyText   = $"Community currently says \"{consensusLayoutDisplay}\""
-                               + (supportingSubmissions > 0 ? $" ({supportingSubmissions} {driverWord})." : ".")
-                               + " Yours joins as an alternative.";
+                    // One whole sentence either way: a translator cannot put a
+                    // count in parentheses mid sentence if it arrives as a fragment.
+                    bodyText   = supportingSubmissions > 0
+                        ? Loc.N("CarFactsShare_CommunitySaysCount", supportingSubmissions,
+                                consensusLayoutDisplay, supportingSubmissions)
+                        : Loc.F("CarFactsShare_CommunitySays_Fmt", consensusLayoutDisplay);
                     break;
             }
 
@@ -134,7 +137,7 @@ namespace TrueforceForAll.Plugin
                 Child = new StackPanel { Children = {
                     new TextBlock {
                         Text = string.IsNullOrEmpty(valueLabel)
-                            ? "You're marking this car as" : valueLabel,
+                            ? Loc.T("CarFactsShare_ReMarkingCarAs") : valueLabel,
                         Foreground = MutedFg, FontSize = 11,
                         Margin = new Thickness(0, 0, 0, 2),
                     },
@@ -152,7 +155,7 @@ namespace TrueforceForAll.Plugin
             });
 
             root.Children.Add(new TextBlock {
-                Text = "Submitted. Your username isn't shown on submissions.",
+                Text = Loc.T("CarFactsShare_SubmittedUsernameIsnT"),
                 Foreground = MutedFg, FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 14),
                 TextWrapping = TextWrapping.Wrap,
@@ -163,7 +166,7 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
             var cancelBtn = new Button {
-                Content = "Not now",
+                Content = Loc.T("SupportPrompt_NotNow"),
                 Padding = new Thickness(12, 5, 12, 5),
                 Margin = new Thickness(0, 0, 8, 0),
                 Foreground = TextFg, Background = PanelBg,
@@ -181,12 +184,11 @@ namespace TrueforceForAll.Plugin
             if (offerAlways)
             {
                 var alwaysBtn = new Button {
-                    Content = "Always share",
+                    Content = Loc.T("CarFactsShare_AlwaysShare"),
                     Padding = new Thickness(12, 5, 12, 5),
                     Margin = new Thickness(0, 0, 8, 0),
                     Foreground = TextFg, Background = PanelBg,
-                    ToolTip = "Share corrections like this automatically from now on. "
-                            + "Turn off any time under Settings > community.",
+                    ToolTip = Loc.T("CarFactsShare_ShareCorrectionsLikeAutomatically"),
                 };
                 alwaysBtn.Click += (s, e) => { AlwaysChosen = true; DialogResult = true; Close(); };
                 btnRow.Children.Add(alwaysBtn);
@@ -195,9 +197,9 @@ namespace TrueforceForAll.Plugin
             string affirmText;
             switch (state)
             {
-                case ShareState.First:       affirmText = "Share";        break;
-                case ShareState.Confirming:  affirmText = "Confirm";      break;
-                default:                     affirmText = "Share anyway"; break;
+                case ShareState.First:       affirmText = Loc.T("Common_Share");        break;
+                case ShareState.Confirming:  affirmText = Loc.T("CarFactsShare_Confirm");      break;
+                default:                     affirmText = Loc.T("CarFactsShare_ShareAnyway"); break;
             }
             var shareBtn = new Button {
                 Content = affirmText,

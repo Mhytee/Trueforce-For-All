@@ -19,6 +19,7 @@ using System;
 using System.Threading;
 using NAudio.CoreAudioApi;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -59,7 +60,7 @@ namespace TrueforceForAll.Plugin
         private Thread _thread;
         private volatile bool _stop;
         private volatile float _level01;
-        private volatile string _status = "off";
+        private volatile string _status = Loc.T("Eq_Off");
         private readonly AudioLevelEnvelope _envelope = new AudioLevelEnvelope();
 
         public AudioOutputMeter(Action<string> log) { _log = log ?? (_ => { }); }
@@ -98,7 +99,7 @@ namespace TrueforceForAll.Plugin
             // _level01, which is a meter that flickers for no visible reason.
             try { t.Join(200); } catch { }
             _level01 = 0f;
-            _status = "off";
+            _status = Loc.T("Eq_Off");
             _envelope.Reset();
         }
 
@@ -150,7 +151,7 @@ namespace TrueforceForAll.Plugin
                             device = null; enumerator = null; deviceId = null;
                             if (_status != "no audio output found")
                                 _log($"[AUDIO-LED] no output device: {ex.Message}");
-                            _status = "no audio output found";
+                            _status = Loc.T("AudioMeter_NoAudioOutputFound");
                             _level01 = 0f;
                             level = 0;
                             nextDeviceCheck = now + DeviceRetryMs;
@@ -195,7 +196,7 @@ namespace TrueforceForAll.Plugin
             catch (Exception ex)
             {
                 _log($"[AUDIO-LED] meter stopped: {ex.Message}");
-                _status = "stopped (see log)";
+                _status = Loc.T("AudioMeter_StoppedSeeLog");
             }
             finally
             {

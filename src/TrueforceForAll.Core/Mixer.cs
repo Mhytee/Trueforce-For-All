@@ -30,6 +30,13 @@ namespace TrueforceForAll.Core
         /// </summary>
         public float MasterGain { get; set; } = 0.5f;
 
+        /// <summary>
+        /// Optional stage run over the summed mix BEFORE master gain and the
+        /// clamp (the Trueforce EQ in production, null in bare rigs). Set once
+        /// at wiring time; Render reads it per call.
+        /// </summary>
+        public ISampleProcessor PostMix { get; set; }
+
         public bool IsActive => true;
 
         public int SourceCount => _snapshot.Length;
@@ -81,6 +88,9 @@ namespace TrueforceForAll.Core
                 if (src != null && src.IsActive)
                     src.RenderAdd(buffer, count);
             }
+
+            var post = PostMix;
+            if (post != null) post.Process(buffer, count);
 
             float g = MasterGain;
             for (int i = 0; i < count; i++)

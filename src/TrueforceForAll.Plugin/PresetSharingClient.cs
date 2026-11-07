@@ -2549,10 +2549,23 @@ namespace TrueforceForAll.Plugin
 
         // ---- Helpers -------------------------------------------------------
 
+        // Newtonsoft has already turned the server's ISO text into a Date
+        // token. Render it culture-free before parsing: DateTime.ToString()
+        // would follow the thread culture, and the parse below is invariant.
+        // The seconds-only, offset-free pattern yields the same Unspecified,
+        // whole-second DateTime the old culture round trip produced.
+        private static string DateText(JToken tok)
+        {
+            if (tok == null || tok.Type == JTokenType.Null) return null;
+            if (tok.Type == JTokenType.Date)
+                return ((DateTime)tok).ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+            return tok.ToString();
+        }
+
         private static DateTime? TryParseDate(string s)
         {
             if (string.IsNullOrEmpty(s)) return null;
-            if (DateTime.TryParse(s, null,
+            if (DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
                 return dt;
             return null;
@@ -2580,9 +2593,9 @@ namespace TrueforceForAll.Plugin
                 targetGames = tgList.ToArray();
             }
             DateTime? created = null;
-            string c = row["created_at"]?.ToString();
+            string c = DateText(row["created_at"]);
             if (!string.IsNullOrEmpty(c)
-                && DateTime.TryParse(c, null,
+                && DateTime.TryParse(c, System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.RoundtripKind,
                     out var dt))
                 created = dt;
@@ -2606,7 +2619,7 @@ namespace TrueforceForAll.Plugin
                 CreatedAt   = created,
                 OwnerUserId    = row["owner_user_id"]?.ToString(),
                 ContentVersion = AsInt(row["content_version"], 1),
-                UpdatedAt      = TryParseDate(row["updated_at"]?.ToString()),
+                UpdatedAt      = TryParseDate(DateText(row["updated_at"])),
                 EntryCount     = AsInt(row["entry_count"]),
                 AuthorVersion  = row["author_version"]?.ToString(),
                 AllowInPacks   = AsBool(row["allow_in_packs"]),

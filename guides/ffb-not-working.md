@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# When there is no force feedback
+# Force feedback: limp, weak, or silent
 
 Start with **Run self-test** on the Settings tab. It sends a test buzz, reports what is reaching the wheel, and ends by naming the single most blocking issue. What you feel during that buzz tells you which of these you are in.
 
@@ -20,7 +20,7 @@ If the Settings tab says USBPcap is missing entirely, the **Reinstall** button b
 
 Then the force is ours to build, and telemetry is what we build it from. If that telemetry is not reaching the plugin there is nothing to send, and the wheel goes light along with the effects.
 
-When telemetry stops reaching the plugin, the FFB tab says so and offers a **Set up** button. Either point the game's telemetry at the plugin, or turn Telemetry Based FFB off for that game and let the game's own force feedback through.
+When telemetry stops reaching the plugin, the force feedback tab says so and offers a **Set up** button. Either point the game's telemetry at the plugin, or turn Telemetry Based FFB off for that game and let the game's own force feedback through.
 
 ## You feel nothing at all
 

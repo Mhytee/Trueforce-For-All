@@ -1,4 +1,4 @@
-﻿// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
+// SimHub plugin owning the Trueforce HID session and the audio-haptic Mixer.
 //
 // Lifecycle:
 //   Init: load settings → discover wheel → open + init + start stream →
@@ -30,6 +30,7 @@ using GameReaderCommon;
 using SimHub.Plugins;
 using TrueforceForAll.Core;
 using TrueforceForAll.Plugin.Effects;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -54,6 +55,19 @@ namespace TrueforceForAll.Plugin
         public TrueforceSettings Settings { get; private set; }
 
         private readonly Mixer _mixer = new Mixer();
+
+        // Trueforce EQ: runs on the summed mix inside the Mixer (PostMix),
+        // before master gain and the clamp. Global, a wheel/rig trait; the
+        // band list lives in Settings and is pushed by ApplyTrueforceEq.
+        private readonly ParametricEq _trueforceEq = new ParametricEq(ParametricEq.DefaultSampleRateHz);
+        public ParametricEq TrueforceEq => _trueforceEq;
+        // Spectrum taps either side of the EQ for the editor's live display
+        // (pre = where the energy is, post = what the wheel gets). Four float
+        // copies per tick each; the UI thread reads them on its own timer.
+        private readonly SpectrumTap _eqTapPre  = new SpectrumTap();
+        private readonly SpectrumTap _eqTapPost = new SpectrumTap();
+        public SpectrumTap EqSpectrumPre  => _eqTapPre;
+        public SpectrumTap EqSpectrumPost => _eqTapPost;
 
         // The ducker and render tick live in the Engine assembly so the replay
         // harness runs the exact production code; the plugin wires effect refs
@@ -174,6 +188,15 @@ namespace TrueforceForAll.Plugin
         // concurrent toggle-off can't NRE the provider. See FfbTrace.
         private volatile FfbTrace _ffbTrace;
         private FeedbackBoxInjector _feedbackInjector;
+        // Reloads the language table when a file in the TrueforceForAll-Languages
+        // folder changes (docs/localization-plan.md). Disposed in End.
+        private LocWatcher _locWatcher;
+        private LocCommunity _locCommunity;
+
+        /// <summary>The translation service client, for the Translate window's Send
+        /// and for the access code that forces a fetch. Null when the language
+        /// runtime did not start.</summary>
+        internal LocCommunity Translations => _locCommunity;
         // Reads the wheel's physical steering off its HID controller interface,
         // so the stationary spring has a position to work with even when the
         // game reports none (Forza pause / pre-race countdown). See
@@ -277,6 +300,22 @@ namespace TrueforceForAll.Plugin
         // that took the bar every time the driver stalled would be a fault, not
         // a feature. Reset on game change.
         private bool _revDataSeen;
+        // True once the active game has reported any physics at all (speed, RPM
+        // or throttle above the IsSessionActive thresholds). A source that never
+        // does, such as a SimHub custom game that only detects the process, can
+        // never say "the car is live", so the paths that wait for that answer
+        // (the pause gate's resume, the saturated force hold) fall back to the
+        // wire while this is false. Reset per game. Written on the data thread,
+        // read on the FFB thread; a stale read for one tick is harmless.
+        private volatile bool _physicsSeenThisGame;
+        // The pause gate's wire-side "driver is active" signal for a game
+        // with no physics: the tap's sample counter, watched for advance.
+        // Read off the counter rather than the captured value, because
+        // the gate wipes that value on every tick while its resume
+        // candidate is pending and would otherwise erase the very signal
+        // it is waiting for.
+        private long _gateWireSamplesSeen;
+        private long _gateWireSampleTicks;
 
         // EXPERIMENTAL: the Dynamic OLED on the base of a G PRO / RS50. Shares
         // the rev lights' HID++ pipe and their Mode B + quiet-FFB gate, plus a
@@ -548,18 +587,18 @@ namespace TrueforceForAll.Plugin
                          || lower.IndexOf("lgs",   StringComparison.Ordinal) >= 0)
                         {
                             if (any) sb.Append(", ");
-                            sb.Append(name).Append(".exe (pid ").Append(p.Id).Append(")");
+                            sb.Append(name).Append(Loc.T("Plugin_ExePid")).Append(p.Id).Append(")");
                             any = true;
                         }
                     }
                     catch { /* per-process access can fail; skip silently */ }
                     finally { try { p.Dispose(); } catch { } }
                 }
-                return any ? sb.ToString() : "(none)";
+                return any ? sb.ToString() : Loc.T("Header_HeaderCar");
             }
             catch (Exception ex)
             {
-                return $"(enumeration failed: {ex.GetType().Name})";
+                return Loc.F("Plugin_EnumerationFailed_Fmt", ex.GetType().Name);
             }
         }
 
@@ -749,28 +788,93 @@ namespace TrueforceForAll.Plugin
         // look for. NEVER cleared: it anchors "is that title still up?".
         private volatile string _lastNamedGame;
         private Thread _capturePollThread;
-        private string _captureStatus = "Idle (no game running)";
+        // The capture status line as the composer that renders it rather than
+        // as a finished sentence. CaptureTick's fast path returns without
+        // touching this field for as long as the captured game stays alive, so
+        // a stored sentence would hold the previous language on screen for a
+        // whole race after a language change; rendering on read makes the next
+        // meter tick pick the new one up. Volatile because the capture poll
+        // thread publishes a closure over its own locals and the UI thread
+        // reads it: the field it replaces held an immutable string, where a
+        // plain reference assignment was enough. Lazy also keeps it clear of
+        // Loc.Initialize: a field initializer runs before the language table
+        // is loaded.
+        private volatile Func<string> _captureStatus = () => Loc.T("Effects_CaptureIdleNoGame");
 
         // Status surfaced to the SettingsControl.
         public string WheelStatus    { get; private set; } = "Not detected";
+        /// <summary>The detected wheel's model as people know it ("G PRO", "RS50",
+        /// "G923"), for sentences such as One time setup's wheel check. Set on
+        /// detection and left in place after a disconnect, so read WheelDetected
+        /// first.</summary>
+        public string WheelModelLabel { get; private set; }
+
+        /// <summary>Which of the three things WheelStatus is saying, as a token
+        /// instead of as words. The panel's status pill used to ask
+        /// WheelStatus.StartsWith("Not detected"), which made that sentence a
+        /// state name as well as copy and would start answering wrong the day
+        /// the sentence is translated. Every writer of WheelStatus sets this
+        /// beside it.</summary>
+        public enum WheelStatusKind
+        {
+            /// <summary>Discovery found no supported wheel. Also the value
+            /// before discovery has run, matching the initial WheelStatus.</summary>
+            NotDetected,
+            /// <summary>A PlayStation-mode G923 was sent the PC-mode switch and
+            /// is expected back under a different product id.</summary>
+            SwitchingToPcMode,
+            /// <summary>A supported wheel was found and named.</summary>
+            Detected,
+        }
+
+        /// <summary>WheelStatus as a token. See WheelStatusKind.</summary>
+        public WheelStatusKind WheelStatusState { get; private set; } = WheelStatusKind.NotDetected;
+
+        /// <summary>False only in the not-detected state, which is the question
+        /// the status pill asks. True while the PC-mode switch is in flight,
+        /// exactly as the prefix test it replaces was: that sentence does not
+        /// begin with "Not detected".</summary>
+        public bool WheelStatusOk => WheelStatusState != WheelStatusKind.NotDetected;
 
         // Backing field for StreamStatus. The public property overlays the
         // live device fault / recovery state so a wheel unplugged mid-session
         // is reflected the instant it happens, not on the next watchdog tick
         // (and never reads a stale "Streaming" while the wheel is dead).
         private string _streamStatus = "Stopped";
+
+        // True exactly while _streamStatus holds the "Streaming" sentence, set
+        // beside it at both of its writers so StreamStatusOk never has to read
+        // words. Not volatile, like the field it shadows: bring-up writes both
+        // and the UI thread reads both.
+        private bool _streamIsRunning;
         public string StreamStatus
         {
             get
             {
-                if (System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return "Reconnecting to the wheel...";
+                if (System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return Loc.T("Plugin_ReconnectingWheel");
                 var d = _device;
                 if (d != null && d.StreamFaulted)
-                    return "Stream lost, auto-reconnecting (if this persists, replug the wheel or close G HUB)";
+                    return Loc.T("Plugin_StreamLostAutoReconnecting");
                 return _streamStatus;
             }
         }
-        public string CaptureStatus  => _captureStatus;
+
+        /// <summary>The stream half of the status as a bool: the same live
+        /// recovery and fault overlay StreamStatus renders, in the same order,
+        /// answering with false where that property returns a sentence other
+        /// than "Streaming". What the status pill reads instead of
+        /// StreamStatus.StartsWith("Streaming").</summary>
+        public bool StreamStatusOk
+        {
+            get
+            {
+                if (System.Threading.Volatile.Read(ref _recoveryInProgress) != 0) return false;
+                var d = _device;
+                if (d != null && d.StreamFaulted) return false;
+                return _streamIsRunning;
+            }
+        }
+        public string CaptureStatus  => _captureStatus();
         public string FfbTapStatus =>
             AcForceStatusPrefix()
             + (_ffbTap?.Status ?? "Not started")
@@ -779,6 +883,19 @@ namespace TrueforceForAll.Plugin
                 : "")
             + (_noFfbCaptureNotice != null ? "  -  " + _noFfbCaptureNotice : "");
         public int    ActiveVoiceCount => _mixer.SourceCount;
+
+        /// <summary>Whether the FFB tap is capturing, as a state rather than as
+        /// the words of FfbTapStatus. FfbTapStatus puts AcForceStatusPrefix in
+        /// front, so it does not begin with the capturing sentence in Assetto
+        /// Corsa even when the tap is live.</summary>
+        public bool FfbTapIsTapping => _ffbTap?.StatusIsTapping == true;
+
+        /// <summary>The tap looked and found no supported wheel, as a state.
+        /// Only this failure warrants the device picker; the others belong in
+        /// Diagnostics, which is the distinction the banner used to draw by
+        /// searching the sentence for its own words.</summary>
+        public bool FfbTapFoundNoWheel =>
+            _ffbTap?.StatusState == UsbPcapFfbTap.TapStatusKind.NoWheelFound;
 
         // Wire shape that produced the first captured FFB sample this session
         // (transport / report ID / feature index / encoding, and which HID++
@@ -1026,19 +1143,23 @@ namespace TrueforceForAll.Plugin
                 // exactly the "other failure" the comment below sends to
                 // Diagnostics, where the Reinstall button lives.
                 if (!IsUsbPcapDriverReady) return false;
-                string status = _ffbTap?.Status ?? "";
-                if (status.StartsWith("Tapping", StringComparison.OrdinalIgnoreCase)) return false;
+                if (FfbTapIsTapping) return false;
                 // Only "no supported wheel found" warrants the picker; other
-                // failures (USBPcap missing, permission denied) go to Diagnostics.
-                return status.IndexOf("No supported wheel found", StringComparison.OrdinalIgnoreCase) >= 0;
+                // failures (USBPcap missing, permission denied) go to
+                // Diagnostics. Read as a state: the sentence is due to be
+                // translated, and searching it for its own words would not
+                // survive that.
+                return FfbTapFoundNoWheel;
             }
         }
 
         /// <summary>The wheel-quiet diagnostic line for "G HUB is running".
         /// Shared so the settings card can spot when its quiet diagnostic just
         /// restates the dedicated G HUB banner and drop the duplicate.</summary>
-        public const string GHubQuietDiagnosticMessage =
-            "Logitech G HUB is running. It claims the wheel and blocks force feedback. Close G HUB, then restart SimHub.";
+        // A property, not a const: it is a translated sentence now, and it has to
+        // resolve when it is read rather than when this type is loaded.
+        public static string GHubQuietDiagnosticMessage =>
+            Loc.T("Plugin_LogitechGHUBRunning");
 
         /// <summary>Why-is-my-wheel-quiet diagnostic. Walks the "no haptic
         /// output" causes in blocking order and returns the first as one
@@ -1048,7 +1169,7 @@ namespace TrueforceForAll.Plugin
         {
             get
             {
-                if (Settings == null) return "Settings not loaded yet.";
+                if (Settings == null) return Loc.T("Plugin_SettingsNotLoadedYet");
 
                 // 0. Lights only. Must return null, not an explanation: the caller
                 //    renders any non-empty string as an amber warning panel, which
@@ -1082,17 +1203,15 @@ namespace TrueforceForAll.Plugin
                         // the selector does.
                         bool canLightsync = !WheelDetected || WheelHasSelectableLightPattern;
                         return IsNativeTrueforceGame(_activeGame) && canLightsync
-                            ? "You switched the plugin off for this game. Set the mode back to Normal at the top, "
-                              + "or to Lightsync only to keep the Lightsync features while the game keeps its "
-                              + "own Trueforce."
-                            : "Plugin is switched off for this game. Set the mode back to Normal at the top (it is remembered per game).";
+                            ? Loc.T("Plugin_SwitchedPluginOffGame")
+                            : Loc.T("Plugin_PluginSwitchedOffGame");
                     }
-                    return "Plugin is switched off. Set the mode at the top of the panel to Normal to turn it on.";
+                    return Loc.T("Plugin_PluginSwitchedOffSet");
                 }
 
                 // 2. Master gain at zero
                 if (Settings.MasterGain <= 0.005f)
-                    return "Master gain is at 0. Slide it up in the Master section.";
+                    return Loc.T("Plugin_MasterGain0Slide");
 
                 // 3. G HUB blocking wheel access. Ranks above "wheel not
                 //    detected" because G HUB is the actual cause.
@@ -1102,16 +1221,21 @@ namespace TrueforceForAll.Plugin
                 // 4. Wheel device state. WheelStatus is set by the discovery
                 //    + open path; "Not detected" is the default.
                 string wheel = WheelStatus ?? "";
-                if (wheel.StartsWith("Not detected", StringComparison.OrdinalIgnoreCase))
-                    return "Wheel not detected. Plug in your G PRO / RS50 / G923, or close any app that's holding the device exclusively.";
+                if (!WheelStatusOk)
+                    return Loc.T("Plugin_WheelNotDetectedPlug");
+                // Dead arms kept as a guard rather than removed: no writer of
+                // WheelStatus produces either word today (the three are the
+                // PC-mode, not-detected and model sentences), so this never
+                // fires. It reads the sentence, so it cannot survive the
+                // sentence being translated; retire it with that work.
                 if (wheel.StartsWith("Open failed", StringComparison.OrdinalIgnoreCase)
                  || wheel.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
-                    return $"Wheel reports: {wheel}. Try unplugging and reconnecting the wheel.";
+                    return Loc.F("Plugin_WheelReportsTryUnplugging_Fmt", wheel);
 
                 // 5. HID stream state.
                 string stream = StreamStatus ?? "";
-                if (!stream.StartsWith("Streaming", StringComparison.OrdinalIgnoreCase))
-                    return $"Wheel stream is '{stream}'. The plugin is opened but not actively driving the wheel. Check the Diagnostics panel.";
+                if (!StreamStatusOk)
+                    return Loc.F("Plugin_WheelStreamPluginOpened_Fmt", stream);
 
                 // 6. No game actually running. _activeGame can be a selected-
                 //    but-closed profile, so gate on _currentGameName, only set
@@ -1126,7 +1250,7 @@ namespace TrueforceForAll.Plugin
                     // menu: no fault, and the status pill says "In menu / paused".
                     if (IsKnownGameProcessRunning(out _))
                         return null;
-                    return "No game running. Start a supported game and load into a session.";
+                    return Loc.T("Plugin_NoGameRunningStart");
                 }
 
                 var src = _telemetrySource;
@@ -1143,7 +1267,7 @@ namespace TrueforceForAll.Plugin
                     // stay silent rather than duplicate it in text.
                     if (udpPackets == 0)
                         return null;
-                    return $"'{_currentGameName}' is detected but no telemetry is arriving. You may be in a menu or paused.";
+                    return Loc.F("Plugin_DetectedButNoTelemetry_Fmt", _currentGameName);
                 }
 
                 // 7. All telemetry-driven effects disabled: nothing can produce
@@ -1170,7 +1294,7 @@ namespace TrueforceForAll.Plugin
                     || (ImplementThud != null && ImplementThud.Enabled)
                     || (_audio        != null && _audio.Enabled);
                 if (!anyEffectOn)
-                    return "Every effect channel is disabled. Enable at least one effect or turn on audio capture.";
+                    return Loc.T("Plugin_EveryEffectChannelDisabled");
 
                 // 8. Audio capture enabled but not attached to a game process,
                 //    usually because no process was picked.
@@ -1178,7 +1302,7 @@ namespace TrueforceForAll.Plugin
                     && _audio.CapturedProcessId == 0
                     && !string.IsNullOrEmpty(_activeGame))
                 {
-                    return $"Audio capture is enabled but not attached to '{_activeGame}'. Pick the game process in the Audio section.";
+                    return Loc.F("Plugin_AudioCaptureEnabledBut_Fmt", _activeGame);
                 }
 
                 // 9. Sidechain ducker so deep it mutes nearly everything
@@ -1186,7 +1310,7 @@ namespace TrueforceForAll.Plugin
                 if (EnginePulse != null && EnginePulse.DuckMultiplier < 0.05f
                     && Settings.DuckingEnabled && Settings.DuckDepth > 0.95f)
                 {
-                    return "Sidechain ducker is muting nearly all output. Try lowering Depth in the Sidechain ducking section.";
+                    return Loc.T("Plugin_SidechainDuckerMutingNearly");
                 }
 
                 // 10. Working but degraded: MAIRA's force on the capture path
@@ -1217,6 +1341,42 @@ namespace TrueforceForAll.Plugin
         // bound controller button via the Controls tab). An open SettingsControl
         // subscribes to keep its slider in step.
         public event Action MasterGainChangedExternally;
+
+        /// <summary>Push Settings.TrueforceEq* into the live EQ bank. Call after
+        /// any edit to the band list and after a wholesale settings replace
+        /// (import, restore). Bands are clamped in place as they are read.</summary>
+        public void ApplyTrueforceEq()
+        {
+            var s = Settings;
+            if (s == null) return;
+            if (s.TrueforceEqBands == null) s.TrueforceEqBands = new List<EqBand>();
+            _trueforceEq.SetBands(s.TrueforceEqBands);
+            _trueforceEq.Enabled = s.TrueforceEqEnabled;
+        }
+
+        /// <summary>One-time seed of the Flat preset (end cuts parked, six flat
+        /// bells). The list must default EMPTY in TrueforceSettings (SimHub's
+        /// loader appends stored arrays onto initialisers), so the factory
+        /// content lives here behind a latch, the DashTabOrder pattern. An
+        /// empty list AFTER the latch is the user's own choice and stays empty.</summary>
+        private void SeedTrueforceEqIfNeeded()
+        {
+            var s = Settings;
+            if (s == null || s.TrueforceEqSeededV1) return;
+            if (s.TrueforceEqBands == null) s.TrueforceEqBands = new List<EqBand>();
+            if (s.TrueforceEqBands.Count == 0)
+            {
+                s.TrueforceEqBands.AddRange(EqCurves.Flat());
+                s.TrueforceEqPresetId = EqPresetIdFlat;
+            }
+            s.TrueforceEqSeededV1 = true;
+        }
+
+        // Built-in EQ preset ids. Stable: they are persisted in
+        // TrueforceEqPresetId. Names are resolved in the settings UI.
+        public const string EqPresetIdFlat      = "builtin:flat";
+        public const string EqPresetIdCleanBass = "builtin:cleanbass";
+        public const string EqPresetUserPrefix  = "user:";
 
         // Master-gain min/max mirror the settings slider (Minimum=0, Maximum=2).
         private const float MasterGainMin = 0f;
@@ -1782,15 +1942,9 @@ namespace TrueforceForAll.Plugin
         /// clause is true only of a wheel with selectable patterns, and the notice
         /// is shown to both kinds. Fails OPEN on an undetected wheel.</summary>
         private string IracingNoticeBody =>
-            "Set up once, this turns on the plugin's effects, rev lights and wheel screen in iRacing. The force stays iRacing's own: the sim keeps computing it, and the plugin delivers it to the wheel.\n\n" +
-            (!WheelDetected || WheelHasSelectableLightPattern
-                ? "We start on Lightsync only, which leaves iRacing completely alone and sets the wheel's pattern to match the car you are in. For the rest, four steps, once:\n\n"
-                : "We start on Lightsync only, which leaves iRacing completely alone. For the rest, four steps, once:\n\n") +
-            "1. With iRacing closed, open Documents\\iRacing\\app.ini and set loadTrueForceAPI=0.\n" +
-            "2. Start iRacing and turn its force feedback off in the options. Leave its strength number where it is, the plugin reads it.\n" +
-            "3. Set the mode at the top of this panel to Normal.\n" +
-            "4. On the FFB tab, tick \"Take over force feedback for iRacing\".\n\n" +
-            "Steps 1 and 2 are iRacing's; steps 3 and 4 are in this plugin. If the wheel stays quiet afterwards, one of iRacing's two switches is still on.";
+            Loc.F("Plugin_SetUpOnceTurns_Fmt", (!WheelDetected || WheelHasSelectableLightPattern
+                ? Loc.T("Plugin_IracingNoticeStartWithPattern")
+                : Loc.T("Plugin_IracingNoticeStart")));
 
         private volatile bool _iracingNoticeShowing;
         private volatile bool _iracingNoticeShownThisSession;
@@ -1839,11 +1993,11 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
-                        "Using Trueforce For All in iRacing",
+                        Loc.T("Plugin_UsingTrueforceAllIRacing"),
                         IracingNoticeBody,
                         DialogKind.Info,
-                        okLabel: "Got it, don't show again",
-                        cancelLabel: "Remind me later",
+                        okLabel: Loc.T("Plugin_GotDonTShow"),
+                        cancelLabel: Loc.T("Plugin_RemindMeLater"),
                         goldOk: true);
                     // true = dismiss for good. Remind me later leaves the latch off,
                     // so it reappears on the next iRacing session.
@@ -1869,11 +2023,7 @@ namespace TrueforceForAll.Plugin
         /// those are in the guide, and a first-launch box that lists everything is
         /// a box nobody reads.</summary>
         private string R3ENoticeBody =>
-            "To let the plugin carry RaceRoom's force feedback, and free your rev lights and the wheel's screen, two steps, once:\n\n" +
-            "1. In RaceRoom, disable force feedback. The intensity slider does not matter.\n" +
-            "2. On the FFB tab, tick \"Take over force feedback for RaceRoom\".\n\n" +
-            "Start SimHub before RaceRoom, or the lights and screen may not come on.\n\n" +
-            "Until then, RaceRoom works as it did before, through the USB capture.";
+            Loc.T("Plugin_LetPluginCarryRaceRoom");
 
         private volatile bool _r3eNoticeShowing;
         private volatile bool _r3eNoticeShownThisSession;
@@ -1909,7 +2059,7 @@ namespace TrueforceForAll.Plugin
                     // saying where the guide lives.
                     var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
                     var link = new System.Windows.Documents.Hyperlink(
-                        new System.Windows.Documents.Run("Open the RaceRoom guide"))
+                        new System.Windows.Documents.Run(Loc.T("Plugin_OpenRaceRoomGuide")))
                     {
                         Foreground = new System.Windows.Media.SolidColorBrush(
                             System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
@@ -1917,11 +2067,11 @@ namespace TrueforceForAll.Plugin
                     link.Click += (s2, e2) => OpenGuideFromAnywhere("raceroom-setup");
                     guideLink.Inlines.Add(link);
                     bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
-                        "Using Trueforce For All in RaceRoom",
+                        Loc.T("Plugin_UsingTrueforceAllRaceRoom"),
                         R3ENoticeBody,
                         DialogKind.Info,
-                        okLabel: "Got it, don't show again",
-                        cancelLabel: "Remind me later",
+                        okLabel: Loc.T("Plugin_GotDonTShow"),
+                        cancelLabel: Loc.T("Plugin_RemindMeLater"),
                         goldOk: true,
                         extraContent: guideLink);
                     if (r == true)
@@ -1948,12 +2098,7 @@ namespace TrueforceForAll.Plugin
         /// (owner's rig, 2026-09-20). "Use LEDs" is the game driving the
         /// wheel's lights itself; off, ours and the screen can.</summary>
         private string LmuNoticeBody =>
-            "To let the plugin carry Le Mans Ultimate's force feedback, and free your rev lights and the wheel's screen, three steps, once:\n\n" +
-            "1. In the game, Settings > Controls > Force Feedback: set Vendor Specific Force Feedback to Off. That is the game's own Trueforce, and the plugin steps aside while it is on. The force feedback strength and effects can stay as they are.\n" +
-            "2. Settings > Wheel and Pedals > Calibration: switch Use LEDs off, so the game stops driving the wheel's lights.\n" +
-            "3. On the FFB tab, tick \"Take over force feedback for Le Mans Ultimate\".\n\n" +
-            "Start SimHub before the game, or the lights and screen may not come on.\n\n" +
-            "Until then, with Vendor Specific Force Feedback off, Le Mans Ultimate works through the USB capture.";
+            Loc.T("Plugin_LetPluginCarryLe");
 
         private volatile bool _lmuNoticeShowing;
         private volatile bool _lmuNoticeShownThisSession;
@@ -1983,7 +2128,7 @@ namespace TrueforceForAll.Plugin
                 {
                     var guideLink = new TextBlock { Margin = new System.Windows.Thickness(0, 8, 0, 0) };
                     var link = new System.Windows.Documents.Hyperlink(
-                        new System.Windows.Documents.Run("Open the Le Mans Ultimate guide"))
+                        new System.Windows.Documents.Run(Loc.T("Plugin_OpenLeMansUltimate")))
                     {
                         Foreground = new System.Windows.Media.SolidColorBrush(
                             System.Windows.Media.Color.FromRgb(0x6C, 0xB4, 0xEE)),
@@ -1991,11 +2136,11 @@ namespace TrueforceForAll.Plugin
                     link.Click += (s2, e2) => OpenGuideFromAnywhere("lmu-setup");
                     guideLink.Inlines.Add(link);
                     bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
-                        "Using Trueforce For All in Le Mans Ultimate",
+                        Loc.T("Plugin_UsingTrueforceAllLe"),
                         LmuNoticeBody,
                         DialogKind.Info,
-                        okLabel: "Got it, don't show again",
-                        cancelLabel: "Remind me later",
+                        okLabel: Loc.T("Plugin_GotDonTShow"),
+                        cancelLabel: Loc.T("Plugin_RemindMeLater"),
                         goldOk: true,
                         extraContent: guideLink);
                     if (r == true)
@@ -2216,7 +2361,7 @@ namespace TrueforceForAll.Plugin
                     // game's now.
                     if (!_nativeStreamDemoted) dev.SendStopCommand();
                     dev.Pause();
-                    outcome = "plugin is disabled; left Trueforce mode so the wheel stays on native FFB";
+                    outcome = Loc.T("Plugin_PluginDisabledLeftTrueforce");
                 }
                 else if (dev.IsPaused && !_stopStreamPauseActive && !_nativeTestStreamSuspended
                          && !_nativeProbeHold)
@@ -2229,7 +2374,7 @@ namespace TrueforceForAll.Plugin
                     // on its own edge.
                     dev.Resume();
                     dev.SendStartCommand();
-                    outcome = "plugin is enabled; resumed the Trueforce stream";
+                    outcome = Loc.T("Plugin_PluginEnabledResumedTrueforce");
                 }
             }
             if (outcome != null)
@@ -2592,7 +2737,7 @@ namespace TrueforceForAll.Plugin
         public string UninstallFsMod(string game)
         {
             if (!TryGetFsModInfo(game, out string modsDir, out _))
-                return "this game is not supported yet";
+                return Loc.T("Plugin_GameNotSupportedYet");
             try
             {
                 string target = Path.Combine(modsDir, "TF4ALLTelemetry.zip");
@@ -2612,7 +2757,7 @@ namespace TrueforceForAll.Plugin
             catch (IOException)
             {
                 // The game holds its mods open while it runs.
-                return "the file is in use, so close Farming Simulator and try again";
+                return Loc.T("Plugin_FileUseSoClose");
             }
             catch (Exception ex)
             {
@@ -2866,15 +3011,15 @@ namespace TrueforceForAll.Plugin
         /// publish-only. Returns null on success, else a short human reason.</summary>
         public string InstallArcadeMod(ArcadeModTarget t)
         {
-            if (t == null || string.IsNullOrEmpty(t.GameDir)) return "that game is not set up in TeknoParrot";
-            if (!Directory.Exists(t.GameDir)) return "the game's folder was not found";
+            if (t == null || string.IsNullOrEmpty(t.GameDir)) return Loc.T("Plugin_GameNotSetUp");
+            if (!Directory.Exists(t.GameDir)) return Loc.T("Plugin_GameSFolderWas");
 
             if (string.IsNullOrEmpty(t.WrapperName))
-                return "FFBArcadePlugin was not found in this game's folder, so set that up there first";
+                return Loc.T("Plugin_FFBArcadePluginWasNotFound");
             string dll = Path.Combine(t.GameDir, t.WrapperName);
             string ini = Path.Combine(t.GameDir, ArcadeIniName);
             if (!File.Exists(ini))
-                return "FFBPlugin.ini was not found beside the game, so run it once in TeknoParrot first";
+                return Loc.T("Plugin_FFBPluginIniWasNot");
 
             string resource = t.Is64Bit
                 ? "TrueforceForAll.Plugin.FfbArcade.dinput8_x64.dll"
@@ -2903,11 +3048,11 @@ namespace TrueforceForAll.Plugin
             }
             catch (IOException)
             {
-                return "the file is in use, so close the game and try again";
+                return Loc.T("Plugin_FileUseSoClose2");
             }
             catch (UnauthorizedAccessException)
             {
-                return "no permission to write to the game's folder";
+                return Loc.T("Plugin_NoPermissionWriteGame");
             }
             catch (Exception ex)
             {
@@ -2921,9 +3066,9 @@ namespace TrueforceForAll.Plugin
         /// off again. Returns null on success, else a short human reason.</summary>
         public string UninstallArcadeMod(ArcadeModTarget t)
         {
-            if (t == null || string.IsNullOrEmpty(t.GameDir)) return "that game is not set up in TeknoParrot";
+            if (t == null || string.IsNullOrEmpty(t.GameDir)) return Loc.T("Plugin_GameNotSetUp");
 
-            if (string.IsNullOrEmpty(t.WrapperName)) return "nothing of ours is installed there";
+            if (string.IsNullOrEmpty(t.WrapperName)) return Loc.T("Plugin_NothingOursInstalledThere");
             string dll = Path.Combine(t.GameDir, t.WrapperName);
             string backup = dll + ArcadeBackupSuffix;
             string ini = Path.Combine(t.GameDir, ArcadeIniName);
@@ -2952,7 +3097,7 @@ namespace TrueforceForAll.Plugin
             }
             catch (IOException)
             {
-                return "the file is in use, so close the game and try again";
+                return Loc.T("Plugin_FileUseSoClose2");
             }
             catch (Exception ex)
             {
@@ -3079,8 +3224,8 @@ namespace TrueforceForAll.Plugin
 
         public string ArcadeRouteLabel()
         {
-            if (_teknoSource is FfbArcadePluginSource) return "the arcade plugin's own output";
-            if (_teknoSource is TeknoParrotJvsTelemetrySource) return "the cabinet's IO block, decoded here";
+            if (_teknoSource is FfbArcadePluginSource) return Loc.T("Plugin_ArcadePluginSOwn");
+            if (_teknoSource is TeknoParrotJvsTelemetrySource) return Loc.T("Plugin_CabinetSIOBlock");
             return null;
         }
 
@@ -3226,14 +3371,14 @@ namespace TrueforceForAll.Plugin
                 string text = File.ReadAllText(iniPath);
                 string error;
                 string updated = IniKeyWriter.SetKey(text, "Settings", key, value, out error);
-                if (updated == null) return "FFBPlugin.ini could not be updated: " + error;
+                if (updated == null) return Loc.F("Plugin_FFBPluginIniCouldNot_Fmt", error);
                 if (!string.Equals(updated, text, StringComparison.Ordinal))
                     File.WriteAllText(iniPath, updated);
                 return null;
             }
             catch (IOException)
             {
-                return "FFBPlugin.ini is in use, so close the game and try again";
+                return Loc.T("Plugin_FFBPluginIniUseSo");
             }
             catch (Exception ex)
             {
@@ -3302,15 +3447,15 @@ namespace TrueforceForAll.Plugin
         public string InstallFsMod(string game)
         {
             if (!TryGetFsModInfo(game, out string modsDir, out string resource))
-                return "this game is not supported yet";
+                return Loc.T("Plugin_GameNotSupportedYet");
             try
             {
                 if (!Directory.Exists(modsDir))
-                    return "the game's mods folder was not found";
+                    return Loc.T("Plugin_GameSModsFolder");
                 string target = Path.Combine(modsDir, "TF4ALLTelemetry.zip");
                 using (var res = typeof(TrueforcePlugin).Assembly.GetManifestResourceStream(resource))
                 {
-                    if (res == null) return "the mod is missing from this plugin build";
+                    if (res == null) return Loc.T("Plugin_ModMissingPluginBuild");
                     using (var f = new FileStream(target, FileMode.Create, FileAccess.Write))
                         res.CopyTo(f);
                 }
@@ -3368,14 +3513,9 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         bool? ok = TrueforceDialog.Show(null,
-                            "Install the TF4ALL Farming Simulator Enhanced Telemetry Mod?",
-                            "This mod provides more telemetry than SimHub receives from the game: "
-                            + "per-wheel suspension, ground contact, and more, at up to 100 Hz "
-                            + "where SimHub delivers 10 Hz (60 Hz with a licensed SimHub). This "
-                            + "unlocks Telemetry Based FFB enhancements to the game's force "
-                            + "feedback, such as Terrain feel. It works alongside SimHub's own "
-                            + "telemetry mod; keep both enabled in the game's mod list.",
-                            DialogKind.Confirm, "Install", "Not now",
+                            Loc.T("Plugin_InstallTF4ALLFarmingSimulator"),
+                            Loc.T("Plugin_ModProvidesMoreTelemetry"),
+                            DialogKind.Confirm, Loc.T("TelemetryFfb_FsModInstall"), Loc.T("SupportPrompt_NotNow"),
                             goldOk: true, quietCancel: true);
                         var st = Settings;
                         if (st == null) return;
@@ -3387,15 +3527,12 @@ namespace TrueforceForAll.Plugin
                             // say the game reads its mods only at startup.
                             string err = InstallFsModForActiveGame();
                             if (err != null)
-                                TrueforceDialog.Show(null, "Install failed",
-                                    "The mod could not be installed: " + err + ". "
-                                    + "You can retry from the banner on the Telemetry FFB tab.",
+                                TrueforceDialog.Show(null, Loc.T("Plugin_InstallFailed"),
+                                    Loc.F("Plugin_ModCouldNotInstalled_Fmt", err),
                                     DialogKind.Error);
                             else
-                                TrueforceDialog.Show(null, "Mod installed",
-                                    "It loads the next time Farming Simulator starts, so restart "
-                                    + "the game if it is running now. The plugin picks it up by "
-                                    + "itself; no SimHub restart is needed.",
+                                TrueforceDialog.Show(null, Loc.T("Plugin_ModInstalled"),
+                                    Loc.T("Plugin_LoadsNextTimeFarming"),
                                     DialogKind.Info);
                         }
                         else
@@ -4314,10 +4451,109 @@ namespace TrueforceForAll.Plugin
             // for us), the cleanest first-run signal ReadCommonSettings gives.
             bool wasFreshInstall = false;
             Settings = this.ReadCommonSettings("GeneralSettings", () => { wasFreshInstall = true; return new TrueforceSettings(); });
+            // Confirms on a real rig that SimHub pins the thread culture to en-US
+            // (docs/localization-plan.md, fact 1) and shows what the localizer will see.
+            try
+            {
+                SimHub.Logging.Current.Info(
+                    "[TF4ALL] Culture: thread=" + System.Globalization.CultureInfo.CurrentUICulture.Name
+                    + " simhub='" + ReadSimHubCultureSetting() + "'"
+                    + " windows=" + (UsageLanguage.UiLang() ?? "-") + "/" + (UsageLanguage.FmtLang() ?? "-"));
+            }
+            catch { /* diagnostics only; Init never depends on it */ }
+            // The language runtime (docs/localization-plan.md, Phase 1). English
+            // only in this phase: the table carries no keys until the XAML
+            // slices are converted, so nothing the user sees changes. Order:
+            // resolve the language first so the store exists, seed the
+            // reference copies, report, then watch the folder for edits.
+            try
+            {
+                string languagesRoot = Path.Combine(TfPaths.CommonRoot, "TrueforceForAll-Languages");
+                string requestedTag = ResolveUiLanguageTag();
+                var pluginAssembly = typeof(TrueforcePlugin).Assembly;
+                Action<string> warn = msg => SimHub.Logging.Current.Warn(msg);
+                Loc.Initialize(tag => LocSeed.ReadEmbeddedText(pluginAssembly, tag), languagesRoot, requestedTag, warn,
+                               UiLanguageIsAutomatic);
+                LocSeed.Run(pluginAssembly, languagesRoot, warn);
+                LocDiagnostics.StartupReport(msg => SimHub.Logging.Current.Info(msg), warn);
+                _locWatcher = new LocWatcher(languagesRoot, warn);
+                // The community layer, and the fetch that fills it. Its own timer:
+                // hanging this off the usage-ping timer would stop translations
+                // reaching anyone who turned usage statistics off, and would couple a
+                // community read to the one timer PRIVACY.md describes as tied to
+                // nothing. Started after the store, because it reads ActiveTag.
+                if (Loc.Instance != null)
+                {
+                    Loc.Instance.UseCommunityLayer = Settings?.UseCommunityTranslations ?? true;
+                    _locCommunity = new LocCommunity(
+                        Loc.Instance,
+                        () => Settings,
+                        // _auth is built later in the start sequence, so this reads it
+                        // when a send happens rather than when the fetch is created.
+                        async () => _auth != null ? await _auth.GetAccessTokenAsync() : null,
+                        // The same id the car-fact path uses: one person, one contributor,
+                        // across their machines. Minted on first use, which is here for
+                        // anyone who translates before they ever save a car fact.
+                        () => { try { EnsureCarFactsAnonId(); } catch { } return Settings?.CarFactsAnonId; },
+                        action =>
+                        {
+                            var app = System.Windows.Application.Current;
+                            if (app?.Dispatcher != null) app.Dispatcher.BeginInvoke(action);
+                            else action();
+                        },
+                        typeof(TrueforcePlugin).Assembly.GetName().Version?.ToString(),
+                        msg => SimHub.Logging.Current.Info(msg));
+                    _locCommunity.Start();
+                    // A language picked later is a reason to look again: the new tag
+                    // may have rows this install has never fetched.
+                    Loc.Instance.LanguageChanged += (s, e) =>
+                    {
+                        try
+                        {
+                            Loc.Instance.UseCommunityLayer = Settings?.UseCommunityTranslations ?? true;
+                            _locCommunity?.RequestNow();
+                        }
+                        catch { }
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                SimHub.Logging.Current.Warn("[TF4ALL] Language runtime did not start: " + ex.Message
+                    + ". Labels fall back to their keys until the next start.");
+            }
             // Kept for the whole session: wheel detection runs later (and again
             // on a replug) and needs to know this PC had no settings file, so
             // first-run-only defaults can never reach an existing setup.
             _wasFreshInstall = wasFreshInstall;
+            // A first-timer opens the Effects tab in Simple mode and is owed One
+            // time setup on the first panel open. Fresh installs only: an existing
+            // settings file has neither field, reads the false defaults, and keeps
+            // the Advanced view it already knows with no setup popup. Persisted by
+            // the FirstInstalledVersion stamp just below, which always writes on a
+            // fresh install.
+            if (wasFreshInstall)
+            {
+                Settings.SimpleMode = true;
+                Settings.OneTimeSetupPending = true;
+            }
+            // Stamped HERE, and nowhere else. It has to happen before the badge-seed
+            // block below, which overwrites LastSeenVersion with the running build:
+            // after that point an upgrader is indistinguishable from a fresh install,
+            // which is the exact blindness this field exists to remove.
+            try
+            {
+                if (string.IsNullOrEmpty(Settings.FirstInstalledVersion))
+                {
+                    string cur = CurrentVersionString();
+                    Settings.FirstInstalledVersion =
+                        wasFreshInstall ? cur
+                      : !string.IsNullOrEmpty(Settings.LastSeenVersion) ? "<=" + Settings.LastSeenVersion
+                      : "pre-" + cur;
+                    PersistSettingsCore();
+                }
+            }
+            catch { /* analytics bookkeeping; never fatal to boot */ }
             // Defensive nulls in case an older settings file was deserialized
             // without one of these dictionaries.
             if (Settings.Presets      == null) Settings.Presets      = new Dictionary<string, GameSettingsSnapshot>();
@@ -4638,11 +4874,12 @@ namespace TrueforceForAll.Plugin
             InstallBuiltinPresetsIfMissing();
 
             // Per-car file store, rooted at the cars/ subfolder of the user
-            // library (TrueforceForAll-Library). LoadAndMigrateCarPresets loads
-            // files into Settings.CarOverrides (file wins on conflict) then
-            // writes any Settings.CarOverrides / preset.CarOverrides lacking a
-            // file. Files are canonical; Settings.CarOverrides is an in-memory
-            // cache only. Built-in cars live in BuiltinPresets and merge in there.
+            // library (PluginsData/Common/TrueforceForAll/user).
+            // LoadAndMigrateCarPresets loads files into Settings.CarOverrides
+            // (file wins on conflict) then writes any Settings.CarOverrides /
+            // preset.CarOverrides lacking a file. Files are canonical;
+            // Settings.CarOverrides is an in-memory cache only. Built-in cars
+            // live in BuiltinPresets and merge in there.
             _carStore = new CarPresetStore(
                 () => UserPresets.CurrentFolder,
                 msg => SimHub.Logging.Current.Info(msg));
@@ -4948,6 +5185,9 @@ namespace TrueforceForAll.Plugin
             ImportFromUserImportsFolder();
 
             _mixer.MasterGain = Settings.MasterGain;
+            _mixer.PostMix = new ProcessorChain(_eqTapPre, _trueforceEq, _eqTapPost);
+            SeedTrueforceEqIfNeeded();
+            ApplyTrueforceEq();
 
             // Start the GitHub update poller BEFORE the wheel bring-up below,
             // so a user whose wheel is unplugged (or whose G HUB is holding
@@ -5199,7 +5439,10 @@ namespace TrueforceForAll.Plugin
                 // the recovery watchdog picks up on its next pass; nothing here
                 // waits for it.
                 if (result == WheelPcModeSwitch.Result.Sent)
-                    WheelStatus = "Switching the wheel to PC mode...";
+                {
+                    WheelStatus = Loc.T("Plugin_SwitchingWheelPCMode");
+                    WheelStatusState = WheelStatusKind.SwitchingToPcMode;
+                }
             }
             catch (Exception ex)
             {
@@ -5225,7 +5468,8 @@ namespace TrueforceForAll.Plugin
             var matches = WheelDiscovery.FindAll();
             if (matches.Count == 0)
             {
-                WheelStatus = "Not detected (open/close G HUB once, then restart SimHub)";
+                WheelStatus = Loc.T("Plugin_NotDetectedOpenClose");
+                WheelStatusState = WheelStatusKind.NotDetected;
                 SimHub.Logging.Current.Warn(
                     "[TF4ALL] No supported wheel found. Make sure a supported wheel " +
                     "(G PRO / RS50 / G923) is plugged in. If it is, open G HUB once and let it " +
@@ -5272,8 +5516,9 @@ namespace TrueforceForAll.Plugin
                 SimHub.Logging.Current.Info(
                     $"[TF4ALL] Product string '{match.ProductString}' identifies this as {modelLabel} behind PID 0x{match.Pid:X4}.");
             }
-            WheelStatus = $"{modelLabel}  (VID 0x{match.Vid:X4}, PID 0x{match.Pid:X4})"
-                        + (match.Unverified ? "  [unconfirmed model]" : "");
+            WheelModelLabel = modelLabel;
+            WheelStatus = Loc.F("Plugin_VID0xPID0x_Fmt", modelLabel, match.Vid, match.Pid, (match.Unverified ? Loc.T("Plugin_UnconfirmedModel") : ""));
+            WheelStatusState = WheelStatusKind.Detected;
             SimHub.Logging.Current.Info($"[TF4ALL] Found {WheelStatus}.");
 
             // Remember the last wheel used on this PC for the Account "Active sessions"
@@ -5311,9 +5556,9 @@ namespace TrueforceForAll.Plugin
                     ApplyWheelDefaults(target, shortModel);
 
                     // Trueforce master gain, FRESH INSTALLS ONLY: the wheel's
-                    // own starting level (the G923's belt renders the haptic
-                    // stream fainter than the direct drives, so it starts at
-                    // 1.5). Gated on the first-run signal AND on the gain still
+                    // own starting level, when its defaults carry one (none
+                    // does today; the G923's 1.5 was retired 2026-11-04, so
+                    // this never fires). Gated on the first-run signal AND on the gain still
                     // sitting exactly on the factory value, and it runs before
                     // the latch is stamped, so it happens at most once on a PC
                     // and an update never moves a level someone chose.
@@ -5833,10 +6078,19 @@ namespace TrueforceForAll.Plugin
                         // dies stops delivering packets within milliseconds (our
                         // own ep3 stream is in that count), and an undecoded
                         // shape trips the traffic guard. A game that holds a
-                        // static non-zero force through a park without resending
-                        // it is the one case this zeroes, and none of the games
-                        // we capture does that.
+                        // static non-zero force without resending it is the one
+                        // case this zeroes wrongly, and a CLIPPED game does
+                        // exactly that: see the saturated hold below.
                         const int pcapStreamMaxAgeMs = 500;
+                        // What counts as "the game is asking for everything the
+                        // wheel has" for the saturated hold below. Full scale is
+                        // 32767 and a clip lands exactly there, so the bar is set
+                        // just under it (97.6%) rather than at a round fraction:
+                        // ordinary cornering does not sit this high AND stop
+                        // being resent, and anything that does is a clip by
+                        // another name. Wire frame, the raw captured int16, so
+                        // FfbScale and the invert do not enter into it.
+                        const int SaturatedFfbLsb = 32000;
                         chosen = _ffbTap?.TryGetFreshFfbTarget(pcapStreamMaxAgeMs);
                         if (chosen.HasValue) ffbSrc = "pcap";
                         else if (_ffbTap != null
@@ -5862,9 +6116,76 @@ namespace TrueforceForAll.Plugin
                                  // the game's own force; keepalive hands it back.
                                  && !_ffbTap.ForceTrafficSinceLastSample)
                         {
-                            chosen = (short)0;
-                            ffbSrc = "pcap-quiet";
-                            tapQuiet = true;
+                            // SATURATED HOLD. "Driving never gaps past 100 ms"
+                            // holds only while the force is still MOVING. Put
+                            // the game's output into clip (Assetto Corsa with
+                            // its in-game gain above 100% is the report,
+                            // tester via owner 2026-09-28) and the commanded
+                            // value pins at full scale through the loaded part
+                            // of a corner, unchanged, so the driver stops
+                            // writing it and the wire goes silent for as long
+                            // as the clip lasts. Zeroing there replaces the
+                            // game's maximum torque with nothing, mid-corner,
+                            // and the preset's slew limiter fades it out over
+                            // ~85 ms so it reads as the wheel going limp
+                            // rather than as a glitch. G HUB has none of this
+                            // because no ep3 stream overrides the firmware's
+                            // held force.
+                            //
+                            // So a last value at full scale is read as still
+                            // pinned, not as released: release is itself a
+                            // change, which the driver does send. The guard is
+                            // positive per-tick evidence that the game's
+                            // physics is ADVANCING, not just that a session
+                            // exists, because the case this must not resurrect
+                            // is a game that stops sending while saturated
+                            // (the Wreckfest alt-tab class, which is why the
+                            // 500 ms window exists at all). A frozen page ages
+                            // MsSinceLastFrame out within a quarter second, an
+                            // announced pause trips the flag, and either
+                            // releases the hold to the zero below. Same three
+                            // conditions the Mode B slip-starved gate uses.
+                            //
+                            // Bounded by FfbTargetMaxAgeMs as a side effect of
+                            // reading the value through it: a clip that outlasts
+                            // 10 s (an oval at a gain high enough to saturate a
+                            // whole lap) ages out and lands back on the zero.
+                            // Deliberate, and not a number worth raising without
+                            // a report that hits it.
+                            short? held = _ffbTap.TryGetFreshFfbTarget(_device?.FfbTargetMaxAgeMs ?? 10000);
+                            if (held.HasValue
+                                && Math.Abs((int)held.Value) >= SaturatedFfbLsb
+                                && src != null
+                                // A source with no physics channels (a SimHub
+                                // custom game) never reports the car live, so
+                                // the hold would never engage there and the
+                                // clipped force died exactly as before the fix
+                                // (Motorfest tester, 2026-10-27). While no
+                                // physics has ever been seen on this game, the
+                                // frames still flowing stand in for it; the
+                                // focus release covers the alt-tab case this
+                                // guard exists for, and FfbTargetMaxAgeMs still
+                                // bounds the hold.
+                                && (src.IsSessionActive
+                                    || (!_physicsSeenThisGame && src.MeasuredHz > 0))
+                                && src.MsSinceLastFrame <= 250.0
+                                && !_gameNotDrivingState)
+                            {
+                                // Not tapQuiet: the tap really did capture
+                                // this value, it is only old, so the trace
+                                // records it as captured. The ambiguity
+                                // tapQuiet exists to prevent is a SUBSTITUTED
+                                // zero against a captured one, and a held full
+                                // scale is neither.
+                                chosen = held;
+                                ffbSrc = "pcap-clip";
+                            }
+                            else
+                            {
+                                chosen = (short)0;
+                                ffbSrc = "pcap-quiet";
+                                tapQuiet = true;
+                            }
                         }
                     }
                     // Farming Simulator streams NO real force values on any
@@ -6016,6 +6337,7 @@ namespace TrueforceForAll.Plugin
                 }
 
                 _streamStatus = "Streaming (4 kHz, 1000 packets/s)";
+                _streamIsRunning = true;
                 SimHub.Logging.Current.Info("[TF4ALL] Stream started.");
 
                 // Master toggle may already be off at bring-up (persisted from
@@ -6031,10 +6353,36 @@ namespace TrueforceForAll.Plugin
                 // this same path and would otherwise un-pause a disabled
                 // plugin.
                 SyncDeviceToPluginEnabled("Bring-up");
+                // Same reconcile for the pause gate. Its "stream stopped" flag
+                // can still describe the device this one replaces: the G923
+                // startup re-attach lands one to two seconds after the gate's
+                // first pause whenever SimHub starts before the game, and the
+                // recovery watchdog re-attaches through this path too. The
+                // flag and the wire then disagreed for the whole session: the
+                // gate believed it was holding the stream out of Trueforce
+                // mode while the pump streamed, and its resume branch wiped the
+                // captured force on every tick until the car moved. Felt as a
+                // force chopped at the data rate, buzzing hard in loaded
+                // corners and dead whenever the game stopped resending it
+                // (Motorfest tester, 2026-10-27; every logged session). Drop
+                // the flag here so the gate re-judges from live state on its
+                // next tick: still paused re-pauses this device at once,
+                // anything else leaves it streaming.
+                lock (_enableDeviceLock)
+                {
+                    if (_stopStreamPauseActive)
+                    {
+                        _stopStreamPauseActive = false;
+                        SimHub.Logging.Current.Info(
+                            "[TF4ALL] StopStreamOnPause: the wheel was re-attached while the gate held "
+                            + "the stream stopped; the gate re-evaluates on the next tick.");
+                    }
+                }
             }
             catch (Exception ex)
             {
                 _streamStatus = $"Init failed: {ex.Message}";
+                _streamIsRunning = false;
                 SimHub.Logging.Current.Error("[TF4ALL] Init failed", ex);
                 CleanupDevice();
                 return false;
@@ -6068,7 +6416,7 @@ namespace TrueforceForAll.Plugin
                     bool isMi02 = path.IndexOf("mi_02", StringComparison.OrdinalIgnoreCase) >= 0;
                     if (isMi02) mi02++;
                     if (sb.Length > 0) sb.Append(", ");
-                    sb.Append($"0x{pid:X4}").Append(isMi02 ? " [MI_02]" : "");
+                    sb.Append($"0x{pid:X4}").Append(isMi02 ? Loc.T("Plugin_MI02") : "");
                 }
                 string hids = total == 0 ? "none"
                     : $"{total} interface(s) [MI_02 present: {mi02 > 0}] PIDs {sb}";
@@ -7121,6 +7469,13 @@ namespace TrueforceForAll.Plugin
             try { _usagePingTimer?.Dispose(); } catch { }
             _sessionHeartbeatTimer = null;
 
+            // Stop watching the language folder so a late edit cannot reload
+            // the table into a dead instance.
+            try { _locWatcher?.Dispose(); } catch { }
+            _locWatcher = null;
+            try { _locCommunity?.Dispose(); } catch { }
+            _locCommunity = null;
+
             // Flush a pending dash redline share (see DashScheduleRedlineShare)
             // so quitting inside the quiet window doesn't drop it, then stop
             // the timer.
@@ -7759,6 +8114,7 @@ namespace TrueforceForAll.Plugin
                 // so the next one gets to answer it for itself. Until it does,
                 // the audio meter may take the rev bar.
                 _revDataSeen = false;
+                _physicsSeenThisGame = false;
                 _standDownNoticeShownThisDemotion = false;
                 _mairaTapDegraded = false;
                 _mairaTapWarned = false;
@@ -8424,6 +8780,9 @@ namespace TrueforceForAll.Plugin
             _lastSpeedKmh = (float)frame.SpeedKmh;
             _lastThrottle01 = (float)frame.Throttle01;
             _lastRpms = (float)frame.Rpms;
+            if (!_physicsSeenThisGame
+                && (frame.SpeedKmh > 2.0 || frame.Rpms > 1.0 || frame.Throttle01 > 0.02))
+                _physicsSeenThisGame = true;
             // The grip re-learn request is consumed here rather than inside the learning block:
             // it must land in EVERY mode and on every source. The learning block
             // needs tire quads and Mode B, so leaving the consumption in there
@@ -9794,22 +10153,46 @@ namespace TrueforceForAll.Plugin
             => !StationarySpringShipsIn(_activeGame)
                && !(Settings?.StationarySpringUnlocked ?? false);
 
-        /// <summary>Why the spring section is inert for the active game, in the
-        /// words the badge shows, or null when it is live. Ordered so the reason
-        /// the user can act on comes last: unlocking does nothing if the route
-        /// would discard the spring anyway.</summary>
-        public string StationarySpringInertReason
+        /// <summary>The five ways the stationary spring can be inert, plus None
+        /// for live. Tokens rather than sentences: the FFB tab's badge and its
+        /// tooltip both switched on the English this property used to return, so
+        /// the copy was a state name as well as copy and translating it would
+        /// have emptied the badge. The panel maps each token to its own
+        /// key.</summary>
+        public enum StationarySpringInert
+        {
+            /// <summary>Live: the spring runs for the active game.</summary>
+            None,
+            /// <summary>Forza on the capture route.</summary>
+            ForzaCapture,
+            /// <summary>An arcade cabinet, where the force is authored.</summary>
+            Arcade,
+            /// <summary>iRacing, which weights the wheel itself while parked.</summary>
+            IRacing,
+            /// <summary>Switched off outside the games this version ships it in,
+            /// with the SPRING code not entered.</summary>
+            Locked,
+            /// <summary>The takeover route renders the spring against the
+            /// plugin's own stationary friction, which is off.</summary>
+            NeedsFriction,
+        }
+
+        /// <summary>Why the spring section is inert for the active game, or None
+        /// when it is live. Ordered so the reason the user can act on comes
+        /// last: unlocking does nothing if the route would discard the spring
+        /// anyway.</summary>
+        public StationarySpringInert StationarySpringInertReason
         {
             get
             {
-                if (!ActiveSourceSupportsStationarySpring) return "not used in Forza on the capture route";
-                if (ActiveGameIsArcade) return "not used on an arcade cabinet";
-                if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)) return "not used in iRacing";
-                if (StationarySpringLockedHere) return "off outside Assetto Corsa, RaceRoom, Le Mans Ultimate and Forza in this version";
+                if (!ActiveSourceSupportsStationarySpring) return StationarySpringInert.ForzaCapture;
+                if (ActiveGameIsArcade) return StationarySpringInert.Arcade;
+                if (string.Equals(_activeGame, "IRacing", StringComparison.Ordinal)) return StationarySpringInert.IRacing;
+                if (StationarySpringLockedHere) return StationarySpringInert.Locked;
                 if (_forceMode == ForceModeIRacing && IsSharedMemoryTakeoverGame(_activeGame)
                     && !((Settings?.R3EStationaryDamper ?? false) && (Settings?.R3EStationaryDamperStrength ?? 0.0) > 0.0001))
-                    return "needs the stationary friction on";
-                return null;
+                    return StationarySpringInert.NeedsFriction;
+                return StationarySpringInert.None;
             }
         }
 
@@ -11010,7 +11393,7 @@ namespace TrueforceForAll.Plugin
         {
             string key = _gripCalKey;
             if (string.IsNullOrEmpty(key))
-                return "No car variant loaded yet. Drive with Telemetry Based FFB active, then press Re-learn car again.";
+                return Loc.T("Plugin_NoCarVariantLoaded");
             _gripCalResetKey = key;
             _gripCalResetRequested = true;
             // Only synthesis re-learns. Spring mode and iRacing reshape never
@@ -11019,7 +11402,7 @@ namespace TrueforceForAll.Plugin
             string tail = _forceMode == ForceModeModeB
                 ? "applies on the next telemetry frame, then re-learns as you corner."
                 : "applies on the next telemetry frame. It re-learns only in games running Telemetry Based FFB synthesis, not in spring or iRacing mode.";
-            return $"Grip auto-cal reset queued for '{key}' (auto strength included); {tail}";
+            return Loc.F("Plugin_GripAutoCalReset_Fmt", key, tail);
         }
 
         /// <summary>Consume a queued grip re-learn. Called from the telemetry thread
@@ -11316,8 +11699,9 @@ namespace TrueforceForAll.Plugin
         /// perceptible; the wheel now takes the same 0.05 as the others.
         /// Damping is the only thing still separating the G923 from the G PRO.
         ///
-        /// The table also carries the Trueforce master gain (1.5 on the G923,
-        /// the factory 1.0 elsewhere), but that field is read ONLY by the
+        /// The table may also carry a Trueforce master gain (no wheel sets one
+        /// today; the G923's 1.5 was retired 2026-11-04, so every wheel starts
+        /// at the factory 1.0), but that field is read ONLY by the
         /// fresh-install seed on first wheel detection. It is not in
         /// ModeBRecipeFields, so the defaults merge never moves it, and
         /// "Reset FFB tuning to defaults" does not copy it: an existing
@@ -11334,14 +11718,11 @@ namespace TrueforceForAll.Plugin
                     s.ModeBSatGain  = 0.60f;   // "Strength": RS50 defaults
                     break;
                 case "G923":
-                    // Trueforce master gain (owner call 2026-09-15): the belt
-                    // motor renders the haptic stream fainter than the direct
-                    // drives, so the G923 starts at 1.5 where every other
-                    // wheel starts at the factory 1.0. Global, not preset
-                    // scoped, so a built-in preset applied on a G923 inherits
-                    // it (presets never carry MasterGain). Read only by the
-                    // fresh-install seed; never merged onto an existing setup.
-                    s.MasterGain    = 1.5f;
+                    // Trueforce master gain is NOT set here any more (owner
+                    // call 2026-11-04): a new G923 install starts at the
+                    // factory 1.0 like every other wheel. The 1.5 it seeded
+                    // from 0.4.0 stays on the installs that got it, since
+                    // nothing ever rewrites a user's master gain.
                     s.ModeBSatGain  = 1.00f;   // "Strength": headroom on the weaker motor, retuned down from 1.25
                     s.ModeBDamper   = 0.09f;   // belt friction already damps; two clicks under the G PRO
                     // Min force is NOT set here any more: the G923 takes the
@@ -11513,7 +11894,7 @@ namespace TrueforceForAll.Plugin
         // per-field defaults merge, so a field added to the recipe only needs
         // listing here plus its initializer.
         // NOTE: MasterGain is deliberately NOT a recipe field. The wheel table
-        // carries a master gain (the G923's 1.5), but it is seeded on a FRESH
+        // can carry a master gain (none does today), but it is seeded on a FRESH
         // INSTALL only, never merged: master gain is the control users reach
         // for constantly, and 1.0 is a value plenty of people chose on purpose,
         // so the merge could not tell "untouched" from "deliberately 1.0".
@@ -13131,15 +13512,15 @@ namespace TrueforceForAll.Plugin
         public string SetR3EStationaryDamper(double? strength, double? fade)
         {
             var s = Settings;
-            if (s == null) return "settings not ready";
+            if (s == null) return Loc.T("Plugin_SettingsNotReady");
             if (!strength.HasValue && !fade.HasValue)
             {
                 s.R3EStationaryDamper = !s.R3EStationaryDamper;
                 try { PersistSettings(); } catch { }
                 SimHub.Logging.Current.Info("[TF4ALL] R3E stationary friction " + (s.R3EStationaryDamper ? "ON" : "OFF") + ".");
                 return s.R3EStationaryDamper
-                    ? $"R3E stationary friction ON: firm when parked (strength {s.R3EStationaryDamperStrength:0.00}), fading to nothing by {s.R3EStationaryDamperFadeKmh:0} km/h. Persists. Set strength with 'R3EFFB DAMP 0.5', fade with 'R3EFFB DAMP 0.5 30'."
-                    : "R3E stationary friction OFF. Persists.";
+                    ? Loc.F("Plugin_R3EStationaryFrictionFirm_Fmt", s.R3EStationaryDamperStrength, s.R3EStationaryDamperFadeKmh)
+                    : Loc.T("Plugin_R3EStationaryFrictionOFF");
             }
             if (strength.HasValue)
             {
@@ -13157,7 +13538,9 @@ namespace TrueforceForAll.Plugin
             try { PersistSettings(); } catch { }
             SimHub.Logging.Current.Info(
                 $"[TF4ALL] R3E stationary friction: strength={s.R3EStationaryDamperStrength:0.00} fade={s.R3EStationaryDamperFadeKmh:0}km/h {(s.R3EStationaryDamper ? "on" : "off")}.");
-            return $"R3E stationary friction: strength {s.R3EStationaryDamperStrength:0.00}, fades to nothing by {s.R3EStationaryDamperFadeKmh:0} km/h. {(s.R3EStationaryDamper ? "On" : "Off")}. Persists.";
+            return Loc.F("Plugin_R3EStationaryFriction_Fmt",
+                s.R3EStationaryDamperStrength, s.R3EStationaryDamperFadeKmh,
+                s.R3EStationaryDamper ? Loc.T("Common_On") : Loc.T("Common_Off"));
         }
 
         private string R3EStrengthKey(string carId) =>
@@ -13239,7 +13622,8 @@ namespace TrueforceForAll.Plugin
 
         /// <summary>Nudge the ACTIVE car's applied R3E max (persisted), like
         /// iRacing's Max Force nudge. steps &gt; 0 STRENGTHENS (lowers the max),
-        /// &lt; 0 weakens; ~7% per step. Bound to R3EStrengthUp/Down.</summary>
+        /// &lt; 0 weakens; ~7% per step. Driven by the Peak force up/down
+        /// bindings (IRacingMaxForceUp/Down), which retarget here in RaceRoom.</summary>
         public void NudgeR3EStrength(int steps)
         {
             if (steps == 0) return;
@@ -13559,10 +13943,11 @@ namespace TrueforceForAll.Plugin
             if (key == _lmuLockLogKey) return;
             _lmuLockLogKey = key;
             var ci = System.Globalization.CultureInfo.InvariantCulture;
-            string head = "[TF4ALL] Le Mans Ultimate soft lock: the car's wheel animates through " + carRot + " degrees; ";
+            // logHead, not head: this is the [TF4ALL] line, not a dialog heading.
+            string logHead = "[TF4ALL] Le Mans Ultimate soft lock: the car's wheel animates through " + carRot + " degrees; ";
             if (!float.IsNaN(wheelOverCar))
             {
-                SimHub.Logging.Current.Info(head
+                SimHub.Logging.Current.Info(logHead
                     + (src == "measured"
                         ? "the sim's steering axis reads " + wheelOverCar.ToString("F2", ci) + " times the physical position, so the car's lock"
                         : "the " + src + " puts the car's lock")
@@ -13570,13 +13955,13 @@ namespace TrueforceForAll.Plugin
             }
             else if (src == "device axis")
             {
-                SimHub.Logging.Current.Info(head
+                SimHub.Logging.Current.Info(logHead
                     + "the sim's raw axis equals the physical position, so either the wheel's stop already is the car's lock "
                     + "or the sim is not rescaling; with no rotation range in degrees from the sim or the host, the lock stays quiet.");
             }
             else
             {
-                SimHub.Logging.Current.Info(head
+                SimHub.Logging.Current.Info(logHead
                     + "measuring the sim's raw axis against the wheel (a few seconds of cornering) before the lock is placed.");
             }
         }
@@ -15453,7 +15838,7 @@ namespace TrueforceForAll.Plugin
                 {
                     _irResumeSlot = slot;
                     var ci = System.Globalization.CultureInfo.InvariantCulture;
-                    _irResumeTrace.Append(((int)sinceMs).ToString(ci)).Append("ms:")
+                    _irResumeTrace.Append(((int)sinceMs).ToString(ci)).Append(Loc.T("Plugin_Ms"))
                         .Append(((int)(v * 100.0 / 32767.0)).ToString(ci)).Append("%/")
                         .Append(((int)(f01 * 100.0)).ToString(ci)).Append("%/")
                         .Append(_lastSteerNorm.ToString("0.00", ci)).Append(' ');
@@ -16326,11 +16711,11 @@ namespace TrueforceForAll.Plugin
         {
             message = null;
             if (pattern == null || slot < 0 || slot >= WheelLedChannel.CustomSlotCount)
-            { message = "No slot to write."; return false; }
+            { message = Loc.T("Plugin_NoSlotWrite"); return false; }
 
             byte[] rgb = pattern.Rgb();
             if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
-            { message = "That pattern's colors are unreadable."; return false; }
+            { message = Loc.T("Plugin_PatternSColorsUnreadable"); return false; }
 
             // One decision for the write and its follow-up. A blocked show must
             // not leave a level behind: the sweep and the hold were what ramped
@@ -16387,10 +16772,10 @@ namespace TrueforceForAll.Plugin
             // gate: the method opens the channel, reads every slot and writes names,
             // none of which passes through BorrowSlot.
             if (MasterMode == TrueforceMasterMode.Off)
-            { message = "The plugin is switched off, so it is not writing to the wheel."; return 0; }
-            if (_rpmLeds?.Channel == null) { message = "No supported wheel detected."; return 0; }
+            { message = Loc.T("Plugin_PluginSwitchedOffSo"); return 0; }
+            if (_rpmLeds?.Channel == null) { message = Loc.T("Plugin_NoSupportedWheelDetected"); return 0; }
             if (!EnsureLedChannelOpen())
-            { message = "Could not reach the wheel. Check it is connected and powered on."; return 0; }
+            { message = Loc.T("Plugin_CouldNotReachWheel2"); return 0; }
 
             var want = LightPatterns.Patterns;
             // A slot on loan is holding something we put there on purpose, so
@@ -16487,16 +16872,14 @@ namespace TrueforceForAll.Plugin
             // succeeds. Saying nothing would read as "the wheel matches" when it
             // does not.
             string skipped = unreadable == 0 ? string.Empty
-                : " " + (unreadable == 1
-                    ? "One slot could not be read, so it was left as it is."
-                    : unreadable + " slots could not be read, so they were left as they are.");
+                : " " + Loc.N("Plugin_SlotsCouldNotBeRead", unreadable, unreadable);
 
             message = (failed > 0
-                ? "The wheel refused " + failed + " of the writes. " + (lastError ?? string.Empty)
-                : writes == 0 && renames == 0 ? "The wheel already matches your list."
-                : writes == 0 ? "Renamed " + renames + (renames == 1 ? " slot" : " slots") + " on the wheel."
-                : writes == 1 ? "Updated one slot on the wheel."
-                : "Updated " + writes + " slots on the wheel.") + skipped;
+                ? Loc.F("Plugin_WheelRefusedWrites_Fmt", failed, (lastError ?? string.Empty))
+                : writes == 0 && renames == 0 ? Loc.T("Plugin_WheelAlreadyMatchesList")
+                : writes == 0 ? Loc.N("Plugin_RenamedSlots", renames, renames)
+                : writes == 1 ? Loc.T("Plugin_UpdatedOneSlotWheel")
+                : Loc.F("Plugin_UpdatedSlotsWheel_Fmt", writes)) + skipped;
             if (writes > 0 || renames > 0 || unreadable > 0)
                 SimHub.Logging.Current.Info(
                     $"[TF4ALL] slots synced: {writes} written, {renames} renamed, {unreadable} unreadable (left alone)");
@@ -16672,13 +17055,13 @@ namespace TrueforceForAll.Plugin
         public string ProbeLedSlotFeature()
         {
             var ch = _rpmLeds?.Channel;
-            if (ch == null) return "Rev-light channel not created (no supported wheel detected).";
+            if (ch == null) return Loc.T("Plugin_RevLightChannelNot");
             // Read-only in intent, but it opens the channel itself and sends five
             // HID++ queries, so it is still wheel traffic and off means off.
             if (MasterMode == TrueforceMasterMode.Off)
-                return "The plugin is switched off, so the wheel was not probed.";
+                return Loc.T("Plugin_PluginSwitchedOffSo2");
             try { return ch.ProbeSlotFeature(); }
-            catch (Exception ex) { return "Slot probe failed: " + ex.Message; }
+            catch (Exception ex) { return Loc.F("Plugin_SlotProbeFailed_Fmt", ex.Message); }
         }
 
         /// <summary>Car-load edge: put THIS car's own colors and fill direction
@@ -17443,14 +17826,14 @@ namespace TrueforceForAll.Plugin
                                       bool userChose = false, bool sweep = true)
         {
             message = null;
-            if (pattern == null) { message = "No pattern."; return false; }
+            if (pattern == null) { message = Loc.T("Plugin_NoPattern"); return false; }
             int slot = StageSlot();
             if (slot == NoStageSlot) { message = NoStageSlotMessage; return false; }
 
             byte[] rgb = pattern.Rgb();
             if (rgb == null || rgb.Length < WheelLedChannel.LedCount * 3)
             {
-                message = "That pattern's colors are unreadable.";
+                message = Loc.T("Plugin_PatternSColorsUnreadable");
                 return false;
             }
 
@@ -17727,17 +18110,17 @@ namespace TrueforceForAll.Plugin
             // stays open in every mode.
             if (MasterMode == TrueforceMasterMode.Off)
             {
-                message = "The plugin is switched off, so it is not writing to the wheel.";
+                message = Loc.T("Plugin_PluginSwitchedOffSo");
                 return false;
             }
             var ch = _rpmLeds?.Channel;
-            if (ch == null) { message = "No supported wheel detected."; return false; }
-            if (want == null) { message = "Nothing to write."; return false; }
+            if (ch == null) { message = Loc.T("Plugin_NoSupportedWheelDetected"); return false; }
+            if (want == null) { message = Loc.T("Plugin_NothingWrite"); return false; }
             // Parked with no game running the channel is closed, and every read
             // and write below would fail quietly.
             if (!EnsureLedChannelOpen())
             {
-                message = "Could not reach the wheel. Check it is connected and powered on.";
+                message = Loc.T("Plugin_CouldNotReachWheel2");
                 return false;
             }
 
@@ -17792,11 +18175,11 @@ namespace TrueforceForAll.Plugin
                     if (_borrowedSlotCache == want.Slot) _borrowedSlotCache = -1;
 
                     if (!ch.TryWriteSlot(wire, displayLevel))
-                    { message = "The wheel refused the write (see SimHub.txt)."; return false; }
+                    { message = Loc.T("Plugin_WheelRefusedWriteSee"); return false; }
                     StopKeepAliveOutsideFull(ch);
                     if (!string.IsNullOrWhiteSpace(slotName)) WriteSlotName(want.Slot, slotName);
                     InvalidateSlotProgrammedCache();
-                    message = $"Saved into CUSTOM {want.Slot + 1}. It stays on the wheel with SimHub closed.";
+                    message = Loc.F("Plugin_SavedIntoCUSTOMStays_Fmt", want.Slot + 1);
                     return true;
                 }
 
@@ -17806,8 +18189,7 @@ namespace TrueforceForAll.Plugin
                 // that as "the original", destroying the last trace of theirs.
                 if (store.LastLoadCorrupt)
                 {
-                    message = "The slot backup file could not be read, so nothing was written. "
-                            + "The unreadable file has been kept alongside it; your wheel is untouched.";
+                    message = Loc.T("Plugin_SlotBackupFileCould");
                     return false;
                 }
 
@@ -17820,8 +18202,7 @@ namespace TrueforceForAll.Plugin
                     WheelLedChannel.WheelLedSlot original;
                     if (!ch.TryReadSlot(want.Slot, out original))
                     {
-                        message = "Could not read the slot's current contents, so nothing was written. "
-                                + "Refusing to overwrite something we cannot put back.";
+                        message = Loc.T("Plugin_CouldNotReadSlot");
                         return false;
                     }
                     var entry = LightSlotBackupStore.FromSlot(original, SlotWheelId, DateTime.UtcNow);
@@ -17836,13 +18217,12 @@ namespace TrueforceForAll.Plugin
                     // were safe when the only copy had just been discarded.
                     if (!store.Save(map))
                     {
-                        message = "Could not save a backup of your slot, so nothing was written. "
-                                + "Your wheel is untouched. Check the SimHub folder is writable.";
+                        message = Loc.T("Plugin_CouldNotSaveBackup");
                         return false;
                     }
                 }
 
-                if (!ch.TryWriteSlot(wire, displayLevel)) { message = "The wheel refused the write (see SimHub.txt)."; return false; }
+                if (!ch.TryWriteSlot(wire, displayLevel)) { message = Loc.T("Plugin_WheelRefusedWriteSee"); return false; }
                 StopKeepAliveOutsideFull(ch);
 
                 // Name the slot after what is IN it. Scrolling the base's own
@@ -17856,13 +18236,13 @@ namespace TrueforceForAll.Plugin
                 InvalidateSlotProgrammedCache();
 
                 message = holdBackup
-                    ? $"Wrote CUSTOM {want.Slot + 1}. Your original is already backed up from earlier."
-                    : $"Wrote CUSTOM {want.Slot + 1}. Your original was backed up first.";
+                    ? Loc.F("Plugin_WroteCUSTOMOriginalAlready_Fmt", want.Slot + 1)
+                    : Loc.F("Plugin_WroteCUSTOMOriginalWas_Fmt", want.Slot + 1);
                 return true;
             }
             catch (Exception ex)
             {
-                message = "Slot borrow failed: " + ex.Message;
+                message = Loc.F("Plugin_SlotBorrowFailed_Fmt", ex.Message);
                 return false;
             }
         }
@@ -17885,7 +18265,7 @@ namespace TrueforceForAll.Plugin
                 var map = store.Load();
                 if (store.LastLoadCorrupt)
                 {
-                    message = "The slot backup file could not be read, so the blank was not recorded.";
+                    message = Loc.T("Plugin_SlotBackupFileCould2");
                     return false;
                 }
 
@@ -17893,23 +18273,22 @@ namespace TrueforceForAll.Plugin
                 var entry = LightSlotBackupStore.Find(map, SlotWheelId, slot, out key);
                 if (entry == null)
                 {
-                    message = $"No backup held for CUSTOM {slot + 1}, so it was not marked blank.";
+                    message = Loc.F("Plugin_NoBackupHeldCUSTOM_Fmt", slot + 1);
                     return false;
                 }
 
                 entry.Blanked = true;
                 if (!store.Save(map))
                 {
-                    message = "Could not record the blank, so it will be undone at the next launch.";
+                    message = Loc.T("Plugin_CouldNotRecordBlankSoWillUndone");
                     return false;
                 }
-                message = $"CUSTOM {slot + 1} now reads as never programmed. Your colors are still "
-                        + $"held in the backup; SLOTRESTORE{slot + 1} puts them back.";
+                message = Loc.F("Plugin_CUSTOMNowReadsAs_Fmt", slot + 1, slot + 1);
                 return true;
             }
             catch (Exception ex)
             {
-                message = "Could not record the blank: " + ex.Message;
+                message = Loc.F("Plugin_CouldNotRecordBlank_Fmt", ex.Message);
                 return false;
             }
         }
@@ -17918,11 +18297,10 @@ namespace TrueforceForAll.Plugin
         {
             message = null;
             var ch = _rpmLeds?.Channel;
-            if (ch == null) { message = "No supported wheel detected."; return false; }
+            if (ch == null) { message = Loc.T("Plugin_NoSupportedWheelDetected"); return false; }
             if (!EnsureLedChannelOpen())
             {
-                message = "Could not reach the wheel, so the restore was not attempted. "
-                        + "The backup is kept and will be applied when it can be.";
+                message = Loc.T("Plugin_CouldNotReachWheel");
                 return false;
             }
 
@@ -17935,7 +18313,7 @@ namespace TrueforceForAll.Plugin
                 var entry = LightSlotBackupStore.Find(map, SlotWheelId, slot, out key);
                 if (entry == null)
                 {
-                    message = $"No backup held for CUSTOM {slot + 1}; nothing to restore.";
+                    message = Loc.F("Plugin_NoBackupHeldCUSTOM_Fmt2", slot + 1);
                     return false;
                 }
                 // A settled loan normally means the debt is paid and there is
@@ -17949,7 +18327,7 @@ namespace TrueforceForAll.Plugin
                 // for. Seen 2026-08-24 doing exactly this on slots 1-4.
                 if (entry.Restored && !(undoBlank && entry.Blanked))
                 {
-                    message = $"CUSTOM {slot + 1} was already restored.";
+                    message = Loc.F("Plugin_CUSTOMWasAlreadyRestored_Fmt", slot + 1);
                     return false;
                 }
                 // A deliberately blanked slot is skipped by the AUTOMATIC restore
@@ -17961,8 +18339,7 @@ namespace TrueforceForAll.Plugin
                 // those: it is a person asking for their colors back.
                 if (entry.Blanked && !undoBlank)
                 {
-                    message = $"CUSTOM {slot + 1} is deliberately blanked (SLOTBLANK). "
-                            + $"Type SLOTRESTORE{slot + 1} to put your colors back.";
+                    message = Loc.F("Plugin_CUSTOMDeliberatelyBlankedSLOTBLANK_Fmt", slot + 1, slot + 1);
                     return false;
                 }
                 entry.Blanked = false;
@@ -17970,7 +18347,7 @@ namespace TrueforceForAll.Plugin
                 var original = LightSlotBackupStore.ToSlot(entry);
                 if (original == null)
                 {
-                    message = "The stored backup is unreadable, so nothing was written.";
+                    message = Loc.T("Plugin_StoredBackupUnreadableSo");
                     return false;
                 }
                 // Write the slot we were ASKED to restore, not the number stored
@@ -17978,7 +18355,7 @@ namespace TrueforceForAll.Plugin
                 // the header invites people to read, and on divergence the stored
                 // one would send a restore into a slot nobody asked about.
                 original.Slot = (byte)slot;
-                if (!ch.TryWriteSlot(original)) { message = "The wheel refused the restore (see SimHub.txt)."; return false; }
+                if (!ch.TryWriteSlot(original)) { message = Loc.T("Plugin_WheelRefusedRestoreSee"); return false; }
                 InvalidateSlotProgrammedCache();
 
                 // Read it back and compare before calling the debt settled. A
@@ -17995,8 +18372,7 @@ namespace TrueforceForAll.Plugin
 
                 if (!verified)
                 {
-                    message = $"CUSTOM {slot + 1} was written back, but reading it returned something else, "
-                            + "so the backup has been KEPT and can be applied again.";
+                    message = Loc.F("Plugin_CUSTOMWasWrittenBack_Fmt", slot + 1);
                     return false;
                 }
 
@@ -18008,12 +18384,12 @@ namespace TrueforceForAll.Plugin
                 entry.Restored = true;
                 store.Save(map);
                 if (_borrowedSlotCache == slot) _borrowedSlotCache = -1;
-                message = $"CUSTOM {slot + 1} restored to what it was.";
+                message = Loc.F("Plugin_CUSTOMRestoredWhatWas_Fmt", slot + 1);
                 return true;
             }
             catch (Exception ex)
             {
-                message = "Slot restore failed: " + ex.Message;
+                message = Loc.F("Plugin_SlotRestoreFailed_Fmt", ex.Message);
                 return false;
             }
         }
@@ -18080,7 +18456,7 @@ namespace TrueforceForAll.Plugin
             if (!OledWritesSafeNow)
             { SimHub.Logging.Current.Info("[OLED] test skipped: the screen is not ours to write in this mode"); return; }
             int ms = _oledDash.RunTest();
-            SimHub.Logging.Current.Info($"[OLED] Test started, duration={ms} ms ({_oledDash.Status})");
+            SimHub.Logging.Current.Info($"[OLED] Test started, duration={ms} ms ({_oledDash.StatusForLog})");
         }
 
         /// <summary>Hand the OLED back to the wheel's own firmware (feature
@@ -18802,7 +19178,7 @@ namespace TrueforceForAll.Plugin
         /// off at startup takes the feature away with it.</summary>
         public bool WheelDetected => _hidWheelPid != 0;
 
-        public string OledStatus => _oledDash?.Status ?? "(n/a)";
+        public string OledStatus => _oledDash?.Status ?? Loc.T("TelemetryFfb_OledStatusUnavailable");
         public bool OledIsTesting => _oledDash?.IsTesting ?? false;
 
         /// <summary>Whether writing the screen right now cannot disturb anyone's
@@ -18909,8 +19285,7 @@ namespace TrueforceForAll.Plugin
             // forbids and the continuous bar driving lights-only forbids. It is a
             // dev code, but it was the last LED path with no gate.
             if (MasterMode != TrueforceMasterMode.Normal)
-                return $"Master mode is {ModeLabel(MasterMode)}, so the rev LEDs are not ours to drive. "
-                     + "Switch to Normal to use this.";
+                return Loc.F("Plugin_MasterModeSoRev_Fmt", ModeLabel(MasterMode));
             try
             {
                 if (_f8Leds == null)
@@ -18919,28 +19294,27 @@ namespace TrueforceForAll.Plugin
 
                 // No argument => simple on/off toggle. Default ON = forza-speed
                 // (~60 Hz resend), the worst-case FFB test (same rate
-                // forza-wheel-leds writes at); type F8SLOW to compare against our
-                // paced write-on-change footprint.
+                // forza-wheel-leds writes at); type "F8SWEEP SLOW" to compare
+                // against our paced write-on-change footprint.
                 if (!resendMs.HasValue)
                 {
                     if (_f8Leds.IsSweeping)
                     {
                         _f8Leds.StopSweep();
-                        return "F8 sweep stopped, LEDs off.";
+                        return Loc.T("Plugin_F8SweepStoppedLEDs");
                     }
                     resendMs = 16;
                 }
 
                 if (!_f8Leds.StartSweep(resendMs.Value))
-                    return "F8 sweep couldn't open the wheel's gamepad collection (see SimHub log).";
+                    return Loc.T("Plugin_F8SweepCouldnT");
 
-                return "F8 sweep running " + _f8Leds.ModeLabel + " on " + _f8Leds.ResolvedInfo
-                     + ". Drive a sim, watch LEDs + FFB. F8SWEEP stops; F8FAST/F8SLOW switch rate.";
+                return Loc.F("Plugin_F8SweepRunningDrive_Fmt", _f8Leds.ModeLabel, _f8Leds.ResolvedInfo);
             }
             catch (Exception ex)
             {
                 SimHub.Logging.Current.Info("[F8-LED] toggle failed: " + ex.Message);
-                return "F8 sweep error: " + ex.Message;
+                return Loc.F("Plugin_F8SweepError_Fmt", ex.Message);
             }
         }
 
@@ -22583,9 +22957,9 @@ namespace TrueforceForAll.Plugin
 
             int total = gameOk + carOk + packGameOk + packCarOk;
             if (total == 0 && failed == 0) return null;
-            string msg = $"Imports folder scan: {gameOk} game, {carOk} car";
-            if (packGameOk + packCarOk > 0) msg += $", pack ({packGameOk} game + {packCarOk} car)";
-            if (failed > 0) msg += $", {failed} skipped/failed";
+            string msg = Loc.F("Plugin_ImportsFolderScanGame_Fmt", gameOk, carOk);
+            if (packGameOk + packCarOk > 0) msg += Loc.F("Plugin_PackGameCar_Fmt", packGameOk, packCarOk);
+            if (failed > 0) msg += Loc.F("Plugin_SkippedFailed_Fmt", failed);
             msg += ".";
             SimHub.Logging.Current.Info($"[TF4ALL] {msg}");
             return msg;
@@ -22654,7 +23028,7 @@ namespace TrueforceForAll.Plugin
             {
                 if (Settings?.Presets == null
                     || !Settings.Presets.TryGetValue(presetName, out var snap) || snap == null)
-                { error = "preset not found in library"; return false; }
+                { error = Loc.T("Plugin_PresetNotFoundLibrary"); return false; }
                 string json = Newtonsoft.Json.JsonConvert.SerializeObject(
                     snap, Newtonsoft.Json.Formatting.Indented);
                 string rel = BuiltinPresetWriter.WriteGame(BuiltinPresets.CurrentFolder, presetName, json);
@@ -22675,7 +23049,7 @@ namespace TrueforceForAll.Plugin
                 var all = GetAllCarPresets();
                 if (all == null || !all.TryGetValue(carId, out var perCar)
                     || !perCar.TryGetValue(presetName, out var entry) || entry == null)
-                { error = "car preset not found"; return false; }
+                { error = Loc.T("Plugin_CarPresetNotFound"); return false; }
 
                 // Promote always writes to the factory folder; presetName from
                 // UI (typically a user row, but harmless on a factory row) may
@@ -23014,7 +23388,7 @@ namespace TrueforceForAll.Plugin
             UserPresets.Reload();
             RebuildPresetCacheFromFolders();
             LoadAndMigrateCarPresets();
-            string msg = $"Reloaded library from folders: {BuiltinPresets.BuiltinPresetJsons.Count} game + {BuiltinPresets.CarPresetJsons.Count} car built-in(s), {UserPresets.PresetJsons.Count} user game preset(s), {UserPresets.CarPresetJsons.Count} user car preset(s).";
+            string msg = Loc.F("Plugin_ReloadedLibraryFoldersGame_Fmt", BuiltinPresets.BuiltinPresetJsons.Count, BuiltinPresets.CarPresetJsons.Count, UserPresets.PresetJsons.Count, UserPresets.CarPresetJsons.Count);
             if (!string.IsNullOrEmpty(importMsg)) msg = importMsg + " " + msg;
             SimHub.Logging.Current.Info($"[TF4ALL] {msg}");
             return msg;
@@ -25225,18 +25599,64 @@ namespace TrueforceForAll.Plugin
         /// (game, carId). Public passthrough so SettingsControl can hit
         /// this without exposing CommunityClient. Mirrors <see
         /// cref="FetchEngineLayoutConsensus"/>.</summary>
-        // Language tag carried in car_name's variant_signature so each language
-        // forms its own consensus (an English plurality can't bury a correct
-        // name in another language). Derived from the OS UI language for now;
-        // when the plugin UI itself is localized this can switch to the chosen
-        // UI language. Two-letter ISO so en-US / en-GB share one "en" bucket.
+        // Language tag carried in car_name's variant_signature. This was meant
+        // to bucket car-name consensus per language, so an English plurality
+        // could not bury a correct name in another language. It never did:
+        // SimHub pins CultureInfo.CurrentUICulture to en-US process-wide before
+        // any plugin loads, so every submission and fetch has always carried
+        // "lang=en". The owner has since decided one global bucket is right
+        // (most people use cars' English names), so the value is now a constant.
+        // It must stay exactly "lang=en": variant_signature is part of the
+        // car_fact_consensus primary key, and changing it would orphan every
+        // existing row. Do not repoint this at a UI language.
         internal static string CommunityNameLocaleSig()
         {
-            string lang = null;
-            try { lang = System.Globalization.CultureInfo.CurrentUICulture?.TwoLetterISOLanguageName; }
-            catch { /* fall through to the default below */ }
-            if (string.IsNullOrEmpty(lang) || lang == "iv") lang = "en";
-            return "lang=" + lang.ToLowerInvariant();
+            return "lang=en";
+        }
+
+        // SimHub's own language choice: the "Culture" key of
+        // PluginsData\GlobalSimhubSettings.json, where "" means the system
+        // default. Read-only, on purpose. SimHub owns that file and the
+        // installer treats it as byte-sensitive, so it is never written back
+        // from here. Returns "?" when the file or the key cannot be read. Used
+        // by the Init culture log line only.
+        /// <summary>The language the panel is drawn in: the user's own pick when
+        /// they made one on the Settings tab, else SimHub's own language setting,
+        /// else what Windows reports for this account, else English. Both the
+        /// startup resolve and the picker call this, so they cannot disagree.
+        ///
+        /// The thread culture is deliberately not consulted. SimHub pins it to
+        /// en-US for every user whatever their Windows language is
+        /// (docs/localization-plan.md, fact 1), so reading it would make every
+        /// install in the world look English.</summary>
+        /// <summary>True while the user has made no pick on the Settings tab, so
+        /// the tag above is their surroundings and is held to the store's coverage
+        /// bar (LocStore.AutomaticMinimumCoverage).</summary>
+        internal bool UiLanguageIsAutomatic => string.IsNullOrWhiteSpace(Settings?.UiLanguage);
+
+        internal string ResolveUiLanguageTag()
+        {
+            string chosen = Settings?.UiLanguage;
+            if (!string.IsNullOrWhiteSpace(chosen)) return chosen.Trim();
+            string simhubCulture = ReadSimHubCultureSetting();
+            if (!string.IsNullOrEmpty(simhubCulture) && simhubCulture != "?") return simhubCulture;
+            return UsageLanguage.UiLang() ?? "en";
+        }
+
+        private static string ReadSimHubCultureSetting()
+        {
+            try
+            {
+                string path = Path.Combine(TfPaths.BaseDir, "PluginsData", "GlobalSimhubSettings.json");
+                if (!File.Exists(path)) return "?";
+                var culture = JObject.Parse(File.ReadAllText(path))["Culture"];
+                if (culture == null || culture.Type == JTokenType.Null) return "?";
+                return culture.ToString();
+            }
+            catch
+            {
+                return "?";
+            }
         }
 
         internal CarNameConsensus FetchCarNameConsensus(string game, string carId)
@@ -25770,17 +26190,23 @@ namespace TrueforceForAll.Plugin
                 string commitHash  = sendSnapshot ? snapshotHash : null;
                 var    commitDays  = sentGameDays;
                 var    commitOwner = Settings;              // identity checked at commit
+                string uiLang = UsageLanguage.UiLang();
+                string fmtLang = UsageLanguage.FmtLang();
                 // One line per ping, so what was sent is answerable from a log alone.
                 // Without it the only telemetry lines are failures, and a ping that
                 // carried nothing looks exactly like a ping that never happened; that
-                // ambiguity already cost a live test. Counts only, never content.
+                // ambiguity already cost a live test. Counts and the two-letter
+                // language codes only, never content.
                 SimHub.Logging.Current.Info(string.Format(
-                    "[TF4ALL] Usage ping: game='{0}' snapshot={1} gameDays={2} presets={3}",
+                    "[TF4ALL] Usage ping: game='{0}' snapshot={1} gameDays={2} presets={3} lang={4}/{5} firstVer={6}",
                     game ?? "(none)", sendSnapshot ? "yes" : "unchanged",
-                    commitDays?.Count ?? 0, stagedPresetHashes.Count));
+                    commitDays?.Count ?? 0, stagedPresetHashes.Count,
+                    uiLang ?? "-", fmtLang ?? "-",
+                    string.IsNullOrEmpty(Settings.FirstInstalledVersion) ? "-" : Settings.FirstInstalledVersion));
                 _telemetryClient.SendPing(anonId, CurrentVersionString(),
                     Settings.LastUsedWheel, game, sendSnapshot ? snapshot : null,
                     gamesJson, gamePresetsJson,
+                    uiLang, fmtLang, (Settings.FirstInstalledVersion ?? "").Trim(),
                     receipt => CommitUsagePing(commitOwner, today, commitHash, commitDays,
                                                stagedPresetHashes, receipt));
             }
@@ -27630,11 +28056,11 @@ namespace TrueforceForAll.Plugin
             // with no bake entry). Lead with "engine" instead of "0 cyl"
             // so the label reads cleanly, or with "electric" when the zero
             // is an answer rather than a gap.
-            sb.Append(cyl >= 1 ? (cyl + " cyl") : (isElectric ? "electric" : "engine"));
+            sb.Append(cyl >= 1 ? (Loc.F("Plugin_Cyl_Fmt", cyl)) : (isElectric ? Loc.T("Plugin_Electric") : Loc.T("Plugin_Engine")));
             if (maxRpm.HasValue && maxRpm.Value > 0)
-                sb.Append(", ").Append(maxRpm.Value).Append(" RPM");
+                sb.Append(", ").Append(maxRpm.Value).Append(Loc.T("Plugin_RPM"));
             if (redlineRpm.HasValue && redlineRpm.Value > 0)
-                sb.Append(", ").Append(redlineRpm.Value).Append(" redline");
+                sb.Append(", ").Append(redlineRpm.Value).Append(Loc.T("Plugin_Redline"));
             return sb.ToString();
         }
 
@@ -27934,25 +28360,25 @@ namespace TrueforceForAll.Plugin
         // (PresetSharingClient.StampUploadErrorFromStatus) for support instead.
         internal string DescribeLastUploadError()
         {
-            if (_presetSharing == null) return "Upload failed.";
+            if (_presetSharing == null) return Loc.T("Plugin_UploadFailed");
             switch (_presetSharing.LastUploadError)
             {
                 case UploadError.Blocked:
-                    return "Your account is restricted from uploading.";
+                    return Loc.T("Plugin_AccountRestrictedUploading");
                 case UploadError.NotAuthenticated:
-                    return "Sign-in expired. Sign in again and retry.";
+                    return Loc.T("Plugin_SignExpiredSignAgain");
                 case UploadError.RateLimited:
-                    return "Slow down a moment, then try again.";
+                    return Loc.T("SignIn_ErrorRateLimited");
                 case UploadError.DuplicateName:
-                    return "You already shared an item with this name. Update your existing upload instead, or pick a different name.";
+                    return Loc.T("Plugin_AlreadySharedItemName");
                 case UploadError.ValidationFailed:
-                    return "The server rejected this upload. If you've already shared a preset with this name, rename it and try again.";
+                    return Loc.T("Plugin_ServerRejectedUploadIf");
                 case UploadError.ServerError:
-                    return "Community backend hit an error. Try again in a minute.";
+                    return Loc.T("Plugin_CommunityBackendHitError");
                 case UploadError.NetworkFailure:
-                    return "Couldn't reach the community backend. Check your connection, then retry.";
+                    return Loc.T("Plugin_CouldnTReachCommunity");
                 default:
-                    return "Upload failed.";
+                    return Loc.T("Plugin_UploadFailed");
             }
         }
 
@@ -29910,21 +30336,19 @@ namespace TrueforceForAll.Plugin
             string body, loadLabel;
             if (signOut)
             {
-                body = "Signing out. The tuning saved from before you signed in is different from your current settings."
-                     + "\n\nKeep what you have now, or switch back to your pre-sign-in tuning?";
-                loadLabel = "Load pre-sign-in tuning";
+                body = Loc.T("Plugin_SigningOutTuningSaved");
+                loadLabel = Loc.T("Plugin_LoadPreSignTuning");
             }
             else
             {
-                body = "This account's saved tuning is different from your current settings."
-                     + "\n\nKeep what you have now (it becomes this account's saved tuning), or switch to the tuning saved on this account?";
-                loadLabel = "Load account tuning";
+                body = Loc.T("Plugin_AccountSSavedTuning");
+                loadLabel = Loc.T("Plugin_LoadAccountTuning");
             }
             bool load = app.Dispatcher.Invoke(() =>
                 TrueforceDialog.Show(null, "Trueforce For All", body,
                     DialogKind.Destructive,
                     okLabel: loadLabel,
-                    cancelLabel: "Keep current tuning") == true);
+                    cancelLabel: Loc.T("Plugin_KeepCurrentTuning")) == true);
             SimHub.Logging.Current.Info(load
                 ? "[TF4ALL] Account switch: user chose to load the incoming saved tuning."
                 : "[TF4ALL] Account switch: user chose to keep the current tuning.");
@@ -29940,6 +30364,7 @@ namespace TrueforceForAll.Plugin
             try
             {
                 if (_mixer != null) _mixer.MasterGain = Settings.MasterGain;
+                ApplyTrueforceEq();
                 if (_device != null)
                 {
                     _device.FfbScale                = Settings.FfbScale;
@@ -32203,6 +32628,7 @@ namespace TrueforceForAll.Plugin
 
             // Push live: master, FFB tap, audio, and effects (via car-override apply).
             _mixer.MasterGain = Settings.MasterGain;
+            ApplyTrueforceEq();
             if (_device != null)
             {
                 _device.FfbScale                = Settings.FfbScale;
@@ -32841,29 +33267,29 @@ namespace TrueforceForAll.Plugin
             int presetsCount, int carsCount)
         {
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("Trueforce For All - preset pack");
+            sb.AppendLine(Loc.T("Plugin_TrueforceAllPresetPack"));
             sb.AppendLine();
-            if (!string.IsNullOrEmpty(packName))   sb.AppendLine($"Pack:    {packName}");
-            if (!string.IsNullOrEmpty(author))     sb.AppendLine($"Author:  {author}");
-            if (!string.IsNullOrEmpty(version))    sb.AppendLine($"Version: {version}");
+            if (!string.IsNullOrEmpty(packName))   sb.AppendLine(Loc.F("Plugin_Pack_Fmt", packName));
+            if (!string.IsNullOrEmpty(author))     sb.AppendLine(Loc.F("Plugin_Author_Fmt", author));
+            if (!string.IsNullOrEmpty(version))    sb.AppendLine(Loc.F("Plugin_Version_Fmt", version));
             if (presetsCount > 0 || carsCount > 0)
             {
                 var parts = new List<string>();
                 if (presetsCount > 0) parts.Add($"{presetsCount} game preset(s)");
                 if (carsCount    > 0) parts.Add($"{carsCount} car preset(s)");
-                sb.AppendLine($"Contents: " + string.Join(", ", parts));
+                sb.AppendLine(Loc.F("Plugin_Contents_Fmt", string.Join(", ", parts)));
             }
             sb.AppendLine();
-            sb.AppendLine("To install:");
-            sb.AppendLine("  1. Open SimHub.");
-            sb.AppendLine("  2. Left sidebar -> Trueforce For All plugin.");
-            sb.AppendLine("  3. Click the Presets tab.");
-            sb.AppendLine("  4. Click Import (top right of the preset list).");
-            sb.AppendLine("  5. Pick this .tfpack file (or this extracted folder).");
+            sb.AppendLine(Loc.T("Plugin_Install"));
+            sb.AppendLine(Loc.T("Plugin_N1OpenSimHub"));
+            sb.AppendLine(Loc.T("Plugin_N2LeftSidebarTrueforce"));
+            sb.AppendLine(Loc.T("Plugin_N3ClickPresetsTab"));
+            sb.AppendLine(Loc.T("Plugin_N4ClickImportTop"));
+            sb.AppendLine(Loc.T("Plugin_N5PickTfpackFile"));
             sb.AppendLine();
-            sb.AppendLine("All presets in the pack share the (Author, Version, Pack Name) identity,");
-            sb.AppendLine("so the manager can later show them grouped and let you remove or set");
-            sb.AppendLine("them as defaults as a unit.");
+            sb.AppendLine(Loc.T("Plugin_AllPresetsPackShare"));
+            sb.AppendLine(Loc.T("Plugin_SoManagerCanLater"));
+            sb.AppendLine(Loc.T("Plugin_ThemAsDefaultsAs"));
             return sb.ToString();
         }
 
@@ -33201,7 +33627,7 @@ namespace TrueforceForAll.Plugin
             // a generic "Imported pack").
             if (packEntries.Count > 0)
             {
-                string label = NullIfBlank(packName) ?? NullIfBlank(packAuthor) ?? "Imported pack";
+                string label = NullIfBlank(packName) ?? NullIfBlank(packAuthor) ?? Loc.T("Plugin_ImportedPack");
                 _installedPacks?.AddPack(new InstalledPack
                 {
                     PackName      = label,
@@ -33439,7 +33865,7 @@ namespace TrueforceForAll.Plugin
 
             if (packEntries.Count > 0)
             {
-                string label = NullIfBlank(packName) ?? NullIfBlank(packAuthor) ?? "Imported pack";
+                string label = NullIfBlank(packName) ?? NullIfBlank(packAuthor) ?? Loc.T("Plugin_ImportedPack");
                 _installedPacks?.AddPack(new InstalledPack
                 {
                     PackName      = label,
@@ -34520,6 +34946,7 @@ namespace TrueforceForAll.Plugin
                     try
                     {
                         _mixer.MasterGain = Settings.MasterGain;
+                        ApplyTrueforceEq();
                         ApplyGlobalFfbToLive();
                         ApplyModeBFromSettings();
                         ApplyModeBFeel();
@@ -34890,9 +35317,15 @@ namespace TrueforceForAll.Plugin
             // no tuning needed or possible). A fresh install carries the new
             // numbers already. The direction flip and the inertia mode are
             // wheel facts, not tuning, and stay.
-            if (Settings.FfbConditionDefaultsGeneration < 1)
+            // Generation 2 (owner, 2026-09-30): the damper comes down to 0.5. The
+            // same reasoning applies a second time, so the gate moves rather than a
+            // damper-only branch being added beside it: a file stamped at
+            // generation 1 holds generation 1's damper, and leaving it there would
+            // split the fleet across two defaults and make the damper value in a
+            // bug report ambiguous.
+            if (Settings.FfbConditionDefaultsGeneration < 2)
             {
-                Settings.FfbConditionDefaultsGeneration = 1;
+                Settings.FfbConditionDefaultsGeneration = 2;
                 var fresh = new TrueforceSettings();
                 Settings.FfbConditionDamperGain    = fresh.FfbConditionDamperGain;
                 Settings.FfbConditionSpringGain    = fresh.FfbConditionSpringGain;
@@ -34905,9 +35338,15 @@ namespace TrueforceForAll.Plugin
                 Settings.FfbConditionSpringLpfHz   = fresh.FfbConditionSpringLpfHz;
                 Settings.FfbConditionFrictionLpfHz = fresh.FfbConditionFrictionLpfHz;
                 Settings.FfbConditionInertiaLpfHz  = fresh.FfbConditionInertiaLpfHz;
+                // Read back from the values just written rather than spelled out: a
+                // sentence quoting the numbers goes stale the first time one of them
+                // moves, which is what happened when the damper went to 0.5.
                 SimHub.Logging.Current.Info(
-                    "[TF4ALL] Condition-engine tuning brought to the generation 1 defaults (damper 1.0 at 10 Hz, "
-                    + "spring 4.5 unfiltered, friction 0.15 at 3.3 Hz, inertia 0.10, waveforms 0.9, ramp 0.5).");
+                    "[TF4ALL] Condition-engine tuning brought to the generation 2 defaults "
+                    + $"(damper {fresh.FfbConditionDamperGain:F2} at {fresh.FfbConditionDamperLpfHz:F0} Hz, "
+                    + $"spring {fresh.FfbConditionSpringGain:F2}, friction {fresh.FfbConditionFrictionGain:F2} "
+                    + $"at {fresh.FfbConditionFrictionLpfHz:F1} Hz, inertia {fresh.FfbConditionInertiaGain:F2}, "
+                    + $"waveforms {fresh.FfbConditionPeriodicGain:F2}, ramp {fresh.FfbConditionRampGain:F2}).");
             }
         }
 
@@ -35001,6 +35440,7 @@ namespace TrueforceForAll.Plugin
             try { MountUserSlot(Settings.ActiveSlotKey ?? ""); }
             catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Settings import: slot remount failed: " + ex.GetType().Name); }
             _mixer.MasterGain = Settings.MasterGain;
+            ApplyTrueforceEq();
             ApplyGlobalFfbToLive();   // push restored FFB scalars (scale/invert/spike) to the live device, not just master gain
             if (_audio != null)
             {
@@ -35087,15 +35527,15 @@ namespace TrueforceForAll.Plugin
         /// loopback capture, then exchange the code server-side for this signed-in user.</summary>
         internal async Task<DiscordLinkResult> LinkDiscordAsync(System.Threading.CancellationToken ct)
         {
-            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = "Discord linking isn't available." };
-            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = "Sign in to TF4ALL first." };
+            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_DiscordLinkingIsnT") };
+            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_SignTF4ALLFirst") };
             if (!await _discordLinkOp.WaitAsync(0).ConfigureAwait(false))
-                return new DiscordLinkResult { Ok = false, Message = "A Discord link is already in progress." };
+                return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_DiscordLinkAlreadyProgress") };
             try
             {
                 var (cfg, cfgErr) = await _discordLinkClient.GetConfigAsync(ct).ConfigureAwait(false);
                 if (cfg == null || string.IsNullOrEmpty(cfg.ClientId))
-                    return new DiscordLinkResult { Ok = false, Message = cfgErr ?? "Discord linking isn't set up yet." };
+                    return new DiscordLinkResult { Ok = false, Message = cfgErr ?? Loc.T("Plugin_DiscordLinkingIsnT2") };
 
                 DiscordOAuthFlow.Result auth;
                 try
@@ -35103,12 +35543,12 @@ namespace TrueforceForAll.Plugin
                     auth = await DiscordOAuthFlow.AuthorizeAsync(cfg.ClientId, cfg.RedirectUris, cfg.Scope,
                         msg => SimHub.Logging.Current.Info(msg), ct).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) { return new DiscordLinkResult { Ok = false, Message = "Linking cancelled." }; }
+                catch (OperationCanceledException) { return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_LinkingCancelled") }; }
                 catch (DiscordOAuthException ex)   { return new DiscordLinkResult { Ok = false, Message = ex.Message }; }
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Warn("[TF4ALL] Discord authorize error: " + ex.Message);
-                    return new DiscordLinkResult { Ok = false, Message = "Couldn't start Discord linking." };
+                    return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_CouldnTStartDiscord") };
                 }
 
                 var (ok, message, username) = await _discordLinkClient.ExchangeAsync(auth.Code, auth.RedirectUri, ct).ConfigureAwait(false);
@@ -35121,11 +35561,11 @@ namespace TrueforceForAll.Plugin
         /// <summary>Remove this user's Discord link.</summary>
         internal async Task<DiscordLinkResult> UnlinkDiscordAsync(System.Threading.CancellationToken ct)
         {
-            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = "Discord linking isn't available." };
-            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = "Sign in first." };
+            if (_discordLinkClient == null) return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_DiscordLinkingIsnT") };
+            if (_auth == null || !_auth.IsSignedIn) return new DiscordLinkResult { Ok = false, Message = Loc.T("Plugin_SignFirst") };
             bool ok = await _discordLinkClient.UnlinkAsync(ct).ConfigureAwait(false);
             if (ok) InvalidateAccountStatusCache();   // unlink can drop supporter-via-role + clears the link row
-            return new DiscordLinkResult { Ok = ok, Message = ok ? "Discord unlinked." : "Couldn't unlink. Try again." };
+            return new DiscordLinkResult { Ok = ok, Message = ok ? Loc.T("Plugin_DiscordUnlinked") : Loc.T("Plugin_CouldnTUnlinkTry") };
         }
 
         /// <summary>Last-known Discord-link status, cached from GetDiscordStatusAsync so
@@ -35251,15 +35691,15 @@ namespace TrueforceForAll.Plugin
         /// capture, then exchange the code server-side for this signed-in user.</summary>
         internal async Task<PatreonLinkResult> LinkPatreonAsync(System.Threading.CancellationToken ct)
         {
-            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = "Patreon linking isn't available." };
-            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = "Sign in to TF4ALL first." };
+            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_PatreonLinkingIsnT") };
+            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_SignTF4ALLFirst") };
             if (!await _patreonLinkOp.WaitAsync(0).ConfigureAwait(false))
-                return new PatreonLinkResult { Ok = false, Message = "A Patreon link is already in progress." };
+                return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_PatreonLinkAlreadyProgress") };
             try
             {
                 var (cfg, cfgErr) = await _patreonLinkClient.GetConfigAsync(ct).ConfigureAwait(false);
                 if (cfg == null || string.IsNullOrEmpty(cfg.ClientId))
-                    return new PatreonLinkResult { Ok = false, Message = cfgErr ?? "Patreon linking isn't set up yet." };
+                    return new PatreonLinkResult { Ok = false, Message = cfgErr ?? Loc.T("Plugin_PatreonLinkingIsnT2") };
 
                 PatreonOAuthFlow.Result auth;
                 try
@@ -35267,12 +35707,12 @@ namespace TrueforceForAll.Plugin
                     auth = await PatreonOAuthFlow.AuthorizeAsync(cfg.ClientId, cfg.RedirectUris, cfg.Scope,
                         msg => SimHub.Logging.Current.Info(msg), ct).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) { return new PatreonLinkResult { Ok = false, Message = "Linking cancelled." }; }
+                catch (OperationCanceledException) { return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_LinkingCancelled") }; }
                 catch (PatreonOAuthException ex)   { return new PatreonLinkResult { Ok = false, Message = ex.Message }; }
                 catch (Exception ex)
                 {
                     SimHub.Logging.Current.Warn("[TF4ALL] Patreon authorize error: " + ex.Message);
-                    return new PatreonLinkResult { Ok = false, Message = "Couldn't start Patreon linking." };
+                    return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_CouldnTStartPatreon") };
                 }
 
                 var (ok, message, name) = await _patreonLinkClient.ExchangeAsync(auth.Code, auth.RedirectUri, ct).ConfigureAwait(false);
@@ -35285,11 +35725,11 @@ namespace TrueforceForAll.Plugin
         /// <summary>Remove this user's Patreon link.</summary>
         internal async Task<PatreonLinkResult> UnlinkPatreonAsync(System.Threading.CancellationToken ct)
         {
-            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = "Patreon linking isn't available." };
-            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = "Sign in first." };
+            if (_patreonLinkClient == null) return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_PatreonLinkingIsnT") };
+            if (_auth == null || !_auth.IsSignedIn) return new PatreonLinkResult { Ok = false, Message = Loc.T("Plugin_SignFirst") };
             bool ok = await _patreonLinkClient.UnlinkAsync(ct).ConfigureAwait(false);
             if (ok) InvalidateAccountStatusCache();   // unlink can drop the entitlement: refresh it
-            return new PatreonLinkResult { Ok = ok, Message = ok ? "Patreon unlinked." : "Couldn't unlink. Try again." };
+            return new PatreonLinkResult { Ok = ok, Message = ok ? Loc.T("Plugin_PatreonUnlinked") : Loc.T("Plugin_CouldnTUnlinkTry") };
         }
 
         /// <summary>Current Patreon link state for the settings UI (linked + display name).</summary>
@@ -35532,15 +35972,15 @@ namespace TrueforceForAll.Plugin
         /// shows the conflict dialog and then calls ResolveBackupConflictAsync.</summary>
         internal async Task<BackupOutcome> BackupNowAsync()
         {
-            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, "Backup is not available.");
-            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, "Sign in to back up.");
+            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, Loc.T("Plugin_BackupNotAvailable"));
+            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignBackUp"));
             if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
-                return Fail(BackupStatus.Failed, "A backup is already in progress.");
+                return Fail(BackupStatus.Failed, Loc.T("Plugin_BackupAlreadyProgress"));
             try
             {
                 var (revResult, cloudRev) = await _backupClient.GetRevisionAsync().ConfigureAwait(false);
-                if (revResult == BackupTransfer.NotSignedIn) return Fail(BackupStatus.NotSignedIn, "Sign-in expired; sign in again.");
-                if (revResult == BackupTransfer.NotConfigured) return Fail(BackupStatus.NotConfigured, "Backup is not configured.");
+                if (revResult == BackupTransfer.NotSignedIn) return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignExpiredSignAgain2"));
+                if (revResult == BackupTransfer.NotConfigured) return Fail(BackupStatus.NotConfigured, Loc.T("Plugin_BackupNotConfigured"));
                 if (revResult != BackupTransfer.Success && revResult != BackupTransfer.NotFound)
                     return FromTransfer(revResult, "Couldn't reach the backup server");
 
@@ -35552,7 +35992,7 @@ namespace TrueforceForAll.Plugin
                     return new BackupOutcome
                     {
                         Status = BackupStatus.Diverged,
-                        Message = "The cloud backup changed since this PC last synced.",
+                        Message = Loc.T("BackupConflict_CloudBackupChangedSince"),
                         CloudDeviceLabel = cloudEnv?.DeviceLabel,
                         CloudWhenUtc = cloudEnv?.CreatedUtc,
                     };
@@ -35582,12 +36022,12 @@ namespace TrueforceForAll.Plugin
                     BuildEnvelopeLocked())).ConfigureAwait(false);
             }
             catch (BackupTooLargeException ex) { return Fail(BackupStatus.TooLarge, ex.Message); }   // permanent: caller won't retry-spin
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Build backup failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't back up. Check the folder and your connection, then try again."); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Build backup failed: " + ex.Message); return Fail(BackupStatus.Failed, Loc.T("Plugin_CouldnTBackUp")); }
 
             var up = await _backupClient.UploadAsync(json).ConfigureAwait(false);
             if (up != BackupTransfer.Success) return FromTransfer(up, "Backup upload failed");
             await StampSyncedRevisionAsync().ConfigureAwait(false);
-            return new BackupOutcome { Status = BackupStatus.Success, Message = "Backed up to the cloud." };
+            return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_BackedUpCloud") };
         }
 
         // After a successful upload, read back the new object revision + persist it as
@@ -35639,10 +36079,10 @@ namespace TrueforceForAll.Plugin
         /// <summary>Resolve a detected divergence per the user's choice from the dialog.</summary>
         internal async Task<BackupOutcome> ResolveBackupConflictAsync(BackupConflictChoice choice, bool keepCloudSettings)
         {
-            if (choice == BackupConflictChoice.Cancel) return Fail(BackupStatus.Failed, "Cancelled.");
-            if (!BackupReady) return Fail(BackupStatus.NotSignedIn, "Sign in to back up.");
+            if (choice == BackupConflictChoice.Cancel) return Fail(BackupStatus.Failed, Loc.T("Plugin_Cancelled"));
+            if (!BackupReady) return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignBackUp"));
             if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
-                return Fail(BackupStatus.Failed, "A backup is already in progress.");
+                return Fail(BackupStatus.Failed, Loc.T("Plugin_BackupAlreadyProgress"));
             try
             {
                 if (choice == BackupConflictChoice.UseThisPc)
@@ -35655,13 +36095,13 @@ namespace TrueforceForAll.Plugin
                 if (dl == BackupTransfer.NotFound) return await UploadCurrentAsync().ConfigureAwait(false);
                 if (dl != BackupTransfer.Success) return FromTransfer(dl, "Couldn't fetch the cloud backup");
                 var cloudEnv = SafeParse(json);
-                if (cloudEnv == null) return Fail(BackupStatus.Failed, "The cloud backup was unreadable.");
+                if (cloudEnv == null) return Fail(BackupStatus.Failed, Loc.T("Plugin_CloudBackupWasUnreadable"));
 
                 if (choice == BackupConflictChoice.UseCloud)
                 {
                     ApplyRestoredEnvelope(cloudEnv);
                     await StampSyncedRevisionAsync().ConfigureAwait(false);
-                    return new BackupOutcome { Status = BackupStatus.Success, Message = "Restored from the cloud and applied." };
+                    return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_RestoredCloudApplied") };
                 }
 
                 // SmartMerge: union libraries (newest-wins), pick a settings side, then
@@ -35674,9 +36114,9 @@ namespace TrueforceForAll.Plugin
                 if (up != BackupTransfer.Success) return FromTransfer(up, "Merged backup upload failed");
                 ApplyRestoredEnvelope(merged);
                 await StampSyncedRevisionAsync().ConfigureAwait(false);
-                return new BackupOutcome { Status = BackupStatus.Success, Message = "Merged and backed up." };
+                return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_MergedBackedUp") };
             }
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup conflict resolution failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't resolve the backup conflict. See the SimHub log, then try again."); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Backup conflict resolution failed: " + ex.Message); return Fail(BackupStatus.Failed, Loc.T("Plugin_CouldnTResolveBackup")); }
             finally { _backupOp.Release(); }
         }
 
@@ -35684,22 +36124,22 @@ namespace TrueforceForAll.Plugin
         /// Additive: local-only presets survive. Recommends a restart.</summary>
         internal async Task<BackupOutcome> RestoreFromCloudAsync()
         {
-            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, "Backup is not available.");
-            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, "Sign in to restore.");
+            if (_backupClient == null) return Fail(BackupStatus.NotConfigured, Loc.T("Plugin_BackupNotAvailable"));
+            if (_auth == null || !_auth.IsSignedIn) return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignRestore"));
             if (!await _backupOp.WaitAsync(0).ConfigureAwait(false))
-                return Fail(BackupStatus.Failed, "A backup is already in progress.");
+                return Fail(BackupStatus.Failed, Loc.T("Plugin_BackupAlreadyProgress"));
             try
             {
                 var (dl, json) = await _backupClient.DownloadAsync().ConfigureAwait(false);
-                if (dl == BackupTransfer.NotFound) return new BackupOutcome { Status = BackupStatus.NothingToRestore, Message = "No cloud backup found for this account yet." };
+                if (dl == BackupTransfer.NotFound) return new BackupOutcome { Status = BackupStatus.NothingToRestore, Message = Loc.T("Plugin_NoCloudBackupFound") };
                 if (dl != BackupTransfer.Success) return FromTransfer(dl, "Couldn't fetch the cloud backup");
                 var env = SafeParse(json);
-                if (env == null) return Fail(BackupStatus.Failed, "The cloud backup was unreadable.");
+                if (env == null) return Fail(BackupStatus.Failed, Loc.T("Plugin_CloudBackupWasUnreadable"));
                 ApplyRestoredEnvelope(env);
                 await StampSyncedRevisionAsync().ConfigureAwait(false);
-                return new BackupOutcome { Status = BackupStatus.Success, Message = "Restored from the cloud and applied." };
+                return new BackupOutcome { Status = BackupStatus.Success, Message = Loc.T("Plugin_RestoredCloudApplied") };
             }
-            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Restore failed: " + ex.Message); return Fail(BackupStatus.Failed, "Couldn't restore. Check your connection, then try again."); }
+            catch (Exception ex) { SimHub.Logging.Current.Warn("[TF4ALL] Restore failed: " + ex.Message); return Fail(BackupStatus.Failed, Loc.T("Plugin_CouldnTRestoreCheck")); }
             finally { _backupOp.Release(); }
         }
 
@@ -36511,11 +36951,11 @@ namespace TrueforceForAll.Plugin
         {
             switch (t)
             {
-                case BackupTransfer.NotSignedIn:   return Fail(BackupStatus.NotSignedIn, "Sign-in expired; sign in again.");
-                case BackupTransfer.Forbidden:     return Fail(BackupStatus.Forbidden, "Backup is for supporters (coming soon).");
-                case BackupTransfer.NotConfigured: return Fail(BackupStatus.NotConfigured, "Backup is not configured.");
-                case BackupTransfer.TooLarge:      return Fail(BackupStatus.TooLarge, ctx + ": the backup is too large.");
-                case BackupTransfer.NotFound:      return Fail(BackupStatus.NothingToRestore, "No cloud backup found.");
+                case BackupTransfer.NotSignedIn:   return Fail(BackupStatus.NotSignedIn, Loc.T("Plugin_SignExpiredSignAgain2"));
+                case BackupTransfer.Forbidden:     return Fail(BackupStatus.Forbidden, Loc.T("Plugin_BackupSupportersComingSoon"));
+                case BackupTransfer.NotConfigured: return Fail(BackupStatus.NotConfigured, Loc.T("Plugin_BackupNotConfigured"));
+                case BackupTransfer.TooLarge:      return Fail(BackupStatus.TooLarge, Loc.F("Plugin_BackupTooLarge_Fmt", ctx));
+                case BackupTransfer.NotFound:      return Fail(BackupStatus.NothingToRestore, Loc.T("Plugin_NoCloudBackupFound2"));
                 default:                           return Fail(BackupStatus.Failed, ctx + ".");
             }
         }
@@ -36990,7 +37430,7 @@ namespace TrueforceForAll.Plugin
 
                 if (keep == null)
                 {
-                    _captureStatus = "Idle (no supported game running)";
+                    _captureStatus = () => Loc.T("Effects_CaptureIdleNoSupportedGame");
                     return;
                 }
 
@@ -37003,7 +37443,7 @@ namespace TrueforceForAll.Plugin
                 if (keepExited)
                 {
                     try { keep.Dispose(); } catch { }
-                    _captureStatus = "Idle (no supported game running)";
+                    _captureStatus = () => Loc.T("Effects_CaptureIdleNoSupportedGame");
                     return;
                 }
 
@@ -37011,12 +37451,19 @@ namespace TrueforceForAll.Plugin
                 _audio.Start(keep.Id);
                 _helperHost?.SetTargetPid(keep.Id);
                 EnterStreamingGcMode();
-                _captureStatus = $"Capturing {label} (PID {keep.Id})";
-                SimHub.Logging.Current.Info($"[TF4ALL] {_captureStatus}.");
+                // Snapshotted into locals so the composer neither holds the
+                // Process nor reads a handle this thread may later release. The
+                // log line keeps its own English copy: a log is identity, read
+                // back in issue reports, and never translated.
+                string capturedLabel = label;
+                int capturedPid = keep.Id;
+                _captureStatus = () => Loc.F("Effects_CaptureCapturing_Fmt", capturedLabel, capturedPid);
+                SimHub.Logging.Current.Info($"[TF4ALL] Capturing {capturedLabel} (PID {capturedPid}).");
             }
             catch (Exception ex)
             {
-                _captureStatus = $"Capture error: {ex.Message}";
+                string capturedError = ex.Message;
+                _captureStatus = () => Loc.F("Effects_CaptureError_Fmt", capturedError);
                 SimHub.Logging.Current.Error("[TF4ALL] Capture retarget failed", ex);
             }
         }
@@ -37323,23 +37770,19 @@ namespace TrueforceForAll.Plugin
             // than letting a diagnostic button open the endpoint the mode promises
             // not to touch.
             if (MasterMode != TrueforceMasterMode.Normal)
-                return $"Master mode is {ModeLabel(MasterMode)}, so the wheel's force path is "
-                     + "not open and there is nothing to probe. Switch to Normal to use this.";
+                return Loc.F("Plugin_MasterModeSoWheel_Fmt", ModeLabel(MasterMode));
 
             var d = _device;
             if (d != null && !d.StreamFaulted)
-                return "Device already healthy: active probe skipped (it never "
-                     + "reopens a working wheel). Status lines above are live.";
+                return Loc.T("Plugin_DeviceAlreadyHealthyActive");
 
             if (_isGHubRunning)
-                return "Cannot probe: Logitech G HUB is running and holds the "
-                     + "wheel's HID. Close G HUB, then run the self-test again.";
+                return Loc.T("Plugin_CannotProbeLogitechG");
 
             // Atomically claim the single-flight slot shared with the watchdog;
             // if it's already held, don't start a second bring-up.
             if (System.Threading.Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) != 0)
-                return "A re-attach is already in progress. Wait a moment and "
-                     + "run the self-test again.";
+                return Loc.T("Plugin_ReAttachAlreadyProgress");
 
             _lastRecoveryAttemptTicks = Stopwatch.GetTimestamp();
             var sb = new System.Text.StringBuilder();
@@ -37348,27 +37791,25 @@ namespace TrueforceForAll.Plugin
                 var matches = WheelDiscovery.FindAll();
                 if (matches.Count == 0)
                 {
-                    sb.AppendLine("[FAIL] Discovery: no supported wheel on the bus.");
-                    sb.Append("        Plug in a G PRO / RS50 / G923 and close G HUB.");
+                    sb.AppendLine(Loc.T("Plugin_FAILDiscoveryNoSupported"));
+                    sb.Append(Loc.T("Plugin_PlugGPRORS50"));
                     return sb.ToString();
                 }
-                sb.AppendLine($"[OK]   Discovery: {WheelDiscovery.DisplayModel(matches[0])} "
-                    + $"(VID 0x{matches[0].Vid:X4}, PID 0x{matches[0].Pid:X4})");
+                sb.AppendLine(Loc.F("Plugin_OKDiscoveryVID0x_Fmt", WheelDiscovery.DisplayModel(matches[0]), matches[0].Vid, matches[0].Pid));
 
                 CleanupDevice();
-                if (_shuttingDown) return "Aborted (plugin shutting down).";
+                if (_shuttingDown) return Loc.T("Plugin_AbortedPluginShuttingDown");
 
                 bool ok = TryBringUpDevice();
-                sb.AppendLine((ok ? "[OK]   " : "[FAIL] ")
-                    + "Open + init sequence + stream: "
-                    + (StreamStatus ?? "(unknown)"));
-                sb.AppendLine("       Wheel:  " + (WheelStatus ?? "(unknown)"));
-                sb.Append("       FFB tap: " + (FfbTapStatus ?? "(not started)"));
+                sb.AppendLine((ok ? Loc.T("Plugin_OK") : Loc.T("Plugin_FAIL"))
+                    + Loc.F("Plugin_OpenInitSequenceStream_Fmt", (StreamStatus ?? Loc.T("Settings_Unknown"))));
+                sb.AppendLine(Loc.F("Plugin_Wheel_Fmt", (WheelStatus ?? Loc.T("Settings_Unknown"))));
+                sb.Append(Loc.F("Plugin_FFBTap_Fmt", (FfbTapStatus ?? Loc.T("Plugin_NotStarted"))));
                 return sb.ToString();
             }
             catch (Exception ex)
             {
-                return sb + "\n[FAIL] Probe crashed: " + ex.Message;
+                return sb + Loc.F("Plugin_FAILProbeCrashed_Fmt", ex.Message);
             }
             finally
             {
@@ -37586,13 +38027,13 @@ namespace TrueforceForAll.Plugin
         private string DescribeKeepaliveReason()
         {
             var tap = _ffbTap;
-            if (tap == null) return "no USB capture";
-            if (tap.LiveForceReport == 0) return "no game force decoded yet this session";
-            if (!(_telemetrySource?.IsSessionActive ?? false)) return "session not live (engine off, menu, or no telemetry)";
+            if (tap == null) return Loc.T("Plugin_NoUSBCapture");
+            if (tap.LiveForceReport == 0) return Loc.T("Plugin_NoGameForceDecoded");
+            if (!(_telemetrySource?.IsSessionActive ?? false)) return Loc.T("Plugin_SessionNotLiveEngine");
             long ms = tap.MsSinceDevicePacket;
-            if (ms >= 2000) return ms == long.MaxValue ? "the capture has delivered no packets" : $"the capture went stale {ms} ms ago";
-            if (tap.ForceTrafficSinceLastSample) return "force writes are arriving that are not being decoded";
-            return "game silent and no hold applied";
+            if (ms >= 2000) return ms == long.MaxValue ? Loc.T("Plugin_CaptureHasDeliveredNo") : Loc.F("Plugin_CaptureWentStaleMs_Fmt", ms);
+            if (tap.ForceTrafficSinceLastSample) return Loc.T("Plugin_ForceWritesArrivingNot");
+            return Loc.T("Plugin_GameSilentNoHold");
         }
 
         // Persists Settings.CspBridgeFfbEnabled and applies it to the live AC
@@ -37855,10 +38296,10 @@ namespace TrueforceForAll.Plugin
                 try
                 {
                     bool? r = TrueforceDialog.Show(owner ?? app.MainWindow,
-                        "Assetto Corsa: install the TF4ALL CSP Bridge",
+                        Loc.T("Plugin_AssettoCorsaInstallTF4ALL"),
                         AcCspNoticeBody,
                         DialogKind.Info,
-                        okLabel: "Install", cancelLabel: "Not now", goldOk: true);
+                        okLabel: Loc.T("TelemetryFfb_FsModInstall"), cancelLabel: Loc.T("SupportPrompt_NotNow"), goldOk: true);
                     var st = Settings;
                     if (st == null) return;
                     if (r == true)
@@ -37870,8 +38311,8 @@ namespace TrueforceForAll.Plugin
                         while (err != null)
                         {
                             bool? again = TrueforceDialog.Show(owner ?? app.MainWindow,
-                                "Could not set up Assetto Corsa", err,
-                                DialogKind.Error, okLabel: "Retry", cancelLabel: "Not now", goldOk: true);
+                                Loc.T("Plugin_CouldNotSetUp"), err,
+                                DialogKind.Error, okLabel: Loc.T("Guides_Retry"), cancelLabel: Loc.T("SupportPrompt_NotNow"), goldOk: true);
                             if (again != true) break;
                             err = InstallAcCspBridge();
                         }
@@ -37884,9 +38325,8 @@ namespace TrueforceForAll.Plugin
                             if (src != null) { src.CspBridgeLatchEnabled = true; src.FfbLatchEnabled = true; }
                             st.CspBridgeInstallDeclined = true;
                             try { PersistSettings(); } catch { }
-                            TrueforceDialog.Show(owner ?? app.MainWindow, "Assetto Corsa is set up",
-                                "The CSP bridge is installed and on. Restart Assetto Corsa if it is running now, "
-                                + "and keep your in-game force feedback gain up; the plugin renders the game's own force.",
+                            TrueforceDialog.Show(owner ?? app.MainWindow, Loc.T("Plugin_AssettoCorsaSetUp"),
+                                Loc.T("Plugin_CSPBridgeInstalledRestart"),
                                 DialogKind.Info);
                         }
                     }
@@ -37925,8 +38365,8 @@ namespace TrueforceForAll.Plugin
                     while (err != null)
                     {
                         bool? again = TrueforceDialog.Show(app.MainWindow,
-                            "Could not set up Assetto Corsa", err,
-                            DialogKind.Error, okLabel: "Retry", cancelLabel: "Not now", goldOk: true);
+                            Loc.T("Plugin_CouldNotSetUp"), err,
+                            DialogKind.Error, okLabel: Loc.T("Guides_Retry"), cancelLabel: Loc.T("SupportPrompt_NotNow"), goldOk: true);
                         if (again != true)
                         {
                             var s = Settings;
@@ -37939,9 +38379,8 @@ namespace TrueforceForAll.Plugin
                         }
                         err = InstallAndEnableAcCspBridge();
                     }
-                    TrueforceDialog.Show(app.MainWindow, "Assetto Corsa is set up",
-                        "The CSP bridge is installed and on. Restart Assetto Corsa if it is running now, "
-                        + "and keep your in-game force feedback gain up.",
+                    TrueforceDialog.Show(app.MainWindow, Loc.T("Plugin_AssettoCorsaSetUp"),
+                        Loc.T("Plugin_CSPBridgeInstalledRestart2"),
                         DialogKind.Info);
                 }));
             }
@@ -37999,18 +38438,18 @@ namespace TrueforceForAll.Plugin
             // Same exposure as the install: the deselect edits the FFB Tweaks
             // ini, and an open Content Manager can save its cached copy back.
             if (ContentManagerRunning())
-                return "Content Manager is open. Close it and try again.";
+                return Loc.T("Plugin_ContentManagerOpenClose");
 
             string ac;
             try { ac = FindAcInstallDir(); } catch { ac = null; }
             if (ac == null)
-                return "could not find your Assetto Corsa install.";
+                return Loc.T("Plugin_CouldNotFindAssetto");
             try
             {
                 string dir = Path.Combine(ac, "extension", "lua", "ffb-postprocess", AcCspScriptName);
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
             }
-            catch (Exception ex) { return "could not delete the script: " + ex.Message; }
+            catch (Exception ex) { return Loc.F("Plugin_CouldNotDeleteScript_Fmt", ex.Message); }
             string how;
             try { how = RestoreAcPostProcessScript(); }
             catch (Exception ex) { how = "could not edit FFB Tweaks: " + ex.Message; }
@@ -38033,7 +38472,7 @@ namespace TrueforceForAll.Plugin
             if (!File.Exists(cfg))
             {
                 ClearDisplacedRecord();
-                return "FFB Tweaks override not present, nothing to restore";
+                return Loc.T("Plugin_FFBTweaksOverrideNot");
             }
             var lines = new List<string>(File.ReadAllLines(cfg));
             int sec, secEnd;
@@ -38041,7 +38480,7 @@ namespace TrueforceForAll.Plugin
             if (sec < 0)
             {
                 ClearDisplacedRecord();
-                return "no post-processing section, nothing to restore";
+                return Loc.T("Plugin_NoPostProcessingSection");
             }
             if (!string.Equals(AcPostProcessImplementationIn(lines, sec, secEnd), AcCspScriptName,
                                StringComparison.OrdinalIgnoreCase))
@@ -38049,12 +38488,12 @@ namespace TrueforceForAll.Plugin
                 // The player has since selected something else. Leave it alone,
                 // and drop a record that no longer describes anything.
                 ClearDisplacedRecord();
-                return "another script is selected, left as is";
+                return Loc.T("Plugin_AnotherScriptSelectedLeft");
             }
             if (!recorded)
             {
                 DeselectAcPostProcessScript();
-                return "slot disabled (no record of what the install displaced)";
+                return Loc.T("Plugin_SlotDisabledNoRecord");
             }
             string body = st.CspBridgeDisplacedSection ?? "";
             if (body.Length == 0)
@@ -38084,9 +38523,9 @@ namespace TrueforceForAll.Plugin
             else File.WriteAllLines(cfg, lines);
             ClearDisplacedRecord();
             return body.Length == 0
-                ? (lines.Count == 0 ? "FFB Tweaks override removed, as the install found it"
-                                    : "post-processing section removed, as the install found it")
-                : "previous post-processing selection put back";
+                ? (lines.Count == 0 ? Loc.T("Plugin_FFBTweaksOverrideRemoved")
+                                    : Loc.T("Plugin_PostProcessingSectionRemoved"))
+                : Loc.T("Plugin_PreviousPostProcessingSelection");
         }
 
         private void ClearDisplacedRecord()
@@ -38194,20 +38633,19 @@ namespace TrueforceForAll.Plugin
             // undone, and its UI would not show the change either way.
             // Refusing is cheaper than a warning nobody reads.
             if (ContentManagerRunning())
-                return "Content Manager is open. Close it and try again.";
+                return Loc.T("Plugin_ContentManagerOpenClose");
 
             string ac;
             try { ac = FindAcInstallDir(); }
             catch { ac = null; }
             if (ac == null)
-                return "could not find your Assetto Corsa install. If it is a non-Steam copy, install the script by hand (see the Assetto Corsa setup guide in Help).";
+                return Loc.T("Plugin_CouldNotFindAssetto2");
 
             string existing;
             try { existing = ReadActiveAcPostProcessScript(); }
             catch { existing = null; }
             if (existing != null && !string.Equals(existing, AcCspScriptName, StringComparison.OrdinalIgnoreCase))
-                return $"Another FFB post-processing script is active ('{existing}'). "
-                     + "Disable it in Content Manager to proceed.";
+                return Loc.F("Plugin_AnotherFFBPostProcessing_Fmt", existing);
 
             try
             {
@@ -38216,7 +38654,7 @@ namespace TrueforceForAll.Plugin
                 WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.ffb.lua", Path.Combine(dir, "ffb.lua"));
                 WriteEmbeddedResource("TrueforceForAll.Plugin.AcCspBridge.manifest.ini", Path.Combine(dir, "manifest.ini"));
             }
-            catch (Exception ex) { return "could not write the script into Assetto Corsa: " + ex.Message; }
+            catch (Exception ex) { return Loc.F("Plugin_CouldNotWriteScript_Fmt", ex.Message); }
 
             // Remember what the selection is about to displace, so Remove can
             // put it back. Recorded before the rewrite and persisted with the
@@ -38230,8 +38668,7 @@ namespace TrueforceForAll.Plugin
             try { SelectAcPostProcessScript(AcCspScriptName); }
             catch (Exception ex)
             {
-                return "installed the script but could not select it automatically (" + ex.Message
-                     + "). Select 'tf4all' under CSP > FFB Tweaks, or see the setup guide.";
+                return Loc.F("Plugin_InstalledScriptButCould_Fmt", ex.Message);
             }
 
             SimHub.Logging.Current.Info("[TF4ALL] Assetto Corsa CSP bridge script installed and selected.");
@@ -38995,12 +39432,12 @@ namespace TrueforceForAll.Plugin
 
         public string StartDamperCalibration(Action<string> uiStatus)
         {
-            if (_autoTuner != null) return "auto-tune is running; Stop it first";
-            if (_diSpikeHold) return "DIDAMP is running; DIDAMP OFF first";
+            if (_autoTuner != null) return Loc.T("Plugin_AutoTuneRunningStop");
+            if (_diSpikeHold) return Loc.T("Plugin_DIDAMPRunningDIDAMPOFF");
             CancelDamperCalibration();
-            if (_hidWheelPid == 0) return "no wheel detected";
+            if (_hidWheelPid == 0) return Loc.T("Plugin_NoWheelDetected");
             var wheel = EnsureWheelMotion(exclusive: true);
-            if (wheel == null) return "could not acquire the wheel through DirectInput exclusively (is a game holding it?); see the log";
+            if (wheel == null) return Loc.T("Plugin_CouldNotAcquireWheel");
 
             Action<string> status = msg =>
             {
@@ -39022,7 +39459,7 @@ namespace TrueforceForAll.Plugin
                         // plugin: stream stopped outright, not keepalive.
                         SuspendStreamForNativeTest("DAMPCAL native phase");
                         if (!wheel.StartDamper(DampCalProbePercent))
-                            status("DAMPCAL: the wheel's damper effect could not be started; the native condition will read as friction.");
+                            status(Loc.T("Plugin_DAMPCALWheelSDamper"));
                         break;
                     case CspDamperCalibration.Phase.Friction:
                         wheel.StopDamper();
@@ -39078,20 +39515,20 @@ namespace TrueforceForAll.Plugin
         /// the position read rate for 60 s. Returns null or a reason.</summary>
         public string StartDiDamperSpike(int pct, IntPtr hwnd)
         {
-            if (_autoTuner != null) return "auto-tune is running; Stop it first";
-            if (_dampCal != null) return "DAMPCAL is running; finish or cancel it first";
+            if (_autoTuner != null) return Loc.T("Plugin_AutoTuneRunningStop");
+            if (_dampCal != null) return Loc.T("Plugin_DAMPCALRunningFinishCancel");
             StopDiDamperSpike();
-            if (_hidWheelPid == 0) return "no wheel detected";
+            if (_hidWheelPid == 0) return Loc.T("Plugin_NoWheelDetected");
             var wheel = EnsureWheelMotion(exclusive: true);
-            if (wheel == null) return "could not acquire the wheel through DirectInput exclusively (see the log)";
+            if (wheel == null) return Loc.T("Plugin_CouldNotAcquireWheel2");
             wheel.LogRate = true;
             wheel.AutoStopMs = 60000;
             wheel.OnAutoStop = () => StopDiDamperSpike();
             try
             {
-                if (!wheel.StartDamper(pct)) { StopWheelMotion(); return "the DirectInput damper could not start (see the log)"; }
+                if (!wheel.StartDamper(pct)) { StopWheelMotion(); return Loc.T("Plugin_DirectInputDamperCouldNot"); }
             }
-            catch (Exception ex) { StopWheelMotion(); return "DirectInput error: " + ex.Message; }
+            catch (Exception ex) { StopWheelMotion(); return Loc.F("Plugin_DirectInputError_Fmt", ex.Message); }
             _diSpikeHold = true;
             SuspendStreamForNativeTest("DIDAMP");
             return null;
@@ -39135,31 +39572,31 @@ namespace TrueforceForAll.Plugin
             StopFxTest(silent: true);
             _fxTestNoMotionLogged = false;
             _fxTestRenderNoted = false;
-            if (_dampCal != null || _diSpikeHold) return "DAMPCAL / DIDAMP is running; finish or cancel it first";
+            if (_dampCal != null || _diSpikeHold) return Loc.T("Plugin_DAMPCALDIDAMPRunningFinish");
             bool native = string.Equals(mode, "NATIVE", StringComparison.OrdinalIgnoreCase);
             if (!native && !string.Equals(mode, "ENGINE", StringComparison.OrdinalIgnoreCase))
-                return "the mode must be NATIVE or ENGINE";
+                return Loc.T("Plugin_ModeMustNATIVEENGINE");
             if (FxTestPayloads.TypeForKind(kind) == 0)
-                return "unknown effect; kinds: DAMPER, SPRING, FRICTION, INERTIA, SINE, SQUARE, TRIANGLE, SAWUP, SAWDOWN, RAMP";
-            if (_hidWheelPid == 0) return "no wheel detected";
+                return Loc.T("Plugin_UnknownEffectKindsDAMPER");
+            if (_hidWheelPid == 0) return Loc.T("Plugin_NoWheelDetected");
             // With the plugin off there is no stream and no device, so an
             // ENGINE effect renders into nothing while the wheel sits on its
             // own centring spring. That reads as "the effect feels like a
             // spring" rather than as "nothing happened", and it cost an
             // evening of chasing a damper that was never playing. Say so.
             if (Settings?.PluginEnabled == false || _device == null)
-                return "the plugin is off, so there is no stream to render into; turn it on first";
+                return Loc.T("Plugin_PluginOffSoThere");
 
             if (native)
             {
                 var wheel = EnsureWheelMotion(exclusive: true);
-                if (wheel == null) return "could not acquire the wheel exclusively through DirectInput (is a game holding it?)";
+                if (wheel == null) return Loc.T("Plugin_CouldNotAcquireWheel3");
                 wheel.AutoStopMs = FxTestAutoOffMs;
                 wheel.OnAutoStop = () => StopFxTest();
                 if (!wheel.StartNativeEffect(kind, strengthPct, periodMs))
                 {
                     StopWheelMotion();
-                    return "the wheel refused the effect (see the log)";
+                    return Loc.T("Plugin_WheelRefusedEffectSee");
                 }
                 _fxTestNativeHold = true;          // belt: provider null through the transition
                 SuspendStreamForNativeTest("FXTEST NATIVE");
@@ -39804,17 +40241,17 @@ namespace TrueforceForAll.Plugin
         {
             StopFxTest(silent: true);
             CancelAutoTune(silent: true);
-            if (_dampCal != null || _diSpikeHold) return "DAMPCAL / DIDAMP is running; finish or cancel it first";
-            if (_hidWheelPid == 0) return "no wheel detected";
+            if (_dampCal != null || _diSpikeHold) return Loc.T("Plugin_DAMPCALDIDAMPRunningFinish");
+            if (_hidWheelPid == 0) return Loc.T("Plugin_NoWheelDetected");
             var wheel = EnsureWheelMotion(exclusive: true);
-            if (wheel == null) return "could not acquire the wheel exclusively through DirectInput (is a game holding it?)";
+            if (wheel == null) return Loc.T("Plugin_CouldNotAcquireWheel3");
             wheel.QuietEffects = true;
             // Dedicated pulse slot: probe pulses must never evict the
             // condition effect under test (audit AT-02).
             if (!wheel.PrepareConstantPulse())
             {
                 StopWheelMotion();
-                return "could not create the probe pulse effect (see the log)";
+                return Loc.T("Plugin_CouldNotCreateProbe");
             }
             // Watchdogs (audit AT-01): a hard cap on the whole run, and the
             // poll loop's exit callback (fires on abnormal death too) both
@@ -40039,19 +40476,15 @@ namespace TrueforceForAll.Plugin
                 SpreadOf(friction, "friction"),
             }.Where(x => x.Length > 0));
 
-            status($"AUTO-TUNE done ({runs.Count} run{(runs.Count == 1 ? "" : "s")}). "
-                 + $"Wheel's stream-vs-native torque ratio ~{fwRatio:F2} "
-                 + $"(an FfbScale of {(double.IsNaN(fwRatio) || fwRatio <= 0 ? double.NaN : 1.0 / fwRatio):F2} would match native exactly, "
-                 + "but changing it rescales these gains by the same amount, so re-run afterwards); "
-                 + $"gains now damper {_damperGain:F2}, spring {_springGain:F2}, friction {_frictionGain:F2}"
-                 + (runs.Count > 1 ? $" (median of {runs.Count}; {spread})" : "")
+            status(Loc.N("Plugin_AutoTuneDone", runs.Count, runs.Count, fwRatio,
+                       double.IsNaN(fwRatio) || fwRatio <= 0 ? double.NaN : 1.0 / fwRatio,
+                       _damperGain, _springGain, _frictionGain)
+                 + (runs.Count > 1 ? Loc.F("Plugin_Median_Fmt", runs.Count, spread) : "")
                  + (double.IsNaN(mD)
-                     ? $"; NOTE: the damper did not measure (drag native "
-                       + $"{MedianOf(runs.Select(r => r.DragNative).ToList()):F2}, engine "
-                       + $"{MedianOf(runs.Select(r => r.DragEngine).ToList()):F2})" : "")
-                 + (signOk ? "; render direction CHECKS OUT (the rendered effects resist motion)" : "")
-                 + (anySuspect ? " (SOME VALUES SUSPECT: verify on the bench before saving)" : "")
-                 + ". Verify by feel, then Save tuning.");
+                     ? Loc.F("Plugin_NOTEDamperDidNot_Fmt", MedianOf(runs.Select(r => r.DragNative).ToList()), MedianOf(runs.Select(r => r.DragEngine).ToList())) : "")
+                 + (signOk ? Loc.T("Plugin_RenderDirectionCHECKSOUT") : "")
+                 + (anySuspect ? Loc.T("Plugin_SOMEVALUESSUSPECTVerify") : "")
+                 + Loc.T("Plugin_AutoTuneVerifyByFeel"));
         }
 
         private void AutoTuneEnterPhase(WheelAutoTuner.PhaseConfig cfg, DirectInputWheel wheel, Action<string> status)
@@ -40090,9 +40523,7 @@ namespace TrueforceForAll.Plugin
                             // sample of the same quantity rather than a step
                             // in a feedback sequence.
                             _autoTuneRunIndex++;
-                            status($"AUTO-TUNE run {_autoTuneRunIndex - 1} of {_autoTuneRunsTotal}: "
-                                 + $"damper {at.DamperGain:F2}, spring {at.SpringGain:F2}, friction {at.FrictionGain:F2}. "
-                                 + $"Starting run {_autoTuneRunIndex}; hands OFF.");
+                            status(Loc.F("Plugin_AUTOTUNERunDamper_Fmt", _autoTuneRunIndex - 1, _autoTuneRunsTotal, at.DamperGain, at.SpringGain, at.FrictionGain, _autoTuneRunIndex));
                             _autoTuner = NewAutoTuner(wheel, status);
                             break;
                         }
@@ -40439,12 +40870,12 @@ namespace TrueforceForAll.Plugin
         {
             switch (FxGainFamily(kind))
             {
-                case "SPRING":   return "Spring gain:";
-                case "FRICTION": return "Friction gain:";
-                case "INERTIA":  return "Inertia gain:";
-                case "PERIODIC": return "Waveform gain:";
-                case "RAMP":     return "Ramp gain:";
-                default:         return "Damper gain:";
+                case "SPRING":   return Loc.T("TelemetryFfb_FxGainSpring");
+                case "FRICTION": return Loc.T("TelemetryFfb_FxGainFriction");
+                case "INERTIA":  return Loc.T("TelemetryFfb_FxGainInertia");
+                case "PERIODIC": return Loc.T("TelemetryFfb_FxGainWaveform");
+                case "RAMP":     return Loc.T("TelemetryFfb_FxGainRamp");
+                default:         return Loc.T("TelemetryFfb_FxTuneGainCaption");
             }
         }
 
@@ -41119,6 +41550,27 @@ namespace TrueforceForAll.Plugin
             bool driverActive = _lastSpeedKmh > 2f
                                 || _lastThrottle01 > 0.05f
                                 || Math.Abs(rpmNow - _gateRpmAtCandidate) > GateRpmMoveThreshold;
+            // A source with no physics channels at all (a SimHub custom game
+            // that only detects the process) can never clear this wait, and
+            // the wheel sat on native FFB with no plugin effects for the whole
+            // session (Motorfest tester, 2026-10-27). The game driving the
+            // wheel is the one thing such a setup does show: a force captured
+            // off the wire within the last half second is the driver being
+            // active. Only while no physics has ever been seen on this game,
+            // so a Forza pause menu, whose car idles with RPM, keeps the
+            // telemetry-only rule the 2026-09-13 rig fix needs.
+            if (!driverActive && !_physicsSeenThisGame)
+            {
+                var wireTap = _ffbTap;
+                long samples = wireTap != null ? wireTap.FfbSamplesCaptured : 0;
+                long nowWire = System.Diagnostics.Stopwatch.GetTimestamp();
+                // Advance only: a recreated tap restarts its counter at zero,
+                // and that must re-baseline, not read as the game driving.
+                if (samples > _gateWireSamplesSeen) _gateWireSampleTicks = nowWire;
+                _gateWireSamplesSeen = samples;
+                driverActive = _gateWireSampleTicks != 0
+                    && (nowWire - _gateWireSampleTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency < 500;
+            }
             if (!driverActive)
             {
                 _resumeCandidateSinceTicks = 0;
@@ -41315,7 +41767,7 @@ namespace TrueforceForAll.Plugin
                     // anything (owner, 2026-08-30).
                     bool? r = TrueforceDialog.Show(app.MainWindow, title, body,
                         DialogKind.Info,
-                        okLabel: "Got it", cancelLabel: "Don't show this again for this game",
+                        okLabel: Loc.T("Settings_Got"), cancelLabel: Loc.T("Plugin_DonTShowAgain"),
                         goldOk: true, extraContent: cure);
                     if (r == false && !string.IsNullOrEmpty(game))
                     {
@@ -41616,37 +42068,36 @@ namespace TrueforceForAll.Plugin
             if (_nativeStreamFromMaira)
                 return new StandDownCopy
                 {
-                    Lead = "MAIRA is streaming to the wheel" + rate + ", so the plugin dropped to Lightsync only for this session.",
-                    Before = "Running MAIRA and TF4ALL at the same time is not supported: close MAIRA, then set the mode to Normal (see ",
-                    Link = "Running MAIRA",
-                    After = " in the iRacing guide).",
+                    Lead = Loc.F("Plugin_MAIRAStreamingWheelSo_Fmt", rate),
+                    Before = Loc.T("Plugin_RunningMAIRATF4ALLSame"),
+                    Link = Loc.T("Plugin_RunningMAIRA"),
+                    After = Loc.T("Plugin_IRacingGuide"),
                     GuideKey = "iracing-setup",
                 };
             if (IsIRacingReshapeGame(_activeGame))
                 return _nativeStreamIRacingApiOff
                     ? new StandDownCopy
                     {
-                        Lead = "Another program is streaming Trueforce to the wheel" + rate
-                             + " (not iRacing: its loadTrueForceAPI is already 0)." + why,
-                        Before = "Close whatever else drives the wheel, then pick Normal again (see the ",
-                        Link = "iRacing setup",
+                        Lead = Loc.F("Plugin_AnotherProgramStreamingTrueforce_Fmt", rate, why),
+                        Before = Loc.T("Plugin_CloseWhateverElseDrives"),
+                        Link = Loc.T("Plugin_IRacingSetup"),
                         After = ").",
                         GuideKey = "iracing-setup",
                     }
                     : new StandDownCopy
                     {
-                        Lead = "iRacing is streaming its own Trueforce" + rate + "." + why,
-                        Before = "With iRacing closed, set loadTrueForceAPI=0 in Documents\\iRacing\\app.ini (step 1 of the ",
-                        Link = "iRacing setup",
-                        After = "), then pick Normal again.",
+                        Lead = Loc.F("Plugin_IRacingStreamingOwnTrueforce_Fmt", rate, why),
+                        Before = Loc.T("Plugin_IRacingClosedSetLoadTrueForceAPI"),
+                        Link = Loc.T("Plugin_IRacingSetup"),
+                        After = Loc.T("Plugin_ThenPickNormalAgain"),
                         GuideKey = "iracing-setup",
                     };
             return new StandDownCopy
             {
-                Lead = "The game is streaming its own Trueforce" + rate + "." + why,
-                Before = "To run the plugin's Trueforce here instead, switch the game's own Trueforce off, then pick Normal again (see ",
-                Link = "Games with native Trueforce",
-                After = " in the guides).",
+                Lead = Loc.F("Plugin_GameStreamingOwnTrueforce_Fmt", rate, why),
+                Before = Loc.T("Plugin_RunPluginSTrueforce"),
+                Link = Loc.T("Guides_GamesNativeTrueforce"),
+                After = Loc.T("Plugin_Guides"),
                 GuideKey = "native-trueforce",
             };
         }
@@ -41787,7 +42238,7 @@ namespace TrueforceForAll.Plugin
             var app = System.Windows.Application.Current;
             if (app == null || _mairaTapNoticeShowing) return;
             if (Settings == null || Settings.MairaTapNoticeDismissed) return;
-            string title = "MAIRA detected: rev lights" + (WheelHasOledScreen ? " and screen" : "") + " are off";
+            string title = Loc.F("Plugin_MAIRADetectedRevLights_Fmt", (WheelHasOledScreen ? Loc.T("Plugin_Screen") : ""));
             string body = MairaTapDegradedLead;
             string tailAfter = MairaTapDegradedTailAfterLink;
             app.Dispatcher.BeginInvoke(new Action(() =>
@@ -41816,7 +42267,7 @@ namespace TrueforceForAll.Plugin
                     cure.Inlines.Add(setup);
                     cure.Inlines.Add(new System.Windows.Documents.Run(tailAfter));
                     bool? r = TrueforceDialog.Show(app.MainWindow, title, body, DialogKind.Info,
-                        okLabel: "Open the iRacing setup guide", cancelLabel: "Don't show again", goldOk: true,
+                        okLabel: Loc.T("Plugin_OpenIRacingSetupGuide"), cancelLabel: Loc.T("Plugin_DonTShowAgain2"), goldOk: true,
                         extraContent: cure);
                     if (r == true) OpenGuideFromAnywhere("iracing-setup");
                     else if (r == false)
@@ -41835,11 +42286,11 @@ namespace TrueforceForAll.Plugin
         /// "iRacing setup" a link: the lead (what is happening), then the cure
         /// split around the link text. The log joins them into one line.</summary>
         public string MairaTapDegradedLead =>
-            "MAIRA is running and its force is reaching the wheel through the plugin's USBPcap capture. That "
-            + "works, but with force on that path the rev lights" + (WheelHasOledScreen ? " and the wheel's screen" : "")
-            + " stay off.";
-        public const string MairaTapDegradedTailBeforeLink = "Close MAIRA, then follow the ";
-        public const string MairaTapDegradedLinkText = "iRacing setup";
+            Loc.F("Plugin_MAIRARunningForceReaching_Fmt", (WheelHasOledScreen ? Loc.T("Plugin_WheelSScreen") : ""));
+        // Properties, not consts: both are translated sentences now, so they have
+        // to resolve when they are read rather than when this type is loaded.
+        public static string MairaTapDegradedTailBeforeLink => Loc.T("Plugin_CloseMAIRAThenFollow");
+        public static string MairaTapDegradedLinkText => Loc.T("Plugin_IRacingSetup");
         public string MairaTapDegradedTailAfterLink =>
             " for the sim's own force with the plugin's effects" + (WheelHasOledScreen ? ", lights and screen." : " and lights.");
 
@@ -42397,7 +42848,7 @@ namespace TrueforceForAll.Plugin
                     try { v = p.GetValue(di, null); } catch { }
                     if (sb.Length > 0) sb.Append(' ');
                     sb.Append(p.Name).Append('=').Append(Convert.ToString(v,
-                        System.Globalization.CultureInfo.InvariantCulture) ?? "null");
+                        System.Globalization.CultureInfo.InvariantCulture) ?? Loc.T("Plugin_Null"));
                 }
                 SimHub.Logging.Current.Info("[TF4ALL] IRRAW session DriverInfo: " + sb.ToString());
             }
@@ -42424,8 +42875,8 @@ namespace TrueforceForAll.Plugin
                 return "present, NOT an array, type=" + v.GetType().FullName + ", value=" + scalar;
             }
             var sb = new System.Text.StringBuilder();
-            sb.Append("present, type=").Append(v.GetType().FullName)
-              .Append(", len=").Append(arr.Length.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            sb.Append(Loc.T("Plugin_PresentType")).Append(v.GetType().FullName)
+              .Append(Loc.T("Plugin_Len")).Append(arr.Length.ToString(System.Globalization.CultureInfo.InvariantCulture))
               .Append(", [");
             int n = arr.Length < 8 ? arr.Length : 8;
             for (int i = 0; i < n; i++)
@@ -42436,7 +42887,7 @@ namespace TrueforceForAll.Plugin
                 string text;
                 try { text = Convert.ToString(e, System.Globalization.CultureInfo.InvariantCulture); }
                 catch { text = "?"; }
-                sb.Append(text ?? "null");
+                sb.Append(text ?? Loc.T("Plugin_Null"));
             }
             if (n < arr.Length) sb.Append(" ...");
             sb.Append(']');
@@ -42844,12 +43295,8 @@ namespace TrueforceForAll.Plugin
             {
                 try
                 {
-                    TrueforceDialog.Show(null, "Restart your computer to finish",
-                        "USBPcap is installed, but its capture driver only attaches to your USB ports while Windows "
-                            + "starts, so FFB pass-through stays off until you restart the computer.\n\n"
-                            + "If it is still off after a restart, check for a BIOS update from your PC or "
-                            + "motherboard maker. Out-of-date Secure Boot keys are the usual reason Windows "
-                            + "refuses to load the driver, and updating the BIOS refreshes them.",
+                    TrueforceDialog.Show(null, Loc.T("Plugin_RestartComputerFinish"),
+                        Loc.T("Plugin_USBPcapInstalledButCapture"),
                         DialogKind.Warning);
                 }
                 catch { }

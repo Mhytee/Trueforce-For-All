@@ -51,6 +51,7 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -235,11 +236,26 @@ namespace TrueforceForAll.Plugin
         // HID++ feature index, the layout count and the device path. That is
         // log material, not panel material, and the log already carries the
         // same string from the open itself ("[OLED] resolved ...").
+        //
+        // Composed on read rather than cached, so the panel line follows a
+        // language change on its next write instead of holding the words it was
+        // built with. The test path's own text is a field, which is why it is
+        // volatile: a background task publishes it.
         public string Status =>
             _testing ? _testStatus
+          : _openState == 2 ? Loc.T("TelemetryFfb_OledStatusOpen")
+          : _openState == 3 ? Loc.T("TelemetryFfb_OledStatusFailed")
+          : _openState == 1 ? Loc.T("TelemetryFfb_OledStatusOpening")
+          : Loc.T("TelemetryFfb_OledStatusIdle");
+
+        /// <summary>The same state in English, for the log. Status is panel copy
+        /// and follows the language; a log line has to stay greppable, which is
+        /// the same rule that keeps FxGainFamilyLabel in English.</summary>
+        public string StatusForLog =>
+            _testing ? "testing"
           : _openState == 2 ? "open"
-          : _openState == 3 ? "no OLED wheel found (see log)"
-          : _openState == 1 ? "opening…"
+          : _openState == 3 ? "failed"
+          : _openState == 1 ? "opening"
           : "idle";
 
         /// <summary>Called every telemetry frame. <paramref name="gateOpen"/> is
@@ -850,7 +866,7 @@ namespace TrueforceForAll.Plugin
                     }
                     if (!opened)
                     {
-                        _testStatus = "could not open the OLED channel (see log)";
+                        _testStatus = Loc.T("TelemetryFfb_OledTestOpenFailed");
                         _log("[OLED] Test: could not open the channel. Check the log above "
                              + "for which interfaces were probed. Only the G PRO and RS50 "
                              + "have this screen.");
@@ -874,7 +890,7 @@ namespace TrueforceForAll.Plugin
                     {
                         try { _channel.Clear(); } catch { }
                         _showing = false;
-                        _testStatus = "test finished - screen released";
+                        _testStatus = Loc.T("TelemetryFfb_OledTestFinished");
                         _log("[OLED] Test: finished, screen handed back to the wheel.");
                     }
                     _testing = false;

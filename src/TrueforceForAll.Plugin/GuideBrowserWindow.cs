@@ -19,6 +19,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -109,7 +110,7 @@ namespace TrueforceForAll.Plugin
         {
             _entries = entries;
             _panelNav = panelNav;
-            Title = "Trueforce For All: guides";
+            Title = Loc.T("GuideBrowser_TrueforceAllGuides");
             Background = WindowBg;
             Foreground = TextFg;
             Width = 880;
@@ -152,7 +153,7 @@ namespace TrueforceForAll.Plugin
             };
             var watermark = new TextBlock
             {
-                Text = "Search guides",
+                Text = Loc.T("GuideBrowser_SearchGuides"),
                 Foreground = MutedFg,
                 FontSize = 12,
                 Margin = new Thickness(9, 5, 0, 0),
@@ -269,7 +270,7 @@ namespace TrueforceForAll.Plugin
 
             var close = new Button
             {
-                Content = "Close",
+                Content = Loc.T("Settings_Close"),
                 MinWidth = 90,
                 Padding = new Thickness(14, 5, 14, 5),
                 Cursor = Cursors.Hand,
@@ -326,7 +327,7 @@ namespace TrueforceForAll.Plugin
 
             if (_shown.Count == 0)
             {
-                _noMatches.Text = "No guide mentions “" + q + "”.";
+                _noMatches.Text = Loc.F("GuideBrowser_NoGuideMentions_Fmt", q);
                 _noMatches.Visibility = Visibility.Visible;
                 _listPanel.Children.Add(_noMatches);
             }

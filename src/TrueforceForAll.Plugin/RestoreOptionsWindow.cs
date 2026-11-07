@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -30,7 +31,7 @@ namespace TrueforceForAll.Plugin
 
         public RestoreOptionsWindow()
         {
-            Title         = "Restore from backup";
+            Title         = Loc.T("Settings_RestoreBackup");
             Width         = 500;
             SizeToContent = SizeToContent.Height;
             Background     = WindowBg;
@@ -43,26 +44,26 @@ namespace TrueforceForAll.Plugin
             Content = root;
 
             root.Children.Add(new TextBlock {
-                Text = "Choose how to bring in this backup. Either way, your current library is moved aside to a recoverable folder first, so nothing is lost.",
+                Text = Loc.T("RestoreOptions_ChooseHowBringBackup"),
                 Foreground = MutedFg, FontSize = 12, TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 16),
             });
 
             root.Children.Add(MakeHeader("Presets and car tunings"));
             _libReplace = MakeRadio("lib",
-                "Replace mine with the backup's",
-                "Your current presets and car tunings are moved aside; the backup's become your library.", true);
+                Loc.T("RestoreOptions_ReplaceMineBackupS"),
+                Loc.T("RestoreOptions_CurrentPresetsCarTunings"), true);
             _libMerge = MakeRadio("lib",
-                "Merge the backup's into mine",
-                "Add the backup's presets to your library. If a name clashes, you'll choose which copy to keep.", false);
+                Loc.T("RestoreOptions_MergeBackupSInto"),
+                Loc.T("RestoreOptions_AddBackupSPresets"), false);
             root.Children.Add(_libReplace);
             root.Children.Add(_libMerge);
 
             root.Children.Add(MakeHeader("Settings (gains, effect tuning, force feedback)"));
-            _setApply = MakeRadio("set", "Apply the backup's settings",
-                "Take the master gain, effect tuning, and force-feedback settings from the backup.", true);
-            _setKeep = MakeRadio("set", "Keep my current settings",
-                "Bring in only the presets above; leave your settings as they are.", false);
+            _setApply = MakeRadio("set", Loc.T("RestoreOptions_ApplyBackupSSettings"),
+                Loc.T("RestoreOptions_TakeMasterGainEffect"), true);
+            _setKeep = MakeRadio("set", Loc.T("RestoreOptions_KeepMyCurrentSettings"),
+                Loc.T("RestoreOptions_BringOnlyPresetsAbove"), false);
             root.Children.Add(_setApply);
             root.Children.Add(_setKeep);
 
@@ -72,7 +73,7 @@ namespace TrueforceForAll.Plugin
                 Margin = new Thickness(0, 18, 0, 0),
             };
             var cancel = new Button {
-                Content = "Cancel", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 10, 0),
+                Content = Loc.T("Common_Cancel"), Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 10, 0),
                 Foreground = TextFg, IsCancel = true,
                 Style = MakeFilledButtonStyle(TextFg, Color.FromRgb(0x33, 0x33, 0x33), Color.FromRgb(0x40, 0x40, 0x40), Color.FromRgb(0x2B, 0x2B, 0x2B)),
             };
@@ -80,7 +81,7 @@ namespace TrueforceForAll.Plugin
             btnRow.Children.Add(cancel);
 
             var cont = new Button {
-                Content = "Continue", Padding = new Thickness(16, 6, 16, 6),
+                Content = Loc.T("Settings_Continue"), Padding = new Thickness(16, 6, 16, 6),
                 Foreground = WindowBg, FontWeight = FontWeights.SemiBold, IsDefault = true,
                 Style = MakeFilledButtonStyle(WindowBg, Color.FromRgb(0xE5, 0xC0, 0x4A), Color.FromRgb(0xF2, 0xD3, 0x71), Color.FromRgb(0xCF, 0xA9, 0x3A)),
             };

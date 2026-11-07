@@ -110,6 +110,15 @@
     <EmbeddedResource Include="Guides\*.md">
       <LogicalName>TrueforceForAll.Plugin.Guides.%(Filename).md</LogicalName>
     </EmbeddedResource>
+    <!-- The panel's text, one JSON file per language (en.json is the source
+         of truth, translations sit beside it). Embedded like the Guides so a
+         three-DLL deploy carries every language; LocSeed writes reference
+         copies to PluginsData\Common\TrueforceForAll-Languages\shipped at
+         start. The logical name is what LocSeed.ReadEmbeddedText builds from
+         the culture tag. See docs/localization-plan.md. -->
+    <EmbeddedResource Include="Languages\*.json">
+      <LogicalName>TrueforceForAll.Plugin.Languages.%(Filename).json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!-- SimHub provides these at runtime; don't copy them to the output dir. -->

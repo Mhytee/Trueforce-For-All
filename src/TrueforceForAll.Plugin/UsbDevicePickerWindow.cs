@@ -28,6 +28,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
 using TrueforceForAll.Core;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -61,7 +62,7 @@ namespace TrueforceForAll.Plugin
         public UsbDevicePickerWindow(TrueforcePlugin plugin)
         {
             _plugin = plugin;
-            Title  = "Pick USB device for FFB pass-through";
+            Title  = Loc.T("UsbPicker_PickUSBDeviceFFB");
             Width  = 760;
             Height = 500;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -79,9 +80,7 @@ namespace TrueforceForAll.Plugin
             // Header explanation
             var header = new TextBlock
             {
-                Text = "Pick the wheel's USB device for FFB pass-through. " +
-                       "Rows that match a supported wheel or your currently-detected HID wheel are flagged in Notes. " +
-                       "Selection persists across restarts. Clear it to return to auto-discovery.",
+                Text = Loc.T("UsbPicker_PickWheelSUSB"),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8),
                 Foreground = SubtleFg,
@@ -95,7 +94,7 @@ namespace TrueforceForAll.Plugin
                 Orientation = Orientation.Horizontal,
                 Margin = new Thickness(0, 0, 0, 8),
             };
-            _rescanButton = MakeButton("Re-scan USB devices", 160);
+            _rescanButton = MakeButton(Loc.T("UsbPicker_ReScanUSBDevices"), 160);
             _rescanButton.Click += (s, e) => StartScan();
             topBar.Children.Add(_rescanButton);
             _statusText = new TextBlock
@@ -116,18 +115,18 @@ namespace TrueforceForAll.Plugin
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 8, 0, 0),
             };
-            _clearButton = MakeButton("Clear override (use auto)", 200);
+            _clearButton = MakeButton(Loc.T("UsbPicker_ClearOverrideUseAuto"), 200);
             _clearButton.Click += ClearButton_Click;
             _clearButton.IsEnabled = _plugin.HasManualUsbPcapDevice;
             bottomBar.Children.Add(_clearButton);
 
-            _applyButton = MakeButton("Use selected device", 170);
+            _applyButton = MakeButton(Loc.T("UsbPicker_UseSelectedDevice"), 170);
             _applyButton.Click += ApplyButton_Click;
             _applyButton.IsEnabled = false;
             _applyButton.IsDefault = true;
             bottomBar.Children.Add(_applyButton);
 
-            var cancelButton = MakeButton("Close", 80);
+            var cancelButton = MakeButton(Loc.T("Settings_Close"), 80);
             cancelButton.IsCancel = true;
             bottomBar.Children.Add(cancelButton);
 
@@ -148,11 +147,11 @@ namespace TrueforceForAll.Plugin
 
             var gridView = new GridView();
             gridView.ColumnHeaderContainerStyle = BuildHeaderStyle();
-            gridView.Columns.Add(MakeColumn("Interface",  140, "Interface"));
-            gridView.Columns.Add(MakeColumn("Address",     70, "Address"));
-            gridView.Columns.Add(MakeColumn("VID:PID",    100, "VidPid"));
-            gridView.Columns.Add(MakeColumn("Device",     220, "Description"));
-            gridView.Columns.Add(MakeColumn("Notes",      180, "Notes"));
+            gridView.Columns.Add(MakeColumn(Loc.T("UsbPicker_Interface"),  140, "Interface"));
+            gridView.Columns.Add(MakeColumn(Loc.T("UsbPicker_Address"),     70, "Address"));
+            gridView.Columns.Add(MakeColumn(Loc.T("UsbPicker_VIDPID"),    100, "VidPid"));
+            gridView.Columns.Add(MakeColumn(Loc.T("UsbPicker_Device"),     220, "Description"));
+            gridView.Columns.Add(MakeColumn(Loc.T("UsbPicker_Notes"),      180, "Notes"));
             _list.View = gridView;
             _list.SelectionMode = SelectionMode.Single;
             _list.SelectionChanged += (s, e) => _applyButton.IsEnabled = _list.SelectedItem != null;
@@ -262,13 +261,13 @@ namespace TrueforceForAll.Plugin
             _list.ItemsSource = null;
             _rescanButton.IsEnabled = false;
             _statusText.Text = _tapWasRunning
-                ? "Scanning USB devices (FFB pass-through paused during scan)..."
-                : "Scanning USB devices...";
+                ? Loc.T("UsbPicker_ScanningUSBDevicesFFB")
+                : Loc.T("UsbPicker_ScanningUSBDevices");
 
             string usbPcapCmdPath = UsbPcapFfbTap.LocateUsbPcapCmd(_plugin.Settings?.UsbPcapCmdPathOverride);
             if (usbPcapCmdPath == null)
             {
-                _statusText.Text = "USBPcapCMD.exe not found. Install or reinstall USBPcap first.";
+                _statusText.Text = Loc.T("UsbPicker_USBPcapCMDExeNotFound");
                 _rescanButton.IsEnabled = true;
                 return;
             }
@@ -316,8 +315,8 @@ namespace TrueforceForAll.Plugin
                             Interface   = prevIface,
                             Address     = prevAddr,
                             VidPid      = hidVid != 0 ? $"{hidVid:X4}:{hidPid:X4}" : "(unknown)",
-                            Description = "FFB tap was here before the picker opened",
-                            Notes       = "previously active (not in fresh scan)",
+                            Description = Loc.T("UsbPicker_FFBTapWasHere"),
+                            Notes       = Loc.T("UsbPicker_PreviouslyActiveNotFresh"),
                             Candidate   = new UsbDeviceCandidate
                             {
                                 Interface = prevIface,
@@ -337,12 +336,10 @@ namespace TrueforceForAll.Plugin
 
                         if (rows.Count == 0)
                         {
-                            _statusText.Text = "No USB devices found. " +
-                                "If your wheel is plugged in, try replugging it (USBPcap caches descriptors at enumeration time) " +
-                                "or running SimHub as administrator.";
+                            _statusText.Text = Loc.T("UsbPicker_NoUSBDevicesFound");
                             return;
                         }
-                        _statusText.Text = $"Found {rows.Count} device(s). Pick your wheel and click 'Use selected device'.";
+                        _statusText.Text = Loc.F("UsbPicker_FoundDeviceSPick_Fmt", rows.Count);
 
                         // Pre-select: prefer active override, then HID-found
                         // wheel, then previously-active tap row.
@@ -366,7 +363,7 @@ namespace TrueforceForAll.Plugin
                 {
                     Dispatcher.Invoke(() =>
                     {
-                        _statusText.Text = "Couldn't scan for devices. If G HUB is open, close it and try again.";
+                        _statusText.Text = Loc.T("UsbPicker_CouldnTScanDevices");
                         TrueforceDialog.LogError("USB scan", ex);
                         _rescanButton.IsEnabled = true;
                     });
@@ -379,18 +376,18 @@ namespace TrueforceForAll.Plugin
                                    string prevIface, int prevAddr)
         {
             var notes = new List<string>();
-            if (c.Interface == activeIface && c.DeviceAddress == activeAddr) notes.Add("ACTIVE");
-            else if (c.Interface == prevIface && c.DeviceAddress == prevAddr) notes.Add("previously active");
-            if (c.IsSupportedWheel) notes.Add("supported wheel");
-            else if (c.Vid == WheelDiscovery.LogitechVid) notes.Add("Logitech (unknown PID)");
-            if (hidVid != 0 && c.Vid == hidVid && c.Pid == hidPid) notes.Add("matches HID wheel");
+            if (c.Interface == activeIface && c.DeviceAddress == activeAddr) notes.Add(Loc.T("UsbPicker_ACTIVE"));
+            else if (c.Interface == prevIface && c.DeviceAddress == prevAddr) notes.Add(Loc.T("UsbPicker_PreviouslyActive"));
+            if (c.IsSupportedWheel) notes.Add(Loc.T("UsbPicker_SupportedWheel"));
+            else if (c.Vid == WheelDiscovery.LogitechVid) notes.Add(Loc.T("UsbPicker_LogitechUnknownPID"));
+            if (hidVid != 0 && c.Vid == hidVid && c.Pid == hidPid) notes.Add(Loc.T("UsbPicker_MatchesHIDWheel"));
 
             return new Row
             {
                 Interface   = c.Interface,
                 Address     = c.DeviceAddress,
                 VidPid      = $"{c.Vid:X4}:{c.Pid:X4}",
-                Description = !string.IsNullOrEmpty(c.Model) ? c.Model : "USB device",
+                Description = !string.IsNullOrEmpty(c.Model) ? c.Model : Loc.T("UsbPicker_USBDevice"),
                 Notes       = string.Join(", ", notes),
                 Candidate   = c,
             };
@@ -407,20 +404,20 @@ namespace TrueforceForAll.Plugin
                 var result = TrueforceDialog.Show(
                     this,
                     "Trueforce For All",
-                    $"This device isn't a Logitech wheel ({row.VidPid}). The FFB tap won't get any data from it. Apply anyway?",
-                    DialogKind.Confirm, "Apply anyway", "Cancel");
+                    Loc.F("UsbPicker_DeviceIsnTLogitech_Fmt", row.VidPid),
+                    DialogKind.Confirm, Loc.T("Settings_CrossWheelFfbApply"), Loc.T("Common_Cancel"));
                 if (result != true) return;
             }
 
             bool ok = _plugin.ApplyManualUsbPcapDevice(row.Interface, row.Address, row.Candidate.Vid, row.Candidate.Pid);
             if (ok)
             {
-                _statusText.Text = $"Applied: {row.Interface} dev {row.Address}. FFB tap restarting.";
+                _statusText.Text = Loc.F("UsbPicker_AppliedDevFFBTap_Fmt", row.Interface, row.Address);
                 _clearButton.IsEnabled = true;
             }
             else
             {
-                _statusText.Text = "Could not restart the FFB tap. Check the log for details.";
+                _statusText.Text = Loc.T("UsbPicker_CouldNotRestartFFB");
             }
             DialogResult = true;
             Close();
@@ -429,7 +426,7 @@ namespace TrueforceForAll.Plugin
         private void ClearButton_Click(object sender, RoutedEventArgs e)
         {
             _plugin.ApplyManualUsbPcapDevice("", 0);
-            _statusText.Text = "Cleared. Auto-discovery will run on the next FFB tap start.";
+            _statusText.Text = Loc.T("UsbPicker_ClearedAutoDiscoveryWill");
             _clearButton.IsEnabled = false;
             DialogResult = true;
             Close();

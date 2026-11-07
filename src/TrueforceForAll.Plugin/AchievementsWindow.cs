@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using TrueforceForAll.Plugin.Localization;
 
 namespace TrueforceForAll.Plugin
 {
@@ -51,7 +52,7 @@ namespace TrueforceForAll.Plugin
             _initialList = achievements ?? new List<AchievementClient.AchievementRow>();
             _initialLinked = discordLinked;
 
-            Title = "Achievements";
+            Title = Loc.T("Header_AchievementCrown_Tip");
             Width = 540;
             Height = 600;
             Background = WindowBg;
@@ -62,7 +63,7 @@ namespace TrueforceForAll.Plugin
 
             var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
             header.Children.Add(new TextBlock { Text = "🏆", Foreground = Brushes.White, FontSize = 18, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
-            header.Children.Add(new TextBlock { Text = "Achievements", Foreground = FgText, FontSize = 17, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+            header.Children.Add(new TextBlock { Text = Loc.T("Header_AchievementCrown_Tip"), Foreground = FgText, FontSize = 17, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
             _countText = new TextBlock { Foreground = DimText, FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
             header.Children.Add(_countText);
             DockPanel.SetDock(header, Dock.Top);
@@ -71,14 +72,14 @@ namespace TrueforceForAll.Plugin
             var footer = new DockPanel { Margin = new Thickness(0, 10, 0, 0) };
             var celebToggle = new CheckBox
             {
-                Content = "Show achievement celebrations", Foreground = DimText,
+                Content = Loc.T("Achievements_ShowAchievementCelebrations"), Foreground = DimText,
                 IsChecked = showCelebrations, VerticalAlignment = VerticalAlignment.Center,
             };
             celebToggle.Checked   += (s, e) => onToggleCelebrations?.Invoke(true);
             celebToggle.Unchecked += (s, e) => onToggleCelebrations?.Invoke(false);
             DockPanel.SetDock(celebToggle, Dock.Left);
             footer.Children.Add(celebToggle);
-            var close = new Button { Content = "Close", Padding = new Thickness(16, 4, 16, 4), HorizontalAlignment = HorizontalAlignment.Right, Background = PanelBg, Foreground = FgText };
+            var close = new Button { Content = Loc.T("Settings_Close"), Padding = new Thickness(16, 4, 16, 4), HorizontalAlignment = HorizontalAlignment.Right, Background = PanelBg, Foreground = FgText };
             close.Click += (s, e) => Close();
             footer.Children.Add(close);
             DockPanel.SetDock(footer, Dock.Bottom);
@@ -132,13 +133,13 @@ namespace TrueforceForAll.Plugin
             });
             sp.Children.Add(new TextBlock
             {
-                Text = "Check your browser to finish linking Discord.",
+                Text = Loc.T("Achievements_CheckBrowserFinishLinking"),
                 Foreground = FgText, FontSize = 15, FontWeight = FontWeights.SemiBold,
                 TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6),
             });
             sp.Children.Add(new TextBlock
             {
-                Text = "This window updates automatically once you're done.",
+                Text = Loc.T("Achievements_WindowUpdatesAutomaticallyOnce"),
                 Foreground = DimText, FontSize = 12, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
             });
             _host.Child = sp;
@@ -171,7 +172,7 @@ namespace TrueforceForAll.Plugin
             });
             content.Children.Add(new TextBlock
             {
-                Text = "Join Discord to claim your role" + (earnedCount > 1 ? "s" : ""),
+                Text = Loc.N("Achievements_JoinDiscordRole", earnedCount),
                 Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap,
             });
             return new Button

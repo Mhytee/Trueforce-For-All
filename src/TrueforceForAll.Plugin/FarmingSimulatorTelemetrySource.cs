@@ -251,6 +251,7 @@ namespace TrueforceForAll.Plugin
         // the pipe threads, read on the FFB pump, 64-bit on a 32-bit host).
         private long _motorLoadStampTicks;
         private bool _connectedLogged;
+        private bool _commaDecimalLogged;   // parse thread only (under _parseLock)
         private string _lastLoopError;
 
         /// <summary>Engine load 0..1 from the mod, or negative when the game
@@ -455,10 +456,69 @@ namespace TrueforceForAll.Plugin
             }
         }
 
+        // Frames come from the game's Lua, which formats every number with
+        // string.format('%.Nf'). That runs in the game process, outside
+        // SimHub's en-US culture pin, and the Giants VM may honor the OS C
+        // locale: on a de-DE or es-ES machine a frame could then read
+        // "speedKmh":12,345 where the parser expects 12.345. Called only
+        // after the plain parse has failed, so the success path stays
+        // allocation-free. Rewrites a comma between two ASCII digits outside
+        // a string literal into a period. A member separator is never between
+        // two digits in this protocol: the mod joins "key":value pairs with
+        // "," so a separator is always followed by a quote, and the wheel
+        // objects are joined as "},{" (TF4ALLTelemetry.lua, buildFrame).
+        // String values (carCfg, carName, gearName) are skipped so a name
+        // such as "1,5 t" keeps its comma. Returns null when there was
+        // nothing to rewrite.
+        private static string NormalizeCommaDecimals(string line)
+        {
+            var chars = line.ToCharArray();
+            bool changed = false;
+            bool inString = false;
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char c = chars[i];
+                if (inString)
+                {
+                    if (c == '\\') i++;           // skip the escaped character
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"') { inString = true; continue; }
+                if (c == ',' && i > 0 && i + 1 < chars.Length
+                    && chars[i - 1] >= '0' && chars[i - 1] <= '9'
+                    && chars[i + 1] >= '0' && chars[i + 1] <= '9')
+                {
+                    chars[i] = '.';
+                    changed = true;
+                }
+            }
+            return changed ? new string(chars) : null;
+        }
+
         private void ParseLine(string line)
         {
             if (string.IsNullOrEmpty(line) || line[0] != '{') return;
-            var o = JObject.Parse(line);
+            JObject o;
+            try
+            {
+                o = JObject.Parse(line);
+            }
+            catch (Newtonsoft.Json.JsonReaderException)
+            {
+                // Comma-decimal guard (see NormalizeCommaDecimals). A line
+                // with nothing to rewrite, or one that still fails after the
+                // rewrite, throws out of here exactly as before: the reader
+                // loop swallows it and drops the line.
+                string fixedLine = NormalizeCommaDecimals(line);
+                if (fixedLine == null) throw;
+                o = JObject.Parse(fixedLine);
+                if (!_commaDecimalLogged)
+                {
+                    _commaDecimalLogged = true;
+                    Logger?.Invoke("Farming Simulator frame needed comma-decimal normalization (the game's Lua formats numbers with a decimal comma on this machine).");
+                }
+            }
 
             bool inVehicle = o.Value<bool?>("inVehicle") ?? false;
             _inVehicle = inVehicle;

@@ -1,0 +1,36 @@
+﻿src/TrueforceForAll.Plugin/SettingsControl.xaml:4443  Header="Presets"  ->  {loc:T Presets_PresetsTab_Header}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5835  Text="Achievement unlocked"  ->  {loc:T Trailer_AchievementToastTitle}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5840  Content="Link"  ->  {loc:T Trailer_AchievementToastLink}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:5846  ToolTip="Dismiss this notification (the achievement stays unlocked)."  ->  {loc:T Trailer_AchievementToastClose_Tip}
+src/TrueforceForAll.Plugin/SettingsControl.xaml:scopes  tab:PresetsTab, trailer:SettingsControl.xaml
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:4  Title="Custom engine"  ->  {loc:T EngineEditor_CustomEngine_Title}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:37  Text="Pick the firing pattern closest to the real engine and set the cylinder or rotor count. Save, then choose your new engine in a variant's Engine dropdown to hear it on that car."  ->  {loc:T EngineEditor_PickTheFiringPattern}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:44  Text="This engine was saved as electric. Saving here converts it to a firing-pattern engine. For electric cars, use the built-in Electric engine type and the EV behavior setting instead."  ->  {loc:T EngineEditor_ElectricConvertNote}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:49  Text="Name:"  ->  {loc:T EngineEditor_Name}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:51  ToolTip="What this engine is called in the Engine dropdowns, e.g. 'LS3 swap' or 'Crossplane R1'."  ->  {loc:T EngineEditor_NameText_Tip}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:57  Text="Firing pattern:"  ->  {loc:T EngineEditor_FiringPattern}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:58  ToolTip="Picks how pulses distribute within one 720° engine cycle. Even-fire covers Inline / Boxer / V60° / V90° / V8 flat-plane / V10 / V12 / W12-16 / V4."  ->  {loc:T EngineEditor_FiringPattern_Tip}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:60  Content="Even-fire (cyl count picks Inline / Boxer / V / W)"  ->  {loc:T EngineEditor_ShapeEvenFireCylCount}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:61  Content="V8 cross-plane (American muscle, locks at 8)"  ->  {loc:T EngineEditor_ShapeV8CrossPlaneAmerican}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:62  Content="V6 odd-fire 90° (locks at 6)"  ->  {loc:T EngineEditor_ShapeV6OddFire90Locks}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:63  Content="V-twin 90° (Ducati, locks at 2)"  ->  {loc:T EngineEditor_ShapeVTwin90DucatiLocks}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:64  Content="V-twin 60° (Aprilia, KTM, locks at 2)"  ->  {loc:T EngineEditor_ShapeVTwin60ApriliaKtm}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:65  Content="V-twin 45° (Harley, locks at 2)"  ->  {loc:T EngineEditor_ShapeVTwin45HarleyLocks}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:66  Content="Inline-4 cross-plane (Yamaha R1, locks at 4)"  ->  {loc:T EngineEditor_ShapeInline4CrossPlane}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:67  Content="Rotary (rotor count)"  ->  {loc:T EngineEditor_ShapeRotaryRotorCount}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:68  Content="Parallel twin 180° (MT-07, RS660, locks at 2)"  ->  {loc:T EngineEditor_ShapeParallelTwin180Mt}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:69  Content="V4 Twin Pulse (Panigale, locks at 4)"  ->  {loc:T EngineEditor_ShapeV4TwinPulsePanigale}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:70  Content="Boxer-4 rumble (Subaru, locks at 4)"  ->  {loc:T EngineEditor_ShapeBoxer4RumbleSubaru}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:77  Text="Cylinders:"  ->  {loc:T EngineEditor_Count}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:87  Text="Pattern:"  ->  {loc:T EngineEditor_Pattern}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:88  ToolTip="Comma-separated positions from 0 up to (but not including) 1, marking where each pulse fires within one engine cycle. Optional ':amplitude' suffix per pulse (0.25:0.85) makes that pulse softer. Auto-fills when you pick a shape / count above; hand-edit for odd-fire engines."  ->  {loc:T EngineEditor_Pattern_Tip}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:95  Text="Each number is when a cylinder fires within one engine cycle, from 0 to 1."  ->  {loc:T EngineEditor_PatternHelp}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:96  Content="Regenerate"  ->  {loc:T EngineEditor_RegeneratePattern}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:99  ToolTip="Rebuild the pattern from the shape and cylinder count above. Replaces any manual edits."  ->  {loc:T EngineEditor_RegeneratePattern_Tip}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:105  Content="Cancel"  ->  {loc:T Common_Cancel}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:106  Content="Save"  ->  {loc:T Common_Save}
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:root  + xmlns:loc="clr-namespace:TrueforceForAll.Plugin.Localization"
+src/TrueforceForAll.Plugin/CustomEngineEditor.xaml:scopes  whole file
+
+30 replacements in 2 file(s); en.json: +28 new key(s), 2 already present -> src/TrueforceForAll.Plugin/Languages/en.json
+Dry run: nothing written.

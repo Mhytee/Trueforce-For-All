@@ -1,6 +1,6 @@
 <!-- Generated from src/TrueforceForAll.Plugin/Guides by scripts/gen_public_guides.py. Edit the source, not this file. -->
 
-# Putting controls on your wheel
+# Bindings
 
 Most of what you would open this panel to change can be put on a control instead, and changed while you are driving. The bindings live on the **Controls** tab.
 
@@ -19,9 +19,9 @@ Your wheel holds five patterns and the library holds as many as you like, so **R
 ## The rest of the list
 
 - **Telemetry FFB up / down.** The strength of the force the plugin builds itself, for the games where it does. ([What that is](telemetry-ffb.md).)
-- **Auto force.** Runs the current game's auto force calibration from the rim: in iRacing it sets the max force from the learned peak, and in Forza it resets the auto-strength learner so the strength re-levels for the car. One press, no settings trip.
+- **Auto force.** Runs the current game's auto force calibration from the rim: in iRacing and Le Mans Ultimate it sets the max force from the learned peak, in RaceRoom it sets the car's max from the peak it has watched that car push, and in Forza it resets the auto-strength learner so the strength re-levels for the car. One press, no settings trip.
 - **Wheel OLED next / back.** Step through the wheel screen's pages.
 - **Dash tab next / back.** Step through the phone dash's tabs, so it can be driven from a button rather than reached for.
-- **Peak force up / down.** iRacing's full-scale force. Raise it if the wheel is clipping, lower it if the car feels weak. ([iRacing setup](iracing-setup.md).)
+- **Peak force up / down.** The full-scale force in iRacing and Le Mans Ultimate: raise it if the wheel is clipping, lower it if the car feels weak. In RaceRoom the same pair moves the car's max, which runs the other way, so up leans the car harder on the wheel and down makes it lighter. ([iRacing setup](iracing-setup.md), [Le Mans Ultimate setup](lmu-setup.md), [RaceRoom setup](raceroom-setup.md).)
 
 Every one of these also appears in SimHub's own Controls and events list, under Trueforce For All, if you would rather bind it from there.

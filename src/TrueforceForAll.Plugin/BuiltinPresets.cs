@@ -8,7 +8,8 @@
 // Folder resolution:
 //   1. Settings.BuiltinPresetsFolder, if set and it exists (lets a user point
 //      at a moved folder or a shared "preset pack").
-//   2. Otherwise the shipped default next to the plugin DLL: <dll>\TrueforceForAll-Presets.
+//   2. Otherwise the shipped default, the factory subfolder of the shared
+//      root: <SimHub>\PluginsData\Common\TrueforceForAll\factory.
 //
 // The plugin calls Initialize(...) early in Init (after settings load) so the
 // folder override is honored. Anything that touches the API before that
