@@ -26005,10 +26005,18 @@ namespace TrueforceForAll.Plugin
         // Enum-typed selectors (IdleLedMode, OledScreen, ...) are captured by the
         // enum branch below and need no entry here; dictionaries (CarLightPattern)
         // are dropped by the scalar rule.
+        //
+        // UiLanguage is the one entry that is NOT sent verbatim. It is a culture
+        // tag, so it may carry a region ("de-DE", "pt-BR"), and UsageLanguage
+        // refuses to send one for a stated reason: a bare "de" narrows nothing,
+        // while "de-AT" beside a wheel, a game list and 161 settings keys starts
+        // to. The isStr branch below cuts it to the language subtag, so the same
+        // two-letter promise holds for the picked language as for the machine
+        // language. Adding it here WITHOUT that truncation reintroduces the region.
         private static readonly System.Collections.Generic.HashSet<string> UsageSnapshotStringAllow =
             new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
         {
-            "DashTheme", "DashIdleStyle", "CspBridgeFfbField",
+            "DashTheme", "DashIdleStyle", "CspBridgeFfbField", "UiLanguage",
         };
 
         /// <summary>Build the anonymous settings snapshot as a compact JSON object.
@@ -26051,6 +26059,21 @@ namespace TrueforceForAll.Plugin
                     {
                         string sv = ((string)v).Trim();
                         if (sv.Length == 0 || sv.Length > 40) continue;     // enum-like only
+                        if (p.Name == "UiLanguage")
+                        {
+                            // Language subtag only, never the region (see the allowlist
+                            // above). Empty stays dropped by the length check above, and
+                            // that absence is load-bearing: it reads as "never opened the
+                            // picker", which is a different fact from choosing English.
+                            // Anything not two ASCII letters is skipped rather than
+                            // guessed, matching UsageLanguage: a wrong default here is
+                            // silent corruption of the one number this field exists for.
+                            int cut = sv.IndexOfAny(new[] { '-', '_' });
+                            if (cut >= 0) sv = sv.Substring(0, cut);
+                            sv = sv.ToLowerInvariant();
+                            if (sv.Length != 2 || sv[0] < 'a' || sv[0] > 'z'
+                                               || sv[1] < 'a' || sv[1] > 'z') continue;
+                        }
                         o[p.Name] = sv;
                     }
                     else if (isEnum)
