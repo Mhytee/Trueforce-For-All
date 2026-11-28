@@ -195,7 +195,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
 
             // Pitch scales with vehicle speed (tonal waveforms only).
             // Sanitize a non-finite speed up front: a NaN slips through the

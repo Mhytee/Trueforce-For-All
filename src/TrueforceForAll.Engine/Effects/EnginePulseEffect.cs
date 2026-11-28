@@ -475,7 +475,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
 
             // Absorb auto-detected cylinder count from sources that supply it
             // (Forza UDP) into AutoLayout. Sticky, keep the last seen value

@@ -88,6 +88,7 @@ namespace TrueforceForAll.Core
             double D(string name)      { var c = Cell(name); return c.Length == 0 ? 0.0 : double.Parse(c, CultureInfo.InvariantCulture); }
             double? DN(string name)    { var c = Cell(name); return c.Length == 0 ? (double?)null : double.Parse(c, CultureInfo.InvariantCulture); }
             int I(string name)         { var c = Cell(name); return c.Length == 0 ? 0 : int.Parse(c, CultureInfo.InvariantCulture); }
+            float? FN(string name)     { var c = Cell(name); return c.Length == 0 ? (float?)null : float.Parse(c, CultureInfo.InvariantCulture); }
             int? IN(string name)       { var c = Cell(name); return c.Length == 0 ? (int?)null : int.Parse(c, CultureInfo.InvariantCulture); }
             bool? BN(string name)      { var c = Cell(name); return c.Length == 0 ? (bool?)null : c == "1"; }
             bool B(string name)        { return Cell(name) == "1"; }
@@ -128,6 +129,13 @@ namespace TrueforceForAll.Core
                 RpmPercent            = D("rpm_pct"),
                 RedlineRpm            = D("redline_rpm"),
                 RedlineReached        = B("redline_hit"),
+                ImplementWorking      = BN("impl_working"),
+                ImplementMoving       = BN("impl_moving"),
+                ImplementSpeed        = FN("impl_speed"),
+                ImplementEvent        = IN("impl_event"),
+                ImplementPhase        = IN("impl_phase"),
+                ImplementPhaseSpeed   = FN("impl_phase_speed"),
+                ImplementManual       = BN("impl_manual"),
                 HasTireQuads          = hasQuads,
                 TireSlipRatio         = Q("slip_ratio"),
                 TireSlipAngleRad      = Q("slip_angle"),

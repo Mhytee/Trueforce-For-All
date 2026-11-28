@@ -122,7 +122,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
             if (!f.FrontGrip01.HasValue || !f.RearGrip01.HasValue)
             {
                 _frontTargetAmp = 0f;

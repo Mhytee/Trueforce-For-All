@@ -141,9 +141,19 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="#3A6BBE" CornerRadius="3" SnapsToDevicePixels="True"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <!-- PART_Progress is the effect Test button's playing
+                             fill: hidden (ScaleX 0) until code-behind animates it
+                             left to right over the test's length (RunEffectTest).
+                             The other buttons sharing this style never touch it. -->
+                        <Border x:Name="Bd" Background="#3A6BBE" CornerRadius="3" SnapsToDevicePixels="True">
+                            <Grid>
+                                <Border x:Name="PART_Progress" Background="#5C8FE0" CornerRadius="3"
+                                        RenderTransformOrigin="0,0.5" IsHitTestVisible="False">
+                                    <Border.RenderTransform><ScaleTransform ScaleX="0"/></Border.RenderTransform>
+                                </Border>
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -1671,7 +1681,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="EngineOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="EngineTest_Click"/>
+                            <Button x:Name="EngineTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="EngineTest_Click"/>
                             <Button x:Name="EngineRevertBtn" Content="↶" Tag="Engine" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="EngineSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Engine" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -1774,7 +1784,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="BumpsOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="BumpsTest_Click"/>
+                            <Button x:Name="BumpsTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="BumpsTest_Click"/>
                             <Button x:Name="BumpsRevertBtn" Content="↶" Tag="Bumps" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="BumpsSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Bumps" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -1879,7 +1889,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="TractionOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="TractionTest_Click"/>
+                            <Button x:Name="TractionTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="TractionTest_Click"/>
                             <Button x:Name="TractionRevertBtn" Content="↶" Tag="Traction" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="TractionSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Traction" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -1951,7 +1961,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="AxleSlipOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="AxleSlipTest_Click"/>
+                            <Button x:Name="AxleSlipTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="AxleSlipTest_Click"/>
                             <Button x:Name="AxleSlipRevertBtn" Content="↶" Tag="AxleSlip" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="AxleSlipSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="AxleSlip" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -2043,7 +2053,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="KerbThumpOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="KerbThumpTest_Click"/>
+                            <Button x:Name="KerbThumpTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="KerbThumpTest_Click"/>
                             <Button x:Name="KerbThumpRevertBtn" Content="↶" Tag="KerbThump" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="KerbThumpSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="KerbThump" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -2081,7 +2091,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="LockupJudderOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="LockupJudderTest_Click"/>
+                            <Button x:Name="LockupJudderTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="LockupJudderTest_Click"/>
                             <Button x:Name="LockupJudderRevertBtn" Content="↶" Tag="LockupJudder" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="LockupJudderSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="LockupJudder" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -2110,7 +2120,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="ShiftOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="ShiftTest_Click"/>
+                            <Button x:Name="ShiftTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="ShiftTest_Click"/>
                             <Button x:Name="ShiftRevertBtn" Content="↶" Tag="Shift" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="ShiftSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Shift" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -2156,7 +2166,7 @@
                             <Border x:Name="ImplementThudNewBadge" Style="{StaticResource NewEffectBadge}">
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="ImplementThudTest_Click"/>
+                            <Button x:Name="ImplementThudTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="ImplementThudTest_Click"/>
                             <Button x:Name="ImplementThudRevertBtn" Content="↶" Tag="ImplementThud" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="ImplementThudSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="ImplementThud" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -2253,7 +2263,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="AbsOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="AbsTest_Click"/>
+                            <Button x:Name="AbsTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="AbsTest_Click"/>
                             <TextBlock x:Name="AbsUnsupportedBadge" Style="{StaticResource UnsupportedBadge}"
                                        Text="{loc:T Effects_AbsUnsupportedBadge}"
                                        ToolTip="{loc:T Effects_AbsUnsupportedBadge_Tip}"/>
@@ -2326,7 +2336,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="PitLimiterOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="PitLimiterTest_Click"/>
+                            <Button x:Name="PitLimiterTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="PitLimiterTest_Click"/>
                             <Button x:Name="PitLimiterRevertBtn" Content="↶" Tag="PitLimiter" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="PitLimiterSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="PitLimiter" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -2397,7 +2407,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="DrsOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="DrsTest_Click"/>
+                            <Button x:Name="DrsTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="DrsTest_Click"/>
                             <Button x:Name="DrsRevertBtn" Content="↶" Tag="Drs" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="DrsSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Drs" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -2484,7 +2494,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="CollisionOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="CollisionTest_Click"/>
+                            <Button x:Name="CollisionTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="CollisionTest_Click"/>
                             <Button x:Name="CollisionRevertBtn" Content="↶" Tag="Collision" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="CollisionSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="Collision" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>
@@ -2556,7 +2566,7 @@
                                 <TextBlock Text="{loc:T Common_New}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                             </Border>
                             <TextBlock x:Name="RevLimiterOverrideBadge" Style="{StaticResource OverrideBadge}"/>
-                            <Button Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" Click="RevLimiterTest_Click"/>
+                            <Button x:Name="RevLimiterTestButton" Content="{loc:T Common_Test}" Style="{StaticResource EffectTestButton}" ToolTipService.ShowOnDisabled="True" Click="RevLimiterTest_Click"/>
                             <Button x:Name="RevLimiterRevertBtn" Content="↶" Tag="RevLimiter" Style="{StaticResource EffectRevertButton}" Click="EffectRevert_Click"/>
                             <Button x:Name="RevLimiterSaveBtn"   Content="{loc:T Common_SaveEllipsis}" Tag="RevLimiter" Style="{StaticResource EffectSaveButton}" Click="EffectSave_Click"/>
                         </StackPanel>

@@ -6176,13 +6176,13 @@ namespace TrueforceForAll.Plugin
             MarkEffectDirty(EffectKind.Ducking);
         }
 
-        private void EngineTest_Click   (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.EnginePulse);
-        private void BumpsTest_Click    (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.RoadBumps);
-        private void TractionTest_Click (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.TractionLoss);
-        private void ShiftTest_Click    (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.GearShift);
-        private void AbsTest_Click      (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.AbsClick);
-        private void PitLimiterTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.PitLimiter);
-        private void DrsTest_Click       (object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.Drs);
+        private void EngineTest_Click   (object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.EnginePulse);
+        private void BumpsTest_Click    (object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.RoadBumps);
+        private void TractionTest_Click (object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.TractionLoss);
+        private void ShiftTest_Click    (object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.GearShift);
+        private void AbsTest_Click      (object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.AbsClick);
+        private void PitLimiterTest_Click(object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.PitLimiter);
+        private void DrsTest_Click       (object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.Drs);
 
         // One-click health report. Aggregates every status signal that's
         // otherwise spread across the Diagnostics rows + the quiet-wheel hint
@@ -6192,6 +6192,9 @@ namespace TrueforceForAll.Plugin
         private void SelfTest_Click(object sender, RoutedEventArgs e)
         {
             if (_plugin == null) return;
+            // The check's rumble stops any effect test, so the button that
+            // test was counting down on must stop with it.
+            EndTestButtonPlayback();
             var sb = new System.Text.StringBuilder();
 
             bool usbpcapExe = _plugin.IsUsbPcapAvailable;
@@ -6330,7 +6333,10 @@ namespace TrueforceForAll.Plugin
             {
                 // Sustained ~2.5 s traction-loss rumble: unmistakable even on
                 // a quiet gear-driven G923, unlike the brief gear thud.
-                _plugin.TestEffect(_plugin.TractionLoss);
+                // Synthetic on purpose: this is "is the wheel alive", and the
+                // recorded-clip test obeys the user's sensitivity, which can
+                // legitimately play as near silence.
+                _plugin.TestEffect(_plugin.TractionLoss, synthetic: true);
 
                 if (ffbLiveWatch)
                 {
@@ -7852,7 +7858,7 @@ namespace TrueforceForAll.Plugin
         }
 
         private void ImplementThudTest_Click(object sender, RoutedEventArgs e)
-            => _plugin?.TestEffect(_plugin.ImplementThud);
+            => RunEffectTest(sender, _plugin?.ImplementThud);
 
         private void ImplementThudWaveform_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
@@ -14144,8 +14150,8 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveCollision.EnvelopeMs = v;
             Apply(EffectKind.Collision);
         }
-        private void CollisionTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.Collision);
-        private void RevLimiterTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.RevLimiter);
+        private void CollisionTest_Click(object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.Collision);
+        private void RevLimiterTest_Click(object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.RevLimiter);
 
         // ---------- Axle slip ----------
 
@@ -14233,7 +14239,7 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveAxleSlip.OnsetUtil = v;
             Apply(EffectKind.AxleSlip);
         }
-        private void AxleSlipTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.AxleSlip);
+        private void AxleSlipTest_Click(object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.AxleSlip);
 
         // ---------- Kerb thump ----------
 
@@ -14284,7 +14290,7 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveKerbThump.Freq = v;
             Apply(EffectKind.KerbThump);
         }
-        private void KerbThumpTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.KerbThump);
+        private void KerbThumpTest_Click(object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.KerbThump);
 
         // ---------- Lockup judder ----------
 
@@ -14304,7 +14310,7 @@ namespace TrueforceForAll.Plugin
             _plugin.ActiveLockupJudder.Gain = v;
             Apply(EffectKind.LockupJudder);
         }
-        private void LockupJudderTest_Click(object sender, RoutedEventArgs e) => _plugin?.TestEffect(_plugin.LockupJudder);
+        private void LockupJudderTest_Click(object sender, RoutedEventArgs e) => RunEffectTest(sender, _plugin?.LockupJudder);
 
         // ---------- ABS ----------
 

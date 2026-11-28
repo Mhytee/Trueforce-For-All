@@ -6,6 +6,16 @@
 //   dotnet run --project tools/FixturePrep -- freeze clip.csv   [clip.golden.csv]
 //   dotnet run --project tools/FixturePrep -- check  clip.csv   clip.golden.csv
 //
+//   dotnet run --project tools/FixturePrep -- clip     capture.csv Effect.csv 12.5 16.5 --keep rpm,gear [--gears N=1,10=hold]
+//   dotnet run --project tools/FixturePrep -- audition Effect.csv TractionLossEffect [Sensitivity=0.5] [--realtime]
+//
+// clip     cuts a Test-button clip (src/TrueforceForAll.Engine/TestClips):
+//          the window's rows with time rebased to zero, only the named
+//          columns, numbers rounded to five places. Unlike trim this
+//          REWRITES rows, so it is for clips, never for parity fixtures.
+// audition plays a clip through one effect the way its Test button does and
+//          prints the output level over time, to confirm a clip makes its
+//          effect speak before it ships.
 // info   — duration, rate, activity and signal ranges, to pick trim windows.
 // trim   — keep rows whose time is within [start, end] seconds of the first
 //          row. RAW line copy (metadata + header untouched, rows byte-
@@ -36,11 +46,15 @@ internal static class Program
                                            double.Parse(args[4], CultureInfo.InvariantCulture));
                 case "freeze": return Freeze(args[1], args.Length > 2 ? args[2] : null);
                 case "check":  return Check(args[1], args[2]);
+                case "clip":   return TestClipTool.Cut(args);
+                case "audition": return TestClipTool.Audition(args);
                 default:
                     Console.WriteLine("usage: FixturePrep info <capture.csv>");
                     Console.WriteLine("       FixturePrep trim <capture.csv> <clip.csv> <startSec> <endSec>");
                     Console.WriteLine("       FixturePrep freeze <clip.csv> [golden.csv]");
                     Console.WriteLine("       FixturePrep check <clip.csv> <golden.csv>");
+                    Console.WriteLine("       FixturePrep clip <capture.csv> <Effect.csv> <startSec> <endSec> --keep <col,col,...> [--gears <from=to,...>]");
+                    Console.WriteLine("       FixturePrep audition <Effect.csv> <EffectClassName> [Property=value ...] [--realtime]");
                     return 2;
             }
         }
@@ -75,6 +89,32 @@ internal static class Program
         Console.WriteLine("timeline (10s bins: speed_max / slip_max):");
         foreach (var bin in cap.Rows.GroupBy(r => (r.TUs - t0) / 10_000_000L).OrderBy(g => g.Key))
             Console.WriteLine($"  {bin.Key * 10,4}s  spd {bin.Max(r => r.Frame.SpeedKmh),5:F0}  slip {bin.Max(r => r.Frame.WheelSlip ?? 0):F2}");
+
+        // Farming Simulator: every moment ImplementThudEffect reacts to, so
+        // a Test-button clip window can be picked without replaying.
+        if (cap.Rows.Any(r => r.Frame.ImplementWorking.HasValue))
+        {
+            Console.WriteLine("implement (moving/settled = hydraulics, working = lowered or powered, flap = event, stage = stage end):");
+            bool? lastW = null, lastM = null;
+            int? lastE = null, lastP = null;
+            foreach (var r in cap.Rows)
+            {
+                var f = r.Frame;
+                string at = $"  {(r.TUs - t0) / 1e6,8:F2}s  ";
+                if (lastM.HasValue && f.ImplementMoving.HasValue && f.ImplementMoving != lastM)
+                    Console.WriteLine(at + (f.ImplementMoving.Value
+                        ? $"moving{(f.ImplementManual == true ? " (manual)" : "")}"
+                        : $"settled, working={(f.ImplementWorking == true ? 1 : 0)}"));
+                if (lastW.HasValue && f.ImplementWorking.HasValue && f.ImplementWorking != lastW)
+                    Console.WriteLine(at + $"working={(f.ImplementWorking.Value ? 1 : 0)}");
+                if (lastE.HasValue && f.ImplementEvent > lastE) Console.WriteLine(at + "flap");
+                if (lastP.HasValue && f.ImplementPhase > lastP) Console.WriteLine(at + "stage");
+                lastW = f.ImplementWorking ?? lastW;
+                lastM = f.ImplementMoving  ?? lastM;
+                lastE = f.ImplementEvent   ?? lastE;
+                lastP = f.ImplementPhase   ?? lastP;
+            }
+        }
         return 0;
     }
 

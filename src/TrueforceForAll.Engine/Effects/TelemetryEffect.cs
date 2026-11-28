@@ -60,17 +60,70 @@ namespace TrueforceForAll.Plugin.Effects
         public virtual void OnTelemetryStall() { }
 
         // Test mode, used by the settings UI's "Test" button to play the effect
-        // at representative max parameters for a short duration without needing
-        // the game to drive it via telemetry. Subclasses set their internal
-        // parameters in TestPlay() and call StartTest(durationMs); OnTelemetry
-        // checks IsTesting and skips updates so live telemetry doesn't overwrite
-        // the test state.
+        // without needing the game to drive it. Two kinds:
+        //
+        //   Clip test (preferred): the engine loop replays a recorded telemetry
+        //   clip through this effect's real OnTelemetry (see EffectClipTest), so
+        //   the test runs the same detection, thresholds and smoothing as a
+        //   drive and the user's sliders shape it. The engine opens and closes
+        //   the window with BeginClipTest / EndClipTest.
+        //
+        //   Synthetic test (fallback, and the stream self-test's guaranteed
+        //   rumble): subclasses set their internal parameters in TestPlay() and
+        //   call StartTest(durationMs); OnTelemetry checks IsSyntheticTest and
+        //   skips updates so live telemetry doesn't overwrite the test state.
+        //
+        // IsTesting is true for both, and is what lets a disabled effect render
+        // for the length of its test.
         private long _testEndTicks;
-        protected bool IsTesting => _testEndTicks != 0L && DateTime.UtcNow.Ticks < _testEndTicks;
+        private volatile bool _clipTest;
+        protected bool IsTesting => _clipTest || IsSyntheticTest;
+
+        /// <summary>True while a synthetic TestPlay window is open. OnTelemetry
+        /// must return early on this, never on <see cref="IsTesting"/>: during a
+        /// clip test OnTelemetry IS the test.</summary>
+        protected bool IsSyntheticTest => _testEndTicks != 0L && DateTime.UtcNow.Ticks < _testEndTicks;
+
         protected void StartTest(int durationMs)
         {
             _testEndTicks = DateTime.UtcNow.Ticks + durationMs * TimeSpan.TicksPerMillisecond;
         }
+
+        /// <summary>Close a synthetic test window early (the user pressed
+        /// Stop), so live telemetry reaches OnTelemetry again at once rather
+        /// than when the window would have lapsed. The caller resets the
+        /// effect's latched test state.</summary>
+        public void EndSyntheticTest() => _testEndTicks = 0L;
+
+        /// <summary>True while the engine is replaying a test clip into this
+        /// effect.</summary>
+        public bool IsClipTesting => _clipTest;
+
+        // The three below are EngineLoop's, which owns clip tests end to end.
+
+        /// <summary>A clip test was requested (requester's thread). Closes any
+        /// synthetic window still open so its OnTelemetry gate cannot swallow
+        /// the clip.</summary>
+        internal void BeginClipTest()
+        {
+            _testEndTicks = 0L;
+            _clipTest = true;
+        }
+
+        /// <summary>The engine thread admitted the test. Flag only: a synthetic
+        /// test requested since then keeps its window.</summary>
+        internal void ConfirmClipTest() => _clipTest = true;
+
+        /// <summary>The clip test (and its ring-out tail) is over.</summary>
+        internal void EndClipTest() => _clipTest = false;
+
+        /// <summary>Engine thread: what this effect hears is switching between
+        /// the live game and a test clip, in either direction. The two are
+        /// different sessions, so an effect that detects edges against its
+        /// own last value (a session counter, a previous state) forgets those
+        /// seeds here; otherwise the switch itself would read as an edge and
+        /// fire. Anything already sounding is left to finish. Default no-op.</summary>
+        protected internal virtual void OnClipBoundary() { }
 
         /// <summary>Trigger the effect at representative max parameters. Returns
         /// duration in ms that the test will run for (so the caller can keep

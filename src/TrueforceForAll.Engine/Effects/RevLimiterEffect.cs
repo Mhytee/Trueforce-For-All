@@ -183,7 +183,21 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
+            if (IsClipTesting)
+            {
+                // The Test button's clip is some other car on its own limiter.
+                // This car's redline facts (the user's, published, community,
+                // electric, top gear) say nothing about where THAT engine runs
+                // out. Resolving them against the clip would leave the test
+                // silent whenever this car revs higher than the clip's, and
+                // would publish the clip's numbers as this car's redline to
+                // the Car facts panel, the dash and the rev lights. So the
+                // clip is judged against its own frames, and nothing it
+                // resolves is published or kept.
+                ApplyEngagement(f.Rpms, ClipRedline(f.RedlineRpm, f.MaxRpm), muted: false);
+                return;
+            }
             _currentGear = ParseForwardGear(f.Gear);
             if (f.ForwardGearCount.HasValue) ForwardGearCount = f.ForwardGearCount;
             UpdateEngagement(f.Rpms, f.RedlineRpm, f.MaxRpm);
@@ -393,8 +407,30 @@ namespace TrueforceForAll.Plugin.Effects
                 && ForwardGearCount.HasValue && ForwardGearCount.Value >= 2
                 && _currentGear >= ForwardGearCount.Value;
 
+            ApplyEngagement(rpm, effectiveRedline, topGearMuted);
+        }
+
+        // Where a test clip's own car would buzz, from the clip's frames alone:
+        // tiers (c) and (e) of the cascade above, the telemetry redline under
+        // the same sanity gate, else the 0.85 x MaxRpm estimate. Keep the two
+        // in step. Pure, so a clip test publishes nothing (see OnTelemetry).
+        private static int? ClipRedline(double redlineRpm, double maxRpm)
+        {
+            if (redlineRpm > MinEngineRpm
+                && (maxRpm <= MinEngineRpm
+                    || (redlineRpm <= maxRpm * 1.02 && redlineRpm >= maxRpm * 0.5)))
+                return (int)Math.Round(redlineRpm);
+            if (maxRpm > MinEngineRpm)
+                return (int)Math.Round(maxRpm * 0.85);
+            return null;
+        }
+
+        // The threshold + hold half of engagement, shared by a live frame and
+        // a test clip's.
+        private void ApplyEngagement(double rpm, int? effectiveRedline, bool muted)
+        {
             bool engaged = false;
-            if (rpm >= MinEngineRpm && !topGearMuted)
+            if (rpm >= MinEngineRpm && !muted)
             {
                 if (effectiveRedline.HasValue && effectiveRedline.Value > MinEngineRpm)
                 {

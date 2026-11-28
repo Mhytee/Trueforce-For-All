@@ -43,7 +43,12 @@ namespace TrueforceForAll.Core
             "susp_m_fl,susp_m_fr,susp_m_rl,susp_m_rr," +
             "rumble_fl,rumble_fr,rumble_rl,rumble_rr," +
             "wheel_rot_fl,wheel_rot_fr,wheel_rot_rl,wheel_rot_rr," +
-            "num_cyl,rpm_pct,redline_rpm,redline_hit,game_ffb";
+            "num_cyl,rpm_pct,redline_rpm,redline_hit," +
+            // Farming Simulator's implement channels (ImplementThudEffect).
+            // Added inside v2: every reader is header-driven, so captures
+            // from before them read these as null, which is what they were.
+            "impl_working,impl_moving,impl_speed,impl_event,impl_phase,impl_phase_speed,impl_manual," +
+            "game_ffb";
 
         // Safety cap so a forgotten-on capture can't fill the disk. Rows are
         // ~3x FfbCaptureLog's, so 150 MB keeps the same ~70 min of driving.
@@ -167,6 +172,15 @@ namespace TrueforceForAll.Core
             Num(sb, f.RpmPercent);             sb.Append(',');
             Num(sb, f.RedlineRpm);             sb.Append(',');
             sb.Append(f.RedlineReached ? '1' : '0').Append(',');
+
+            BoolN(sb, f.ImplementWorking);     sb.Append(',');
+            BoolN(sb, f.ImplementMoving);      sb.Append(',');
+            FloatN(sb, f.ImplementSpeed);      sb.Append(',');
+            IntN(sb, f.ImplementEvent);        sb.Append(',');
+            IntN(sb, f.ImplementPhase);        sb.Append(',');
+            FloatN(sb, f.ImplementPhaseSpeed); sb.Append(',');
+            BoolN(sb, f.ImplementManual);      sb.Append(',');
+
             sb.Append(gameFfb.HasValue ? gameFfb.Value.ToString(CultureInfo.InvariantCulture) : "");
             return sb.ToString();
         }
@@ -175,6 +189,12 @@ namespace TrueforceForAll.Core
         private static void Num(StringBuilder sb, double v) =>
             sb.Append(v.ToString("R", CultureInfo.InvariantCulture));
         private static void NumN(StringBuilder sb, double? v)
+        {
+            if (v.HasValue) sb.Append(v.Value.ToString("R", CultureInfo.InvariantCulture));
+        }
+        // A float written through double would carry its binary tail
+        // (0.1f as 0.100000001490116); its own 'R' is the shortest exact form.
+        private static void FloatN(StringBuilder sb, float? v)
         {
             if (v.HasValue) sb.Append(v.Value.ToString("R", CultureInfo.InvariantCulture));
         }

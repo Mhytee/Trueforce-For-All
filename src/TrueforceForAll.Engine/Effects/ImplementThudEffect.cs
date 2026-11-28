@@ -324,7 +324,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
             bool? working = f.ImplementWorking;
             bool? moving  = f.ImplementMoving;
 
@@ -455,6 +455,21 @@ namespace TrueforceForAll.Plugin.Effects
             _humDuck     = 1f;
             _envelopeRemaining = 0;
             _phase = 0;
+        }
+
+        // A Test-button clip was recorded in another session, so its counters
+        // and states were never comparable with the live game's: the clip's
+        // event count landing above the live one would thud at the start of
+        // the test, and the live count above the clip's would thud on the way
+        // back. Forget the seeds so the next frame on either side reseeds
+        // silently, exactly as it does when a mission loads.
+        protected internal override void OnClipBoundary()
+        {
+            _lastWorking    = null;
+            _lastMoving     = null;
+            _lastEventCount = null;
+            _lastPhaseCount = null;
+            _manualMotion   = false;
         }
     }
 }

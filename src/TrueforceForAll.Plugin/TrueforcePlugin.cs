@@ -241,6 +241,17 @@ namespace TrueforceForAll.Plugin
         // End() so they can't keep mutating effect state after the device has
         // been disposed.
         private int _activeTestTasks;
+        // One live test per effect. Every TestEffect call takes the next ticket
+        // for its effect; a synthetic test's driver task stands down, without
+        // its closing Reset, once its ticket is no longer the latest, so it
+        // cannot keep writing over (or wipe) the test that replaced it.
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<TelemetryEffect, long> _effectTestTicket =
+            new System.Collections.Concurrent.ConcurrentDictionary<TelemetryEffect, long>();
+        // The ticket a Stop press ended, per effect. The synthetic driver task
+        // leaves its loop when its own ticket appears here and, being still the
+        // latest, runs its closing Reset itself, so nothing races the reset.
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<TelemetryEffect, long> _effectTestStopTicket =
+            new System.Collections.Concurrent.ConcurrentDictionary<TelemetryEffect, long>();
 
         public EnginePulseEffect  EnginePulse  { get; private set; }
         public RoadBumpsEffect    RoadBumps    { get; private set; }
@@ -4244,37 +4255,82 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Trigger an effect's test playback. Forces the device into
-        /// active ep3 mode for the duration so the test is audible with no game
-        /// running (no FFB tap data, so the stream would otherwise be keepalive).
-        /// Drives effect.TestUpdate(phase) at ~60 Hz over the test window so
-        /// effects can simulate dynamic behavior (RPM ramps, slip pulses, etc).</summary>
-        public void TestEffect(TelemetryEffect effect)
+        /// <summary>Play an effect's Test button. Forces the device into active
+        /// ep3 mode for the duration so the test is felt with no game running
+        /// (no FFB tap data, so the stream would otherwise be keepalive).
+        ///
+        /// An effect that ships a recorded clip (EffectTestClips) has it
+        /// replayed through its real telemetry path on the engine thread, so
+        /// the test runs the detection, thresholds and smoothing a drive does
+        /// and the user's sliders shape it. The clip's revs are mapped onto
+        /// the last car driven when one is known.
+        ///
+        /// An effect with no clip gets its built-in TestPlay shape, driven
+        /// through TestUpdate(phase) at ~60 Hz. So does a caller passing
+        /// <paramref name="synthetic"/>, which is for the stream self-test: it
+        /// needs a rumble no slider can turn down to nothing.
+        ///
+        /// One test at a time: any other effect's test is stopped first, so
+        /// two presses in a row never mix into a sound neither effect makes.
+        /// Returns how long the test plays in ms (what the button's progress
+        /// fill runs over), or 0 when nothing was started.</summary>
+        public int TestEffect(TelemetryEffect effect, bool synthetic = false)
         {
             if (effect == null)
             {
                 SimHub.Logging.Current.Info("[TF4ALL] TestEffect: effect was null");
-                return;
+                return 0;
             }
             if (_device == null)
             {
                 SimHub.Logging.Current.Info($"[TF4ALL] TestEffect '{effect.Name}': device not initialized");
-                return;
+                return 0;
             }
+
+            StopEffectTests(except: effect);
+
+            long ticket = _effectTestTicket.AddOrUpdate(effect, 1L, (_, t) => t + 1L);
+            var loop = _engineLoop;
+
+            if (!synthetic && loop != null)
+            {
+                var clip = EffectTestClips.For(effect);
+                if (clip != null)
+                {
+                    double rpmScale = EffectTestClips.RpmScaleFor(clip, EnginePulse?.ObservedMaxRpm ?? 0.0);
+                    int clipMs = loop.StartClipTest(effect, clip, Stopwatch.GetTimestamp(), rpmScale);
+                    if (clipMs > 0)
+                    {
+                        _device.ForceActiveFor(clipMs + 200);
+                        SimHub.Logging.Current.Info(
+                            $"[TF4ALL] TestEffect '{effect.Name}' clip duration={clipMs} ms rpmScale={rpmScale:F2}");
+                        return clipMs;
+                    }
+                }
+            }
+
+            // A clip still playing into this effect would be swallowed by the
+            // synthetic gate, then silence the test when it ran out.
+            loop?.CancelClipTest(effect);
+
             int durationMs = effect.TestPlay();
             SimHub.Logging.Current.Info($"[TF4ALL] TestEffect '{effect.Name}' duration={durationMs} ms");
-            if (durationMs <= 0) return;
+            if (durationMs <= 0) return 0;
 
             _device.ForceActiveFor(durationMs + 200);
 
             long startTicks = DateTime.UtcNow.Ticks;
             long endTicks   = startTicks + durationMs * TimeSpan.TicksPerMillisecond;
+            Func<bool> stillLatest = () =>
+                _effectTestTicket.TryGetValue(effect, out long latest) && latest == ticket;
+            Func<bool> stopped = () =>
+                _effectTestStopTicket.TryGetValue(effect, out long s) && s == ticket;
             System.Threading.Interlocked.Increment(ref _activeTestTasks);
             System.Threading.Tasks.Task.Run(() =>
             {
                 try
                 {
-                    while (DateTime.UtcNow.Ticks < endTicks && !_shuttingDown)
+                    while (DateTime.UtcNow.Ticks < endTicks && !_shuttingDown && stillLatest() && !stopped())
                     {
                         long now = DateTime.UtcNow.Ticks;
                         double elapsedMs = (now - startTicks) / (double)TimeSpan.TicksPerMillisecond;
@@ -4290,10 +4346,53 @@ namespace TrueforceForAll.Plugin
                     // envelopes, hold timers). Without this, ABS Pulse leaves
                     // _amp = ActiveAmp*Gain set and, with no telemetry to zero
                     // it (no game running), it keeps rendering into later tests.
-                    try { effect.Reset(); } catch { }
+                    // Not when a newer test has taken the effect over: this
+                    // would wipe that test's state mid-play.
+                    if (stillLatest())
+                    {
+                        if (stopped()) effect.EndSyntheticTest();
+                        try { effect.Reset(); } catch { }
+                    }
                     System.Threading.Interlocked.Decrement(ref _activeTestTasks);
                 }
             });
+            return durationMs;
+        }
+
+        /// <summary>The Stop half of a Test button: end whatever test is
+        /// playing on <paramref name="effect"/>. A clip test ends as a clip's
+        /// end does (sustained voices drop, a ring-out finishes); a synthetic
+        /// test's driver task stands down and resets the effect. No-op when
+        /// nothing is playing.</summary>
+        public void StopEffectTest(TelemetryEffect effect)
+        {
+            if (effect == null) return;
+            if (effect.IsClipTesting) _engineLoop?.StopClipTest(effect);
+            if (_effectTestTicket.TryGetValue(effect, out long ticket))
+                _effectTestStopTicket[effect] = ticket;
+        }
+
+        /// <summary>Stop every effect's test but <paramref name="except"/>'s.</summary>
+        public void StopEffectTests(TelemetryEffect except = null)
+        {
+            var all = _effects;
+            if (all == null) return;
+            foreach (var fx in all)
+                if (fx != null && !ReferenceEquals(fx, except))
+                    StopEffectTest(fx);
+        }
+
+        /// <summary>Why the effect Test buttons cannot play right now, for
+        /// their tooltip while greyed, or null when they can. A test plays
+        /// through the open Trueforce stream, which only Normal mode opens.</summary>
+        public string EffectTestBlockedReason
+        {
+            get
+            {
+                if (MasterMode != TrueforceMasterMode.Normal) return Loc.T("Effects_TestNeedsNormalMode");
+                if (_device == null) return Loc.T("Effects_TestNoWheel");
+                return null;
+            }
         }
 
         /// <summary>SPRING access-code test. Opens the device active path and

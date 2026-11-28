@@ -61,7 +61,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
             if ((f.Events & FrameEvents.RumbleStripStart) == 0) return;
 
             float kmh = (float)f.SpeedKmh;

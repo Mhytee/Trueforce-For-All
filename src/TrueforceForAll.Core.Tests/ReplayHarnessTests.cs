@@ -102,6 +102,67 @@ namespace TrueforceForAll.Core.Tests
             }
         }
 
+        [Fact]
+        public void Capture_RoundTrips_ImplementFields_AndOlderCapturesReadThemAsNull()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "tfcap_impl_" + Guid.NewGuid().ToString("N") + ".csv");
+            try
+            {
+                var farm = DrivingFrame(speedKmh: 8, gear: "1");
+                farm.ImplementWorking    = true;
+                farm.ImplementMoving     = false;
+                farm.ImplementSpeed      = 0.1f;
+                farm.ImplementEvent      = 7;
+                farm.ImplementPhase      = 3;
+                farm.ImplementPhaseSpeed = 0.05f;
+                farm.ImplementManual     = true;
+                var road = DrivingFrame();   // a source with no implements
+
+                using (var log = new GoldenCaptureLog(path, "synthetic", "test"))
+                {
+                    log.LogRow(in farm, true, null);
+                    log.LogRow(in road, true, null);
+                }
+
+                // A float keeps its own short form, not a double's binary tail.
+                var cols = GoldenCaptureLog.Header.Split(',').ToList();
+                var vals = File.ReadAllLines(path)[2].Split(',');
+                Assert.Equal("0.1",  vals[cols.IndexOf("impl_speed")]);
+                Assert.Equal("0.05", vals[cols.IndexOf("impl_phase_speed")]);
+                Assert.Equal("game_ffb", cols.Last());
+
+                var cap = CsvFrameReader.ReadFile(path);
+                var f = cap.Rows[0].Frame;
+                Assert.True(f.ImplementWorking);
+                Assert.False(f.ImplementMoving);
+                Assert.Equal(0.1f, f.ImplementSpeed);
+                Assert.Equal(7, f.ImplementEvent);
+                Assert.Equal(3, f.ImplementPhase);
+                Assert.Equal(0.05f, f.ImplementPhaseSpeed);
+                Assert.True(f.ImplementManual);
+
+                // No implements is null, never false or zero: the effect reads
+                // a null working flag as "this source has no implements".
+                var n = cap.Rows[1].Frame;
+                Assert.Null(n.ImplementWorking);
+                Assert.Null(n.ImplementMoving);
+                Assert.Null(n.ImplementSpeed);
+                Assert.Null(n.ImplementEvent);
+                Assert.Null(n.ImplementPhase);
+                Assert.Null(n.ImplementPhaseSpeed);
+                Assert.Null(n.ImplementManual);
+            }
+            finally
+            {
+                try { File.Delete(path); } catch { }
+            }
+
+            // A capture from before the columns existed.
+            var old = CsvFrameReader.Read(new StringReader("#tfcap v=2 src=x game=y\nt_us,speed_kmh,gear\n0,50,3\n"));
+            Assert.Null(old.Rows[0].Frame.ImplementWorking);
+            Assert.Null(old.Rows[0].Frame.ImplementEvent);
+        }
+
         // ---------- virtual-time source behavior ----------
 
         [Fact]

@@ -117,7 +117,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
             double magNullable = f.CollisionMagnitude ?? 0;
             // A non-finite magnitude (source restart / garbage frame) must
             // not reach the gate: an Infinity fires a full MaxAmp thud, and

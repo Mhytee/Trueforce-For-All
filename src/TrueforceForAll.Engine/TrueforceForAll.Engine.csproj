@@ -21,6 +21,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Recorded telemetry clips behind the settings UI's Test buttons, one
+         per effect, named for the effect's class (see EffectTestClips.cs and
+         TestClips\README.txt). The explicit LogicalName keeps the resource
+         name independent of RootNamespace and folder mangling. -->
+    <EmbeddedResource Include="TestClips\*.csv" LogicalName="TestClips.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Compile-time only, for the [JsonConverter] attributes on effect
          enums (settings serialization). SimHub ships Newtonsoft.Json in its
          install root and loads it process-wide; the plugin binds to that at

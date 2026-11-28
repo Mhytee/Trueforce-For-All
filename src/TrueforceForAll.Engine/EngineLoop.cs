@@ -12,6 +12,8 @@
 // buffer, resampler, 500 Hz effect ticking); phase 0c is the move-only home.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using TrueforceForAll.Plugin.Effects;
 
 namespace TrueforceForAll.Core
@@ -89,8 +91,123 @@ namespace TrueforceForAll.Core
         /// silence sustained effects at the top of the next engine tick.</summary>
         public void RequestStallSettle() => _stallSettleRequested = true;
 
-        /// <summary>One engine tick: [every 2nd tick: resample → effects tick]
-        /// → ducking → render → silence floor → push. <paramref name="nowTicks"/>
+        // ---- Clip tests (the settings UI's Test buttons) ----
+        // A clip test replays a recorded telemetry clip into ONE effect through
+        // that effect's real OnTelemetry, on this thread, at the same 500 Hz
+        // tick and through the same CTM stage as live frames. The effect under
+        // test stops seeing live frames for the duration; every other effect
+        // carries on untouched. Requests arrive from the UI thread through the
+        // queue below (one queue, so a start and a cancel keep the order they
+        // were asked in) and are admitted at an effect-tick boundary, so the
+        // active list is only ever touched here.
+        private struct ClipTestRequest
+        {
+            public EffectClipTest  Start;    // non-null = start this test
+            public TelemetryEffect Cancel;   // non-null = abandon this effect's test
+            public bool            Silence;  // with Cancel: end it the way a clip's end does
+        }
+        private readonly ConcurrentQueue<ClipTestRequest> _clipTestRequests = new ConcurrentQueue<ClipTestRequest>();
+        private readonly List<EffectClipTest> _clipTests = new List<EffectClipTest>(2);
+
+        /// <summary>Any thread: replay <paramref name="clip"/> into
+        /// <paramref name="effect"/>, replacing a clip test already running on
+        /// it. <paramref name="nowTicks"/> is the same clock RunOneTick is
+        /// driven on; playback is anchored to it, so a loop that is not
+        /// ticking (no device, plugin disabled) lets the test lapse instead of
+        /// springing it on the user later. Returns how long the test runs in
+        /// ms including its ring-out tail (the caller keeps the device's
+        /// active path open that long), or 0 when nothing was started.</summary>
+        public int StartClipTest(TelemetryEffect effect, CsvFrameReader.Capture clip,
+                                 long nowTicks, double rpmScale = 1.0)
+        {
+            if (effect == null || clip == null || clip.Rows.Count < 2 || _resampler == null) return 0;
+            var test = new EffectClipTest(effect, clip, nowTicks, rpmScale);
+            effect.BeginClipTest();
+            _clipTestRequests.Enqueue(new ClipTestRequest { Start = test });
+            return test.TotalMs;
+        }
+
+        /// <summary>Any thread: abandon a clip test on <paramref name="effect"/>
+        /// without settling it, for a caller about to take the effect over
+        /// with a synthetic test.</summary>
+        public void CancelClipTest(TelemetryEffect effect)
+        {
+            if (effect != null) _clipTestRequests.Enqueue(new ClipTestRequest { Cancel = effect });
+        }
+
+        /// <summary>Any thread: the user pressed Stop. Ends a clip test on
+        /// <paramref name="effect"/> now, telling the effect its telemetry
+        /// stopped (what the clip running out does) so sustained voices drop
+        /// instead of holding their last value. No-op when none is running.</summary>
+        public void StopClipTest(TelemetryEffect effect)
+        {
+            if (effect != null) _clipTestRequests.Enqueue(new ClipTestRequest { Cancel = effect, Silence = true });
+        }
+
+        private void AdmitClipTestRequests()
+        {
+            while (_clipTestRequests.TryDequeue(out var req))
+            {
+                var effect = req.Start != null ? req.Start.Effect : req.Cancel;
+                bool wasRunning = false;
+                for (int i = _clipTests.Count - 1; i >= 0; i--)
+                    if (ReferenceEquals(_clipTests[i].Effect, effect)) { _clipTests.RemoveAt(i); wasRunning = true; }
+
+                if (req.Start == null)
+                {
+                    if (req.Silence && wasRunning)
+                        try { effect.OnTelemetryStall(); } catch { }
+                    effect.EndClipTest();
+                    if (wasRunning) ClipBoundary(effect);
+                    continue;
+                }
+                // Re-assert on this thread: a test finishing on the same effect
+                // in the instant between the caller's BeginClipTest and this
+                // admission would otherwise have closed the window under us.
+                effect.ConfirmClipTest();
+                ClipBoundary(effect);
+                _clipTests.Add(req.Start);
+            }
+        }
+
+        private void TickClipTests(long nowTicks)
+        {
+            for (int i = _clipTests.Count - 1; i >= 0; i--)
+            {
+                bool running;
+                try { running = _clipTests[i].Tick(nowTicks, _resampler.TicksPerSecond); }
+                catch { running = false; _clipTests[i].Effect.EndClipTest(); }
+                if (!running)
+                {
+                    ClipBoundary(_clipTests[i].Effect);
+                    _clipTests.RemoveAt(i);
+                }
+            }
+        }
+
+        // An effect's own hook, so it is kept off the 1 kHz loop's back.
+        private static void ClipBoundary(TelemetryEffect effect)
+        {
+            try { effect.OnClipBoundary(); } catch { }
+        }
+
+        /// <summary>The CTM stage every effect-bound frame passes through,
+        /// live or clip: caps + axle rollups + edge events on the RESAMPLED
+        /// frame, so effects see them at the fixed 500 Hz rate the deriver's
+        /// hysteresis assumes. Caps first (Native from field presence), then
+        /// each deriving stage adds its own Derived bit; effects trust
+        /// Events/rollups only when the bit says the stage actually ran. One
+        /// deriver per frame stream: it holds the edge state.</summary>
+        internal static void ComposeFrame(ref TelemetryFrame frame, EventDeriver events)
+        {
+            frame.Caps = SignalCaps.InferNative(in frame);
+            CtmComposer.Compose(ref frame);
+            frame.Events = events.Derive(in frame);
+            frame.Caps |= SignalGroups.DerivedEvents;
+        }
+
+        /// <summary>One engine tick: [every 2nd tick: resample → effects tick
+        /// → clip tests tick] → ducking → render → silence floor → push. <paramref name="nowTicks"/>
         /// is the clock in the resampler's tick units (Stopwatch in production,
         /// the fixture's virtual clock in the harness). <paramref name="buf"/>
         /// is caller-owned scratch (≥ BatchSamples). Exceptions from effects /
@@ -117,6 +234,9 @@ namespace TrueforceForAll.Core
                     {
                         for (int i = 0; i < settleFx.Length; i++)
                         {
+                            // An effect mid clip test is being fed by the clip,
+                            // not by the feed that just stalled.
+                            if (settleFx[i].IsClipTesting) continue;
                             try { settleFx[i].OnTelemetryStall(); }
                             catch { /* one bad effect must not starve the rest */ }
                         }
@@ -125,26 +245,24 @@ namespace TrueforceForAll.Core
 
                 if (_resampler != null && (_tick % EffectTickDivisor) == 0)
                 {
+                    AdmitClipTestRequests();
+
                     var fx = Effects;
                     if (fx != null && _resampler.TrySample(nowTicks, out var frame))
                     {
-                        // Phase 2 CTM stage: caps + axle rollups + edge events
-                        // on the RESAMPLED frame, so effects see them at the
-                        // fixed 500 Hz rate the deriver's hysteresis assumes.
-                        // Caps first (Native from field presence), then each
-                        // deriving stage adds its own Derived bit — effects
-                        // trust Events/rollups only when the bit says the
-                        // stage actually ran.
-                        frame.Caps = SignalCaps.InferNative(in frame);
-                        CtmComposer.Compose(ref frame);
-                        frame.Events = _events.Derive(in frame);
-                        frame.Caps |= SignalGroups.DerivedEvents;
+                        // Phase 2 CTM stage (see ComposeFrame).
+                        ComposeFrame(ref frame, _events);
                         for (int i = 0; i < fx.Length; i++)
                         {
+                            // Its clip is this effect's telemetry right now; a
+                            // live frame would fight it.
+                            if (fx[i].IsClipTesting) continue;
                             try { fx[i].OnTelemetry(frame); }
                             catch { /* one bad effect must not starve the rest */ }
                         }
                     }
+
+                    if (_clipTests.Count > 0) TickClipTests(nowTicks);
                 }
 
                 _ducking?.Update(duckDepth, duckAttackMs, duckReleaseMs);

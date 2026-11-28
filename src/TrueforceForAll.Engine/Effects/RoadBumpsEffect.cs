@@ -205,7 +205,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
             if (f.SpeedKmh < MinSpeedKmh)
             {
                 _heave.Amp = 0;

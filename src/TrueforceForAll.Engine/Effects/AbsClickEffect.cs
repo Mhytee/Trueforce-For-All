@@ -188,7 +188,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
 
             int absValue = f.AbsActive;
             if (absValue > 0 && f.SpeedKmh < StandstillKmh) absValue = 0;

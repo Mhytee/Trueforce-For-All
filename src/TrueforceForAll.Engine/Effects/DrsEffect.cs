@@ -162,7 +162,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
             int v = f.DrsActive ?? 0;
             // A parked car cannot be reducing drag, so a flag set at a standstill
             // is never real. It can be a flag held from a game that has closed,

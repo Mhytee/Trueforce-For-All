@@ -109,6 +109,15 @@ grepping the effect's full name alone will miss those. The steps:
 9. **Ducking (optional)**: if the airborne coordinator or sidechain should
    affect it, add a `DuckXxx` flag to `AirborneSettings` and honor it where the
    other voices are ducked.
+10. **Test button**: override `TestPlay` (and `TestUpdate` if the shape moves)
+    for a synthetic test, and have `OnTelemetry` return early on
+    `IsSyntheticTest`, never on `IsTesting`. Then give the effect a recorded
+    clip, `src/TrueforceForAll.Engine/TestClips/XxxEffect.csv`, named for the
+    effect class. With a clip present the button replays that telemetry through
+    the effect's real `OnTelemetry`, so the test feels like the effect does on
+    track and the user's sliders shape it; without one it falls back to
+    `TestPlay`. `TestClips/README.txt` has the recipe for recording and cutting
+    one.
 
 ## Adding or changing UI text
 

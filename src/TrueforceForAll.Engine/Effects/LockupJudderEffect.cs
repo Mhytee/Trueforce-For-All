@@ -62,7 +62,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
 
             if ((f.Events & FrameEvents.LockupStart) != 0) _active = true;
             if ((f.Events & FrameEvents.LockupEnd) != 0)   _active = false;

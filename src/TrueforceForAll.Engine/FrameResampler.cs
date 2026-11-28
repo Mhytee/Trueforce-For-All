@@ -86,6 +86,10 @@ namespace TrueforceForAll.Core
                 _ab[i] = new AlphaBetaFilter();
         }
 
+        /// <summary>The tick rate this resampler's timestamps are in (Stopwatch
+        /// ticks in production, microseconds on a fixture's virtual clock).</summary>
+        public long TicksPerSecond => _ticksPerSecond;
+
         /// <summary>True when the last TrySample ran in live-edge (predicting)
         /// mode; false = buffered interpolation. Diagnostics/UI.</summary>
         public bool IsLiveEdge => _liveEdgeMode;

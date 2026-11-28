@@ -145,7 +145,7 @@ namespace TrueforceForAll.Plugin.Effects
 
         public override void OnTelemetry(TelemetryFrame f)
         {
-            if (IsTesting) return;
+            if (IsSyntheticTest) return;
             int active = f.PitLimiterActive ?? 0;
             if (active > 0 && f.SpeedKmh < StandstillKmh) active = 0;
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
