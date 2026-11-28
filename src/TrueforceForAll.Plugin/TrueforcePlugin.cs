@@ -566,6 +566,15 @@ namespace TrueforceForAll.Plugin
         // Throttle for the verbose "wheel not found" discovery diagnostic; the
         // once-a-minute rule and its reason live on LogDiscoveryDiagnostic.
         private long _lastDiscoveryDiagTicks;
+        // No-wheel retry quieting. The watchdog retries every 3 s and each
+        // miss used to write three lines (~3,600 an hour), which rotated the
+        // Init lines out of SimHub.txt before anyone attached it to an issue.
+        // The first miss of a streak logs in full, then one summary line a
+        // minute; finding the wheel closes the streak with its attempt count.
+        // Written only from discovery, which the single-flight slot serialises.
+        private int  _wheelMissStreak;
+        private int  _wheelMissesSinceLog;
+        private long _lastWheelMissLogTicks;
         private bool _gHubLastLoggedState;
         // Only the G HUB *UI* process (lghub.exe) gates wheel access. Do NOT
         // gate on lghub_agent.exe: it is always-on and does not hold the wheel's
@@ -5563,20 +5572,45 @@ namespace TrueforceForAll.Plugin
             match = null;
             if (_shuttingDown) return false;
 
-            SimHub.Logging.Current.Info("[TF4ALL] Discovering wheel...");
+            if (_wheelMissStreak == 0)
+                SimHub.Logging.Current.Info("[TF4ALL] Discovering wheel...");
             var matches = WheelDiscovery.FindAll();
             if (matches.Count == 0)
             {
                 WheelStatus = Loc.T("Plugin_NotDetectedOpenClose");
                 WheelStatusState = WheelStatusKind.NotDetected;
-                SimHub.Logging.Current.Warn(
-                    "[TF4ALL] No supported wheel found. Make sure a supported wheel " +
-                    "(G PRO / RS50 / G923) is plugged in. If it is, open G HUB once and let it " +
-                    "finish detecting the wheel, then close G HUB (it must stay closed while this " +
-                    "plugin runs) and restart SimHub.");
+                _wheelMissStreak++;
+                _wheelMissesSinceLog++;
+                long nowTicks = Stopwatch.GetTimestamp();
+                if (_wheelMissStreak == 1)
+                {
+                    SimHub.Logging.Current.Warn(
+                        "[TF4ALL] No supported wheel found. Make sure a supported wheel " +
+                        "(G PRO / RS50 / G923) is plugged in. If it is, open G HUB once and let it " +
+                        "finish detecting the wheel, then close G HUB (it must stay closed while this " +
+                        "plugin runs) and restart SimHub. Retrying quietly; one line a minute from now on.");
+                    _lastWheelMissLogTicks = nowTicks;
+                    _wheelMissesSinceLog = 0;
+                }
+                else if (nowTicks - _lastWheelMissLogTicks >= Stopwatch.Frequency * 60)
+                {
+                    SimHub.Logging.Current.Info(
+                        $"[TF4ALL] Still no supported wheel ({_wheelMissesSinceLog} more attempts, " +
+                        $"{_wheelMissStreak} since the first miss).");
+                    _lastWheelMissLogTicks = nowTicks;
+                    _wheelMissesSinceLog = 0;
+                }
                 LogDiscoveryDiagnostic();
                 MaybeSwitchG923PsToPcMode();
                 return false;
+            }
+
+            if (_wheelMissStreak > 0)
+            {
+                SimHub.Logging.Current.Info(
+                    $"[TF4ALL] Supported wheel found after {_wheelMissStreak} unsuccessful attempts.");
+                _wheelMissStreak = 0;
+                _wheelMissesSinceLog = 0;
             }
 
             match = matches[0];
@@ -37887,9 +37921,13 @@ namespace TrueforceForAll.Plugin
                         return;
                     }
                     bool ok = TryBringUpDevice();
-                    SimHub.Logging.Current.Info(ok
-                        ? "[TF4ALL] Wheel re-attached; stream resumed."
-                        : "[TF4ALL] Wheel re-attach failed; will keep retrying.");
+                    // A miss because no wheel is plugged in is reported by
+                    // DiscoverWheel's own quieted streak; repeating it here every
+                    // 3 s was a third of the log spam. Any other failure still logs.
+                    if (ok || _wheelMissStreak <= 1)
+                        SimHub.Logging.Current.Info(ok
+                            ? "[TF4ALL] Wheel re-attached; stream resumed."
+                            : "[TF4ALL] Wheel re-attach failed; will keep retrying.");
 
                     // EXPERIMENTAL: retry the driver-LED channel open if it
                     // failed during Init (typical when the wheel wasn't
