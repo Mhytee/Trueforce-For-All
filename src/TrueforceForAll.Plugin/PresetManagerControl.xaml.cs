@@ -2860,27 +2860,33 @@ private void CustomList_SelectionChanged(object sender, SelectionChangedEventArg
             // here.
             bool carBulkPackEligible = checkedCount >= 2 && checkedNonBuiltin == checkedCount;
             _carShareIsPackMode = carBulkPackEligible;
+            // An if/else, never an early return: everything below (the Delete
+            // count, the checked label, Set default, the select-all header)
+            // must refresh in pack mode too, or it freezes at the count it
+            // had when the second row was ticked.
             if (carBulkPackEligible)
             {
                 CarShareBtn.Content   = Loc.T("PresetManager_SharePack");
                 CarShareBtn.IsEnabled = true;
                 CarShareBtn.ToolTip   = Loc.F("PresetManager_SharePack_Tip_Fmt", checkedCount);
-                return;
             }
-            CarShareBtn.Content = Loc.T("Common_Share");
-            CarShareBtn.IsEnabled = anySelected && checkedCount <= 1
-                && !isCommunitySourced && !isBuiltinSel
-                && !carShareMatchesUpload;
-            if (isBuiltinSel)
-                CarShareBtn.ToolTip = Loc.T("PresetManager_ShareBuiltin_Tip");
-            else if (isCommunitySourced)
-                CarShareBtn.ToolTip = Loc.T("PresetManager_ShareCommunitySourced_Tip");
-            else if (carShareMatchesUpload)
-                CarShareBtn.ToolTip = Loc.F("PresetManager_ShareMatchesUpload_Tip_Fmt", carShareOvr.CommunityUploadedVersion ?? "v1");
-            else if (carShareHasPriorUpload)
-                CarShareBtn.ToolTip = Loc.T("PresetManager_ShareUpdateOrNew_Tip");
             else
-                CarShareBtn.ToolTip = Loc.T("PresetManager_CarShare_Tip");
+            {
+                CarShareBtn.Content = Loc.T("Common_Share");
+                CarShareBtn.IsEnabled = anySelected && checkedCount <= 1
+                    && !isCommunitySourced && !isBuiltinSel
+                    && !carShareMatchesUpload;
+                if (isBuiltinSel)
+                    CarShareBtn.ToolTip = Loc.T("PresetManager_ShareBuiltin_Tip");
+                else if (isCommunitySourced)
+                    CarShareBtn.ToolTip = Loc.T("PresetManager_ShareCommunitySourced_Tip");
+                else if (carShareMatchesUpload)
+                    CarShareBtn.ToolTip = Loc.F("PresetManager_ShareMatchesUpload_Tip_Fmt", carShareOvr.CommunityUploadedVersion ?? "v1");
+                else if (carShareHasPriorUpload)
+                    CarShareBtn.ToolTip = Loc.T("PresetManager_ShareUpdateOrNew_Tip");
+                else
+                    CarShareBtn.ToolTip = Loc.T("PresetManager_CarShare_Tip");
+            }
             // DEV authoring can delete built-in car presets, so the deletable
             // count (label + enable) includes them in dev mode.
             int carCheckedDeletable = _devMode ? checkedCount : checkedNonBuiltin;
