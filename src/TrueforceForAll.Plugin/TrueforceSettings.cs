@@ -131,6 +131,24 @@ namespace TrueforceForAll.Plugin
         // wants to be depends on the wheel it is on and the room it is in.
         public int LedSweepPeriodMs { get; set; } = LedSweep.DefaultPeriodMs;
 
+        // Where the rev lights start filling, in percent of the redline. The
+        // strip is dark below it, full at the redline, and rises evenly between
+        // (RevBarFill). 85 is the window the bar has always used, so nobody's
+        // lights move until they touch the slider. Only the bottom is the
+        // driver's to choose: the top stays the redline, where the flash and the
+        // rev limiter buzz fire (owner, 2026-11-15). Cars with published
+        // rev-light data (CarFillCurve) keep their own switch-on points whatever
+        // this says.
+        public int RevLightStartPct { get; set; } = RevBarFill.DefaultStartPct;
+
+        // Per-game start, keyed by game code like StationarySpringByGame. An
+        // entry wins for its game; a game with none uses RevLightStartPct. Only
+        // written when the driver ticks "Separate setting for <game>", and
+        // removed again when they untick it. Must default EMPTY: the settings
+        // loader appends onto whatever is here.
+        public Dictionary<string, int> RevLightStartPctByGame { get; set; }
+            = new Dictionary<string, int>();
+
         // Per-car rev-light pattern picks: "{game}/{carId}" -> effect 1-9
         // (1-4 built-in patterns, 2 = outside-in; 5-9 the wheel's custom
         // slots), same key shape as CarFactsSelection. ABSENCE of a key =

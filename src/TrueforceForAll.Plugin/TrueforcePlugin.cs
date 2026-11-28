@@ -8733,6 +8733,12 @@ namespace TrueforceForAll.Plugin
             // where we update audio gain and fan out to effects. Done this
             // way so an enhanced source (AC MMF, etc.) drives the same
             // dispatch path at its native rate without forking effect code.
+            // The rev-bar start goes in first, so the percentage the frame
+            // carries (the dash mirror's and the OLED's) uses the same start as
+            // the wheel's own bar.
+            int revStart = RevLightStartPctForActiveGame;
+            if (_simHubSource != null) _simHubSource.RevLightStartPct = revStart;
+            if (_fsPipeSource != null) _fsPipeSource.RevLightStartPct = revStart;
             _simHubSource?.PushFromGameData(data);
 
             // Now that _simHubSource.MeasuredHz reflects this tick, decide
@@ -9499,7 +9505,8 @@ namespace TrueforceForAll.Plugin
                     // else the community/telemetry value, else 0.85 of Forza's
                     // EngineMaxRpm). So the all-LED flash and the buzz go off
                     // together as one "shift now" signal, and a known redline
-                    // pins the strip exactly. Fill spans the top window below
+                    // pins the strip exactly. Fill spans from the driver's
+                    // chosen start (RevLightStartPct, per game when set) up to
                     // that point; the latch has hysteresis so limiter bounce
                     // blinks cleanly. (EffectiveRedlineRpm is written on the
                     // engine thread; this eventual-consistency read is fine for
@@ -9513,7 +9520,7 @@ namespace TrueforceForAll.Plugin
                         : frame.MaxRpm * 0.85;
                     if (full > 100)
                     {
-                        pct = ForzaRevBar(frame.Rpms, full);
+                        pct = RevBarFill.Fraction(frame.Rpms, full, RevLightStartPctForActiveGame);
                         // Flash on AT the redline, release as soon as you drop
                         // back below it. The 1% dead band only de-bounces
                         // telemetry jitter while holding right at the line;
@@ -16530,33 +16537,91 @@ namespace TrueforceForAll.Plugin
             }
         }
 
-        /// <summary>Rev-bar fraction for the rim LEDs on Forza sources, which
-        /// carry no RpmPercent channel: raw revs mapped so the bar lights
-        /// from 70 percent of max to the limiter. The 70 percent onset is the
-        /// haptic-engine validated value.</summary>
-        // Redline-flash latch for the derived Forza rev bar (telemetry
-        // thread only). Hysteresis lives in the DispatchFrame LED block.
+        // Redline-flash latch for the derived rev bar (telemetry thread only).
+        // Hysteresis lives in the DispatchFrame LED block.
         private bool _forzaRedlineLatch;
 
-        // The 10-LED strip lights across the top window BELOW the redline:
-        // from RevBarFillWindowFrac of the redline RPM up to it. 0.85 = the
-        // strip sequences over the last ~15% of revs before the shift point,
-        // then goes full + flashes at the redline. A fraction of the redline
-        // (not of MaxRpm) so a low CarFacts redline still gets a proportional
-        // fill window instead of an onset above its own redline.
-        private const double RevBarFillWindowFrac = 0.85;
+        // The strip fills from the driver's chosen start (a percent of the
+        // redline, RevLightStartPct; default 85 = the last ~15% of revs before
+        // the shift point) up to the redline, then goes full and flashes. A
+        // fraction of the redline rather than of MaxRpm, so a low CarFacts
+        // redline still gets a proportional window instead of a start above its
+        // own redline. The arithmetic is RevBarFill's, shared with the telemetry
+        // sources so the dash mirror and the OLED read the same bar.
 
-        /// <summary>0..1 fill for the rev-LED strip: 0 below the fill window,
-        /// 1 at or above <paramref name="fullRpm"/> (the resolved redline).</summary>
-        private static double ForzaRevBar(double rpm, double fullRpm)
+        /// <summary>Where the rev lights start for a game, in percent of the
+        /// redline: the game's own entry when the driver gave it one, else the
+        /// global setting. Clamped, so a hand-edited file cannot light the bar
+        /// at idle or start it above the redline.
+        ///
+        /// Read per frame on the telemetry thread while the panel may be
+        /// adding or removing an entry on the UI thread. Overwriting an existing
+        /// key cannot disturb a reader; an add or remove can, rarely, so a read
+        /// that throws falls back to the global value for that one frame.</summary>
+        public int EffectiveRevLightStartPct(string game)
         {
-            if (fullRpm <= 1.0) return 0.0;
-            double onset = fullRpm * RevBarFillWindowFrac;
-            if (rpm <= onset) return 0.0;
-            double bar = (rpm - onset) / (fullRpm - onset);
-            if (bar < 0.0) bar = 0.0; else if (bar > 1.0) bar = 1.0;
-            return bar;
+            var s = Settings;
+            if (s == null) return RevBarFill.DefaultStartPct;
+            try
+            {
+                if (s.RevLightStartPctByGame != null && !string.IsNullOrEmpty(game)
+                    && s.RevLightStartPctByGame.TryGetValue(game, out int v))
+                    return RevBarFill.ClampStartPct(v);
+            }
+            catch { }
+            return RevBarFill.ClampStartPct(s.RevLightStartPct);
         }
+
+        public int RevLightStartPctForActiveGame => EffectiveRevLightStartPct(_activeGame);
+
+        /// <summary>The active game has its own rev-light start rather than the
+        /// global one.</summary>
+        public bool RevLightStartIsPerGame
+        {
+            get
+            {
+                var map = Settings?.RevLightStartPctByGame;
+                return map != null && !string.IsNullOrEmpty(_activeGame) && map.ContainsKey(_activeGame);
+            }
+        }
+
+        /// <summary>Set the start the slider is showing: the active game's own
+        /// entry when it has one, else the global value. Does not persist; the
+        /// panel debounces that, since a drag fires per pixel.</summary>
+        public void SetRevLightStartPct(int pct)
+        {
+            var s = Settings;
+            if (s == null) return;
+            pct = RevBarFill.ClampStartPct(pct);
+            if (RevLightStartIsPerGame) s.RevLightStartPctByGame[_activeGame] = pct;
+            else s.RevLightStartPct = pct;
+        }
+
+        /// <summary>Give the active game its own start, seeded from the global
+        /// value so ticking the box changes nothing until the slider moves; or
+        /// drop it, which hands the game back to the global value.</summary>
+        public void SetRevLightStartPerGame(bool perGame)
+        {
+            var s = Settings;
+            if (s == null || string.IsNullOrEmpty(_activeGame)) return;
+            if (s.RevLightStartPctByGame == null)
+                s.RevLightStartPctByGame = new Dictionary<string, int>();
+            if (perGame)
+            {
+                if (!s.RevLightStartPctByGame.ContainsKey(_activeGame))
+                    s.RevLightStartPctByGame[_activeGame] = RevBarFill.ClampStartPct(s.RevLightStartPct);
+            }
+            else s.RevLightStartPctByGame.Remove(_activeGame);
+            try { PersistSettings(); } catch { }
+        }
+
+        /// <summary>The active car fills the strip from its own published
+        /// switch-on points (the CSP bridge's dash LEDs, or the published
+        /// dataset), so the start setting does not reach it. For the panel,
+        /// which says so rather than leave a slider that appears to do nothing.</summary>
+        public bool ActiveCarUsesPublishedRevLights =>
+            ((_telemetrySource as AcSharedMemoryTelemetrySource)?.CspAcLedStepRpms?.Length ?? 0) > 0
+            || (_lovelyCar != null && LovelyFillEnabled);
 
         /// <summary>Run the simulated rev/shift sweep on the rim LEDs (settings
         /// "Test" button). Opens the HID++ channel on demand so it works with

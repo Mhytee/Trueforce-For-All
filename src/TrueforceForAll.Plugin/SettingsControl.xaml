@@ -3852,6 +3852,35 @@
                  wheel's own lighting, which is not what happens: we add lights to
                  games that have none, where we can. -->
 
+            <!-- Where the strip starts filling, in percent of the redline. Only
+                 the bottom moves: the top is the redline, where the flash and the
+                 limiter buzz fire (owner, 2026-11-15). 85 is the window the bar
+                 always used. Shown on every wheel with lights, the G923 included,
+                 because a five-step bar fills from a start point like a ten-step
+                 one. The per-game box appears only while a game is known; ticked,
+                 the slider edits that game's own value. The car line under the
+                 help says where this car's lights fill, or that the car brings
+                 its own published timing and the slider does not reach it. -->
+            <Grid x:Name="RevLightStartRow" Margin="22,0,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="60"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{loc:T TelemetryFfb_RevLightStartRowStart}" Style="{StaticResource LabelText}"
+                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <Slider Grid.Column="1" x:Name="RevLightStartSlider" Minimum="20" Maximum="95"
+                        SmallChange="1" LargeChange="5" TickFrequency="5" VerticalAlignment="Center"
+                        ValueChanged="RevLightStart_Changed"
+                        ToolTip="{loc:T TelemetryFfb_RevLightStart_Tip}"/>
+                <Border Visibility="{Binding Visibility, ElementName=RevLightStartText}" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" BorderThickness="1" BorderBrush="{StaticResource EditableNumberBorder}" CornerRadius="2" Padding="4,1"><TextBox x:Name="RevLightStartText" FontSize="11"/></Border>
+            </Grid>
+            <TextBlock Style="{StaticResource HelpText}" Margin="22,0,0,2" TextWrapping="Wrap"
+                       Text="{loc:T TelemetryFfb_RevLightStartHelp}"/>
+            <TextBlock x:Name="RevLightStartCarText" Style="{StaticResource HelpText}" Margin="22,0,0,2"
+                       TextWrapping="Wrap" Visibility="Collapsed"/>
+            <CheckBox x:Name="RevLightStartPerGameCheck" Margin="22,4,0,12" Visibility="Collapsed"
+                      Checked="RevLightStartPerGame_Changed" Unchecked="RevLightStartPerGame_Changed"
+                      ToolTip="{loc:T TelemetryFfb_RevLightStartPerGame_Tip}"/>
+
             <!-- Hidden on wheels whose strip has a fixed look (G923): a
                  pattern picker there reads as a feature the owner is
                  missing. Same principle as OledSection above. -->

@@ -31,6 +31,11 @@ namespace TrueforceForAll.Plugin
 
         public Action<string> Logger { get; set; }
 
+        /// <summary>Where the rev bar starts, in percent of the top of the
+        /// rev range. Set by the plugin from the game's setting; read on the
+        /// parse thread, and a whole int is never torn.</summary>
+        public int RevLightStartPct { get; set; } = RevBarFill.DefaultStartPct;
+
         // Two accept threads, four allowed pipe instances: with a spare
         // listener always armed, the mod's periodic reconnect (its only
         // defense against a SimHub restart leaving it a dead handle, which
@@ -629,15 +634,9 @@ namespace TrueforceForAll.Plugin
             UpdateFuelDrain(speed);
 
             // Rev bar: FS reports no redline, so the band tops out at MaxRpm,
-            // same fallback shape as the SimHub source uses without one.
-            const double RevBandStart = 0.87;
-            double revPct = 0.0;
-            if (maxRpm > 0)
-            {
-                double lo = maxRpm * RevBandStart;
-                revPct = maxRpm > lo ? (rpm - lo) / (maxRpm - lo) : 0.0;
-                if (revPct < 0) revPct = 0; else if (revPct > 1) revPct = 1;
-            }
+            // same fallback shape as the SimHub source uses without one, and
+            // the same driver-chosen start.
+            double revPct = RevBarFill.Fraction(rpm, maxRpm, RevLightStartPct);
 
             var frame = new TelemetryFrame
             {

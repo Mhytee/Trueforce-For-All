@@ -1407,6 +1407,7 @@ namespace TrueforceForAll.Plugin
                     RpmLedStatusText.Text = _plugin.RpmLedStatus;
                 if (ModeBRevLightsCheck != null)
                     ModeBRevLightsCheck.IsChecked = _plugin.Settings?.ModeBRevLightsEnabled != false;
+                RefreshRevLightStartRow();
 
                 // What the rim LEDs do when the revs cannot drive them.
                 if (IdleLedModeCombo != null && _plugin.Settings != null)
@@ -2764,6 +2765,10 @@ namespace TrueforceForAll.Plugin
             // Before the car/game check, so a wheel that has just been found
             // rebuilds the panel on the same tick rather than the next change.
             RefreshIfWheelChanged();
+            // The car's redline resolves from telemetry a moment after the car
+            // loads, and moves with the gear in games that publish one per
+            // gear. Cheap when nothing moved: it compares two numbers.
+            RefreshRevLightStartCarText();
             if (carId != _lastShownCarId || game != _lastShownGame)
             {
                 bool gameChanged = game != _lastShownGame;
@@ -10805,6 +10810,9 @@ namespace TrueforceForAll.Plugin
                 ModeBGameNote.Text = ModeBGameNoteLabel(r3eHere, lmuHere, reshapeGame, mbGame);
             if (WheelLightsHeaderText != null)
                 WheelLightsHeaderText.Text = WheelLightsHeaderLabel();
+            // The per-game box names the game, and the car line is a sentence
+            // with numbers in it: both are written in code, so both need this.
+            RelabelRevLightStartRow();
             if (OledStatusText != null)
                 OledStatusText.Text = _plugin.OledStatus;
 
@@ -14495,6 +14503,104 @@ namespace TrueforceForAll.Plugin
             if (!_plugin.Settings.ModeBRevLightsEnabled) _plugin.TurnOffRpmLeds();
         }
 
+        // ---------------- where the rev lights start ----------------
+
+        /// <summary>Fill the start row from the plugin: the active game's own
+        /// value when it has one, else the global one, and the per-game box for
+        /// whichever game is current. Runs inside RefreshFromPlugin, so the
+        /// slider assignment below does not write back.</summary>
+        private void RefreshRevLightStartRow()
+        {
+            if (RevLightStartSlider == null || _plugin == null) return;
+            int pct = _plugin.RevLightStartPctForActiveGame;
+            if (!EditableReadout.IsEditing(RevLightStartText))
+            {
+                RevLightStartSlider.Value = pct;
+                RevLightStartText.Text = pct + "%";
+            }
+            bool gameKnown = !string.IsNullOrEmpty(_plugin.ActiveGame);
+            RevLightStartPerGameCheck.Visibility = gameKnown ? Visibility.Visible : Visibility.Collapsed;
+            RevLightStartPerGameCheck.IsChecked = gameKnown && _plugin.RevLightStartIsPerGame;
+            RelabelRevLightStartRow();
+        }
+
+        /// <summary>The two pieces of the row that are written in code rather
+        /// than bound: the per-game box (it names the game) and the car line.</summary>
+        private void RelabelRevLightStartRow()
+        {
+            if (RevLightStartPerGameCheck == null || _plugin == null) return;
+            string game = _plugin.ActiveGame;
+            if (!string.IsNullOrEmpty(game))
+                RevLightStartPerGameCheck.Content =
+                    Loc.F("TelemetryFfb_RevLightStartPerGame_Fmt", GameNames.Display(game));
+            _revStartCarSig = long.MinValue;   // redraw the car line in the new words
+            RefreshRevLightStartCarText();
+        }
+
+        // What the car line last drew, so the meter tick can ask every frame and
+        // only touch the TextBlock when something it says has actually moved.
+        // -1 = hidden, -2 = the car's own published timing, else redline * 1000
+        // + start percent. MinValue = nothing drawn yet.
+        private long _revStartCarSig = long.MinValue;
+
+        /// <summary>One line under the help that turns the percentage into this
+        /// car's revs, because nobody thinks of their lights in percent of a
+        /// redline. Or, for a car that fills from its own published switch-on
+        /// points, says so: the slider does not reach those cars, and without
+        /// this it would look broken exactly where it is working as intended.
+        /// Hidden with no car loaded or no redline resolved yet.</summary>
+        private void RefreshRevLightStartCarText()
+        {
+            if (RevLightStartCarText == null || _plugin == null) return;
+            bool published = _plugin.ActiveCarUsesPublishedRevLights;
+            int? redline = _plugin.RevLimiter?.EffectiveRedlineRpm;
+            bool carKnown = !string.IsNullOrEmpty(_plugin.ActiveCarId);
+            int pct = _plugin.RevLightStartPctForActiveGame;
+
+            long sig = !carKnown ? -1L
+                     : published ? -2L
+                     : (redline.HasValue && redline.Value > 100) ? redline.Value * 1000L + pct
+                     : -1L;
+            if (sig == _revStartCarSig) return;
+            _revStartCarSig = sig;
+
+            if (sig == -1L)
+            {
+                RevLightStartCarText.Visibility = Visibility.Collapsed;
+                return;
+            }
+            RevLightStartCarText.Text = published
+                ? Loc.T("TelemetryFfb_RevLightStartCarPublished")
+                : Loc.F("TelemetryFfb_RevLightStartCarRange_Fmt",
+                        RevBarFill.StartRpm(redline.Value, pct).ToString("N0"),
+                        redline.Value.ToString("N0"));
+            RevLightStartCarText.Visibility = Visibility.Visible;
+        }
+
+        private void RevLightStart_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            int pct = RevBarFill.ClampStartPct((int)Math.Round(e.NewValue));
+            if (RevLightStartText != null && !EditableReadout.IsEditing(RevLightStartText))
+                RevLightStartText.Text = pct + "%";
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            // Live: the bar reads this every frame, so revving in the pits while
+            // dragging shows the new start straight away.
+            _plugin.SetRevLightStartPct(pct);
+            RefreshRevLightStartCarText();
+            QueueAmbientLedSave();
+        }
+
+        private void RevLightStartPerGame_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressEvents || _plugin?.Settings == null) return;
+            _plugin.SetRevLightStartPerGame(RevLightStartPerGameCheck.IsChecked == true);
+            // Unticking hands the game back to the global value, which may sit
+            // somewhere else: move the slider to what is now in force.
+            _suppressEvents = true;
+            try { RefreshRevLightStartRow(); }
+            finally { _suppressEvents = false; }
+        }
+
         // ---------------- rim LEDs with no revs to draw ----------------
 
         // Index = AmbientLedMode value, so a combo's SelectedIndex IS the enum.
@@ -14540,8 +14646,9 @@ namespace TrueforceForAll.Plugin
             QueueAmbientLedSave();
         }
 
-        /// <summary>Debounced save for the sweep slider. PersistSettings
-        /// serializes the whole settings graph, and a drag fires per pixel.</summary>
+        /// <summary>Debounced save for the sweep and rev-light start sliders.
+        /// PersistSettings serializes the whole settings graph, and a drag
+        /// fires per pixel.</summary>
         private void QueueAmbientLedSave()
         {
             if (_ambientLedSaveTimer == null)

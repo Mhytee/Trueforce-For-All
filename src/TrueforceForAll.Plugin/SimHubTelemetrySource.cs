@@ -55,6 +55,11 @@ namespace TrueforceForAll.Plugin
         public override void Start() { _running = true; }
         public override void Stop()  { _running = false; }
 
+        /// <summary>Where the rev bar starts, in percent of the redline. Set by
+        /// the plugin before each push from the active game's setting, so the
+        /// dash mirror and the OLED read the same bar the wheel is given.</summary>
+        public int RevLightStartPct { get; set; } = RevBarFill.DefaultStartPct;
+
         /// <summary>Called by the plugin from SimHub's DataUpdate callback.
         /// Translates GameData into a TelemetryFrame and emits via OnFrame.
         /// No-op when not running or when NewData is null.</summary>
@@ -110,10 +115,10 @@ namespace TrueforceForAll.Plugin
             // CurrentDisplayedRPMPercent is just rpm/maxRpm (lights far too
             // early). Driving off the booleans caused the bar to loop
             // (10->5->10...). RedLineRPM is the one stable signal. So derive
-            // a smooth, monotonic curve purely from rpm vs redline: first LED
-            // at RevBandStart*red (~ where the car's first shift light came
-            // on in the diag, ~0.86*red), all 10 at redline. No booleans.
-            const double RevBandStart = 0.87;
+            // a smooth, monotonic curve purely from rpm vs redline: dark below
+            // the driver's chosen start (RevLightStartPct, default 85 percent
+            // of the redline; the car's first shift light came on around 0.86
+            // in the diag), all 10 at redline. No booleans.
             // Two distinct notions of "redline", kept separate on purpose:
             //   realRedline = the car's actual shift RPM IF the game reports one
             //     (CarSettings_RedLineRPM, else the per-gear redline). 0 when the
@@ -147,10 +152,7 @@ namespace TrueforceForAll.Plugin
             double red = realRedline > 0 ? realRedline : d.MaxRpm;   // LED span top
             double revPct;
             if (red > 0)
-            {
-                double lo = red * RevBandStart;
-                revPct = red > lo ? (d.Rpms - lo) / (red - lo) : 0;
-            }
+                revPct = RevBarFill.Fraction(d.Rpms, red, RevLightStartPct);
             else if (d.CarSettings_CurrentDisplayedRPMPercent > 0)
                 revPct = d.CarSettings_CurrentDisplayedRPMPercent / 100.0;
             else if (d.MaxRpm > 0)

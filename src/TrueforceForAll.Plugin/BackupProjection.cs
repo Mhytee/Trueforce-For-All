@@ -66,6 +66,10 @@ namespace TrueforceForAll.Plugin
             // is a property of the material being played rather than of one
             // machine's sound card.
             "IdleLedMode", "NoRevLedMode", "LedSweepPeriodMs",
+            // Where the rev lights start, globally and per game. A preference
+            // about how the strip reads, keyed by game code rather than by
+            // anything on this PC, so it travels with the rest of the above.
+            "RevLightStartPct", "RevLightStartPctByGame",
             // The panel's language. Travels: it describes the person reading it,
             // not this PC, the same reasoning as the rev-light and OLED
             // preferences above. An empty value on the other machine means
