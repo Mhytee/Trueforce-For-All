@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Standalone field test: switch an Xbox-mode G923 (046D:C26D) to PC mode
+       (046D:C26E) over the WinUSB driver G HUB installs, and record what G HUB
+       itself sends. Deliberately NOT in the solution. net48 + x86 on purpose,
+       so it runs the way the plugin would inside 32-bit SimHub and needs no
+       runtime install. Build with:
+         dotnet build tools/XboxG923ModeSwitch -c Release
+       See Program.cs for what it does and what the log means. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>XboxG923ModeSwitch</AssemblyName>
+    <RootNamespace>TrueforceForAll.Tools.XboxG923ModeSwitch</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Management" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Kill-on-close job, so a closed window never leaves USBPcapCMD running. -->
+    <Compile Include="..\..\src\TrueforceForAll.Core\ChildProcessJob.cs" Link="ChildProcessJob.cs" />
+  </ItemGroup>
+
+</Project>
