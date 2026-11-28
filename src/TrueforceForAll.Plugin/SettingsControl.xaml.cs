@@ -19,6 +19,7 @@ namespace TrueforceForAll.Plugin
     {
         private readonly TrueforcePlugin _plugin;
         private readonly DispatcherTimer _meterTimer;
+        private readonly DispatcherTimer _statusTimer;
         private bool _suppressEvents;
 
         // Community-context cache for the engine-pulse panel. Keyed by
@@ -299,10 +300,15 @@ namespace TrueforceForAll.Plugin
             RefreshFromPlugin();
             UpdateStatusPill();
 
-            // 60 Hz meter updates (matches WPF compositor) with exponential
-            // interpolation = visibly smoother than 30 Hz + abrupt width snaps.
-            _meterTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+            // Two cadences. The meters at 30 Hz on Render priority so they stay
+            // live, and only while one is on screen (UpdateMeterTimerGate);
+            // everything else at 4 Hz on Background priority. Both are UI-thread
+            // only: telemetry, the engine loop and the wheel stream run on their
+            // own threads and never wait on these. See MeterTimer_Tick.
+            _meterTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(MeterTickMs) };
             _meterTimer.Tick += MeterTimer_Tick;
+            _statusTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(250) };
+            _statusTimer.Tick += StatusTimer_Tick;
 
             // Activity signal for the sync coordinator: any interaction with the panel marks the user
             // "active", which is one of the two gates (the other is "a peer is online") that decide
@@ -315,7 +321,8 @@ namespace TrueforceForAll.Plugin
             PreviewMouseWheel += MarkActive;
             Loaded   += (_, __) =>
             {
-                _meterTimer.Start();
+                _statusTimer.Start();
+                UpdateMeterTimerGate();
                 // First-time welcome modal: shown once per (install,
                 // user) on first open of a build that introduced the
                 // community features. Defer via Dispatcher so the panel
@@ -368,6 +375,7 @@ namespace TrueforceForAll.Plugin
             Unloaded += (_, __) =>
             {
                 _meterTimer.Stop();
+                _statusTimer.Stop();
                 try { DismissToast(); } catch { }
                 try { _discordLinkCts?.Cancel(); } catch { }
                 if (_plugin != null)
@@ -2175,10 +2183,46 @@ namespace TrueforceForAll.Plugin
             if (UpdateAvailableButtonText.Text != desired) UpdateAvailableButtonText.Text = desired;
         }
 
+        // Meter decay time constant: the level falls to 1/e of a peak in this
+        // long. Time-based, not per tick, so the bar falls at the same speed
+        // whatever cadence the timer actually achieves (the old 0.85-per-tick
+        // decay was tuned for 60 Hz and crawled when the tick sagged).
+        private const double MeterDecayTauMs = 100.0;
+        private const int MeterTickMs = 33;
+        private long _meterLastTs;
+        private int _statusMinimizedSkip;
+
+        /// <summary>The meter timer runs only while a meter is on screen and the
+        /// window is not minimized: the plugin often sits in the background
+        /// while a demanding game runs, and a 30 Hz tick for a bar nobody can
+        /// see is load for nothing. Re-decided on every status tick.</summary>
+        private void UpdateMeterTimerGate()
+        {
+            if (_meterTimer == null) return;
+            var win = Window.GetWindow(this);
+            bool minimized = win != null && win.WindowState == WindowState.Minimized;
+            bool want = IsLoaded && !minimized
+                && (AudioLevelMeter?.IsVisible == true || AmbientLedPreviewBar?.IsVisible == true);
+            if (want && !_meterTimer.IsEnabled)
+            {
+                _meterLastTs = 0;
+                _meterTimer.Start();
+            }
+            else if (!want && _meterTimer.IsEnabled)
+            {
+                _meterTimer.Stop();
+            }
+        }
+
+        /// <summary>The fast tick: only what moves every frame (the audio level
+        /// meter and the rim-LED meter bar). Render priority, so SimHub's
+        /// background work cannot starve it, which is safe only while it stays
+        /// this small. Everything else is on StatusTimer_Tick at 4 Hz. Before
+        /// the split one 16 ms Background-priority tick did both, and measured
+        /// 3 to 10 Hz with 1 to 2 s stalls (2026-08-15): the meters looked dead
+        /// while capture was fine.</summary>
         private void MeterTimer_Tick(object sender, EventArgs e)
         {
-            FollowExternalLightSelection();
-
             // Dev-gated: measure the timer's REAL cadence and log it every
             // ~10 s. One line per 10 s, only with dev mode unlocked.
             if (_plugin?.Settings?.DevModeUnlocked == true)
@@ -2210,6 +2254,43 @@ namespace TrueforceForAll.Plugin
                 }
             }
 
+            long ts = System.Diagnostics.Stopwatch.GetTimestamp();
+            double dtMs = _meterLastTs == 0 ? MeterTickMs
+                : (ts - _meterLastTs) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            _meterLastTs = ts;
+
+            var src = _plugin?.AudioCapture;
+            if (src != null && AudioLevelMeter.IsVisible)
+            {
+                float peak = src.ReadAndResetPeak();
+                if (peak > 1f) peak = 1f;
+                double cur = AudioLevelMeter.Value;
+                double decayed = cur * Math.Exp(-dtMs / MeterDecayTauMs);
+                double next = peak > decayed ? peak : decayed;
+                if (next < 0.002) next = 0;   // settle, so an idle meter stops re-rendering
+                if (next != cur) AudioLevelMeter.Value = next;
+            }
+            // The rim-LED audio meter's own readout. Cheap while it is off:
+            // one bool and one visibility compare.
+            if (_plugin != null) RefreshAudioLedsStatus();
+        }
+
+        /// <summary>The status tick (4 Hz, Background priority): banners, the
+        /// status pill, car facts, readouts and everything else that changes
+        /// on a human timescale. Split from the meter tick so this work no
+        /// longer holds the meters back.</summary>
+        private void StatusTimer_Tick(object sender, EventArgs e)
+        {
+            UpdateMeterTimerGate();
+            // Minimized, nobody can see any of this: once a second is plenty to
+            // keep it current for when the window comes back.
+            var win = Window.GetWindow(this);
+            if (win != null && win.WindowState == WindowState.Minimized
+                && (++_statusMinimizedSkip & 3) != 0)
+                return;
+
+            FollowExternalLightSelection();
+
             // (Was: per-tick variant-prompt recompute. Now silent
             // auto-create happens at the end of every CarFacts resolve
             // pass inside the plugin, so the UI tick has nothing to do
@@ -2225,24 +2306,15 @@ namespace TrueforceForAll.Plugin
             RefreshR3EAutoReadiness();
             RefreshModeBAutoStrengthReadiness();
 
-            var src = _plugin?.AudioCapture;
-            if (src != null)
-            {
-                float peak = src.ReadAndResetPeak();
-                if (peak > 1f) peak = 1f;
-                double cur = AudioLevelMeter.Value;
-                AudioLevelMeter.Value = peak > cur ? peak : cur * 0.85;
+            if (_plugin?.AudioCapture != null)
                 CaptureStatusText.Text = _plugin.CaptureStatus;
-            }
             if (_plugin != null)
             {
                 FfbTapText.Text = _plugin.FfbTapStatus;
                 StreamText.Text = _plugin.StreamStatus;
                 VoicesText.Text = _plugin.ActiveVoiceCount.ToString();
 
-                // The rim-LED audio meter's own readout. Cheap while it is off:
-                // one bool and one visibility compare.
-                RefreshAudioLedsStatus();
+                RefreshEffectTestButtons();
 
                 // Surface USBPcap recovery actions only when something is
                 // actually wrong. Keeps the diagnostics row uncluttered in the
