@@ -162,7 +162,7 @@ namespace TrueforceForAll.Plugin
             "MasterGain", "MasterGainStep", "FfbScale", "FfbInvertSign",
             // Trueforce EQ: a wheel/rig trait, global (not preset-scoped), travels.
             "TrueforceEqEnabled", "TrueforceEqBands", "TrueforceEqPresetId", "TrueforceEqUserPresets",
-            // Effects tab Simple/Advanced view: the user's preference, travels.
+            // Simple/Advanced view (Effects and FFB tabs): the user's preference, travels.
             "SimpleMode",
             "FfbSmoothTimeConstantMs", "FfbSpikeTamingEnabled", "FfbSpikeUseSlewLimiter",
             "FfbSpikeMaxLsbPerMs", "FfbPeakSoftLimitLsb", "FfbSpikeTransientThresholdLsb",

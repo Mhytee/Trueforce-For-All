@@ -8,7 +8,7 @@
 //             online features (owner call 2026-10-02).
 //   Checks    a supported wheel found, SimHub elevated, G HUB closed: the
 //             three causes behind most "the wheel feels dead" reports.
-//   View      Simple or Advanced on the Effects tab.
+//   View      Simple or Advanced on the Effects and Telemetry FFB tabs.
 //   CarFacts  what the Car Facts panel is and when to touch it. Simple mode's
 //             Engine card leaves engine type to it, and the redline buzz and
 //             rev lights read their redline from it.
@@ -387,7 +387,7 @@ namespace TrueforceForAll.Plugin
 
         private FrameworkElement ViewPage()
         {
-            var page = Page(Loc.T("Setup_ViewHeading"), Loc.T("Setup_ViewIntro"));
+            var page = Page(Loc.T("Setup_ViewHeading"), Loc.T("Setup_ViewIntroTwoTabs"));
             page.Children.Add(Choice("SetupView", Loc.T("Effects_ModeSimple"), Loc.T("Effects_ModeSimple_Tip"),
                 _simple, () => { _simple = true; _setSimpleMode?.Invoke(true); }));
             page.Children.Add(Choice("SetupView", Loc.T("Effects_ModeAdvanced"), Loc.T("Effects_ModeAdvanced_Tip"),

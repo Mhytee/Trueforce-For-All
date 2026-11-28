@@ -13,3 +13,7 @@ Set that game's own force feedback and vibration to **0**, so the plugin is the 
 
 > [!WARNING]
 > Two force streams fighting each other feels jumpy and buzzy. The force feedback tab warns you when it detects the fight, but the problem is easier to avoid than to diagnose.
+
+## Simple and Advanced
+
+The switch at the top of the **Telemetry FFB** tab works like the one on the **Effects** tab, and the two always match. **Simple** shows each feature's on and off and its strength, plus **Min force**, **Damping** and the force direction switches. **Advanced** adds the shaping, timing and threshold controls. A control you cannot see keeps its value and keeps applying, so switching never changes how the wheel feels.

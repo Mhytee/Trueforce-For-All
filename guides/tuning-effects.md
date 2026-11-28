@@ -8,12 +8,14 @@ Every effect ships tuned, so gain is all you may want to move. Going through the
 
 The switch at the top of the **Effects** tab sets how much of each effect you see. **Simple** shows each effect's on and off, its gain and its frequency, which is all most people move. **Advanced** shows every control below as well. A fresh install starts in Simple.
 
+The **Telemetry FFB** tab has the same switch, and the two always match: change one and the other follows. There, Simple shows each feature's on and off and its strength, and Advanced adds the shaping, timing and threshold controls. See [Telemetry Based FFB](telemetry-ffb.md).
+
 Switching never changes how the wheel feels. A control you cannot see keeps its value and keeps applying, so anything tuned in Advanced stays exactly as it was.
 
 ## One at a time
 
 1. On the **Effects** tab, switch everything off except the one you are working on.
-2. Trigger it. Many effects have a **Test** button beside them, though a test does not always land the way the effect does in motion. Driving is the truest way to feel an effect.
+2. Trigger it. Most effects have a **Test** button beside them; press it again to stop the test. Most tests replay a moment recorded on track through the effect with your settings, so they answer your tuning. Driving is still the truest way to feel an effect.
 3. Move its **Gain** until it sits where you want it.
 4. Switch that one off, switch the next one on, and go again.
 

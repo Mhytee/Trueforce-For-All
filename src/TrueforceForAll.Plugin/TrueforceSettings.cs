@@ -767,8 +767,9 @@ namespace TrueforceForAll.Plugin
         // after the built-ins. MUST default EMPTY (the append landmine above).
         public List<EqPreset> TrueforceEqUserPresets { get; set; } = new List<EqPreset>();
 
-        // Effects tab Simple mode: hides the fine tuning and leaves each
-        // effect's on/off, gain and frequency (SettingsControl.SimpleMode.cs).
+        // Simple mode on the Effects and Telemetry FFB tabs: hides the fine
+        // tuning and leaves the controls most people change
+        // (SettingsControl.SimpleMode.cs).
         // Display only: hidden settings keep their values and keep applying.
         // Defaults false so an existing install, whose settings file predates
         // the field, stays in Advanced; TrueforcePlugin.Init turns it on for a
