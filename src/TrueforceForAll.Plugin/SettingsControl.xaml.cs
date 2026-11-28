@@ -2960,6 +2960,17 @@ namespace TrueforceForAll.Plugin
             StatusPill.Background = bg;
             StatusPillDot.Fill    = dot;
 
+            // What a click does follows the state: with the plugin off the fix
+            // is the Mode list, otherwise it is the wheel check.
+            bool pillOpensMode = _plugin.MasterMode == TrueforceMasterMode.Off;
+            if (_statusPillOpensMode != pillOpensMode || StatusPill.ToolTip == null)
+            {
+                _statusPillOpensMode = pillOpensMode;
+                StatusPill.ToolTip = pillOpensMode
+                    ? Loc.T("Header_StatusPillOff_Tip")
+                    : Loc.T("Header_StatusPill_Tip");
+            }
+
             // Enhanced hype badge: only when actually delivering frames from
             // a per-game source (not the generic SimHub pipe), and the plugin
             // is actually doing something with them.
@@ -2972,6 +2983,25 @@ namespace TrueforceForAll.Plugin
             {
                 EnhancedBadge.Visibility = Visibility.Collapsed;
             }
+        }
+
+        private bool _statusPillOpensMode;
+
+        /// <summary>The status pill is the answer to "is it working?", so a
+        /// click goes to where that is answered in full: the wheel check
+        /// (Settings, Diagnostics, run), which ends on the most blocking
+        /// problem. With the plugin off it opens the Mode list instead, since
+        /// choosing a mode is the whole fix.</summary>
+        private void StatusPill_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (_plugin == null) return;
+            if (_plugin.MasterMode == TrueforceMasterMode.Off && MasterModeCombo != null)
+            {
+                MasterModeCombo.Focus();
+                MasterModeCombo.IsDropDownOpen = true;
+                return;
+            }
+            RunWheelCheck();
         }
 
         // True once the user clicks "+N more": expands the coalesced issue stack
@@ -6349,10 +6379,9 @@ namespace TrueforceForAll.Plugin
                     // seconds so the user can actually trigger it (turn the
                     // wheel / drive) and SEE the verdict update, instead of a
                     // snapshot that's stale before they can act.
-                    SelfTestResultText.Text = checklist.Replace(FfbLiveWatchSentinel,
-                        "[..]   FFB pass-through: in a session (not a menu), TURN THE WHEEL or drive NOW. Watching for ~6 s...")
-                        + Loc.T("Settings_AlsoSent25");
-                    SelfTestResultText.Visibility = Visibility.Visible;
+                    ShowSelfTestResult(checklist.Replace(FfbLiveWatchSentinel,
+                        Loc.T("Settings_SelfTestFfbWatching"))
+                        + Loc.T("Settings_AlsoSent25"));
                     SelfTestButton.IsEnabled = false;
                     System.Threading.Tasks.Task.Run(() =>
                     {
@@ -6366,18 +6395,16 @@ namespace TrueforceForAll.Plugin
                         Dispatcher.Invoke(() =>
                         {
                             string verdict = seen
-                                ? "[OK]   FFB pass-through: LIVE - game forces captured when you moved."
-                                : "[skip] FFB pass-through: no game forces seen in 6 s. Be in an ACTIVE session (not a menu/paused) and turn the wheel / drive while the watch runs.";
-                            SelfTestResultText.Text = checklist.Replace(FfbLiveWatchSentinel, verdict);
+                                ? Loc.T("Settings_SelfTestFfbLiveSeen")
+                                : Loc.T("Settings_SelfTestFfbNotSeen");
+                            ShowSelfTestResult(checklist.Replace(FfbLiveWatchSentinel, verdict));
                             SelfTestButton.IsEnabled = true;
                         });
                     });
                     return;
                 }
 
-                SelfTestResultText.Text =
-                    checklist + Loc.T("Settings_Sent25S");
-                SelfTestResultText.Visibility = Visibility.Visible;
+                ShowSelfTestResult(checklist + Loc.T("Settings_Sent25S"));
                 return;
             }
 
@@ -6385,23 +6412,22 @@ namespace TrueforceForAll.Plugin
             // first). Resolve any sentinel to a static line so it never leaks.
             if (ffbLiveWatch)
                 checklist = checklist.Replace(FfbLiveWatchSentinel,
-                    "[skip] FFB pass-through: not verified (stream is down; fix that first, then re-test while driving).");
+                    Loc.T("Settings_SelfTestFfbStreamDown"));
 
             // Stream is down: run the active staged probe (discovery, then
             // open + init + tap + stream). The init sequence blocks ~150 ms,
             // so it runs off the UI thread to not freeze SimHub; the button
             // is disabled until the staged result is appended.
-            SelfTestResultText.Text       = checklist + Loc.T("Settings_StreamNotActiveRunning");
-            SelfTestResultText.Visibility = Visibility.Visible;
-            SelfTestButton.IsEnabled      = false;
+            ShowSelfTestResult(checklist + Loc.T("Settings_StreamNotActiveRunning"));
+            SelfTestButton.IsEnabled = false;
             System.Threading.Tasks.Task.Run(() =>
             {
                 string probe;
                 try { probe = _plugin.RunActiveDeviceProbe(); }
-                catch (Exception ex) { probe = "[FAIL] Probe crashed: " + ex.Message; }
+                catch (Exception ex) { probe = Loc.F("Settings_SelfTestProbeCrashed_Fmt", ex.Message); }
                 Dispatcher.Invoke(() =>
                 {
-                    SelfTestResultText.Text  = checklist + Loc.F("Settings_ActiveDeviceProbe_Fmt", probe);
+                    ShowSelfTestResult(checklist + Loc.F("Settings_ActiveDeviceProbe_Fmt", probe));
                     SelfTestButton.IsEnabled = true;
                 });
             });

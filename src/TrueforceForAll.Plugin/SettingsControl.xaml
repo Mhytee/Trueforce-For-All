@@ -910,7 +910,20 @@
                              delivering frames. Reclaims the old dedicated status row. -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal"
                                     VerticalAlignment="Center" Margin="12,0,0,0">
-                            <Border x:Name="StatusPill" CornerRadius="10" Padding="10,3" Background="#3D8B40">
+                            <!-- Clickable: runs the wheel check, or opens the Mode
+                                 list when the plugin is off (StatusPill_Click). The
+                                 tooltip says which, set with the state. -->
+                            <Border x:Name="StatusPill" CornerRadius="10" Padding="10,3" Background="#3D8B40"
+                                    Cursor="Hand" MouseLeftButtonUp="StatusPill_Click">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Opacity" Value="0.85"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse x:Name="StatusPillDot" Width="8" Height="8" Fill="#A5D6A7" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                     <TextBlock x:Name="StatusPillText" Text="{loc:T Header_StatusPill}" Foreground="White" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
@@ -5494,11 +5507,22 @@
                                 HorizontalAlignment="Left" Margin="0,14,0,0"
                                 Padding="10,3" Click="SelfTest_Click"
                                 ToolTip="{loc:T Settings_SelfTest_Tip}"/>
-                        <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
-                                   x:Name="SelfTestResultText"
-                                   Visibility="Collapsed"
-                                   Margin="0,8,0,0" TextWrapping="Wrap"
-                                   FontFamily="Consolas" FontSize="12"/>
+                        <!-- The result, drawn as a checklist (one row per check,
+                             a fix button where one exists) by ShowSelfTestResult.
+                             Copy puts the same result on the clipboard as the
+                             tagged text it is built from, for a bug report. -->
+                        <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
+                                    x:Name="SelfTestResultHost" Visibility="Collapsed" Margin="0,8,0,0">
+                            <StackPanel x:Name="SelfTestRowsPanel"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="SelfTestCopyButton" Content="{loc:T Settings_SelfTestCopy}"
+                                        Padding="10,2" Click="SelfTestCopy_Click"
+                                        ToolTip="{loc:T Settings_SelfTestCopy_Tip}"/>
+                                <TextBlock x:Name="SelfTestCopiedText" Text="{loc:T Settings_SelfTestCopied}"
+                                           Margin="8,0,0,0" VerticalAlignment="Center" Opacity="0.75"
+                                           Visibility="Collapsed"/>
+                            </StackPanel>
+                        </StackPanel>
                         </Grid>
                         <!-- Anonymous usage statistics. Opt-out (default on). The
                              plugin's once-a-day telemetry ping: a random id (not
